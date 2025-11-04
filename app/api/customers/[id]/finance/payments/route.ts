@@ -13,8 +13,8 @@ async function ensureAccountBalance(customerId: number) {
 
     if (!existingBalance) {
       await sql`
-        INSERT INTO account_balances (customer_id, balance, credit_limit, status, created_at, updated_at)
-        VALUES (${customerId}, 0, 0, 'active', NOW(), NOW())
+        INSERT INTO account_balances (customer_id, balance, credit_limit, status, updated_at)
+        VALUES (${customerId}, 0, 0, 'active', NOW())
         ON CONFLICT (customer_id) DO NOTHING
       `
     }

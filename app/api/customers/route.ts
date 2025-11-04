@@ -34,20 +34,23 @@ export async function GET(request: NextRequest) {
           ELSE CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))
         END as name,
         c.city as location_name,
-        COUNT(DISTINCT cs.id) as service_count,
-        MAX(sp.name) as service_plan_name,
-        MAX(sp.price) as monthly_fee,
-        COALESCE(SUM(DISTINCT p.amount), 0) as total_payments,
-        COALESCE(SUM(DISTINCT i.amount), 0) as total_invoices,
-        (COALESCE(SUM(DISTINCT p.amount), 0) - COALESCE(SUM(DISTINCT i.amount), 0)) as outstanding_balance,
-        (COALESCE(SUM(DISTINCT p.amount), 0) - COALESCE(SUM(DISTINCT i.amount), 0)) as actual_balance,
-        COUNT(DISTINCT CASE WHEN t.status IN ('open', 'pending') THEN t.id END) as open_tickets
+        (SELECT COUNT(*) FROM customer_services cs WHERE cs.customer_id = c.id) as service_count,
+        (SELECT sp.name FROM customer_services cs 
+         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id 
+         WHERE cs.customer_id = c.id AND cs.status = 'active' 
+         LIMIT 1) as service_plan_name,
+        (SELECT sp.price FROM customer_services cs 
+         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id 
+         WHERE cs.customer_id = c.id AND cs.status = 'active' 
+         LIMIT 1) as monthly_fee,
+        COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0) as total_payments,
+        COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0) as total_invoices,
+        (COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0) - 
+         COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0)) as outstanding_balance,
+        (COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0) - 
+         COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0)) as actual_balance,
+        0 as open_tickets
       FROM customers c
-      LEFT JOIN customer_services cs ON cs.customer_id = c.id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id AND cs.status = 'active'
-      LEFT JOIN payments p ON p.customer_id = c.id AND p.status = 'completed'
-      LEFT JOIN invoices i ON i.customer_id = c.id
-      LEFT JOIN support_tickets t ON t.customer_id = c.id
       WHERE 1=1
     `
 
@@ -72,15 +75,10 @@ export async function GET(request: NextRequest) {
       baseQuery += ` AND ${conditions.join(" AND ")}`
     }
 
-    baseQuery += ` 
-      GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, 
-               c.customer_type, c.email, c.phone, c.address, c.city, c.state, 
-               c.country, c.postal_code, c.status, c.created_at, c.updated_at
-      ORDER BY c.created_at DESC
-    `
+    baseQuery += ` ORDER BY c.created_at DESC`
 
     console.log("[v0] Executing customer query")
-    console.log("[v0] Query:", baseQuery.substring(0, 200) + "...")
+    console.log("[v0] Query:", baseQuery.substring(0, 300) + "...")
 
     const customers = await sql.unsafe(baseQuery)
 
@@ -91,11 +89,7 @@ export async function GET(request: NextRequest) {
       console.log("[v0] First customer sample:", JSON.stringify(customersArray[0], null, 2))
     }
 
-    return NextResponse.json({
-      success: true,
-      customers: customersArray,
-      count: customersArray.length,
-    })
+    return NextResponse.json(customersArray)
   } catch (error) {
     console.error("[v0] Failed to fetch customers:", error)
     console.error("[v0] Error details:", error.message)

@@ -101,11 +101,21 @@ export default function CustomersPage() {
       const response = await fetch("/api/customers")
       if (response.ok) {
         const data = await response.json()
-        const customersData = Array.isArray(data) ? data : data.customers || []
+        let customersData = []
+        if (Array.isArray(data)) {
+          customersData = data
+        } else if (data.customers && Array.isArray(data.customers)) {
+          customersData = data.customers
+        } else if (data.success === false) {
+          console.error("[v0] API returned error:", data.error)
+          customersData = []
+        }
         console.log("[v0] Setting customers data:", customersData.length, "customers")
         setCustomers(customersData)
       } else {
         console.error("[v0] Failed to fetch customers, status:", response.status)
+        const errorData = await response.json()
+        console.error("[v0] Error response:", errorData)
         setCustomers([])
       }
     } catch (error) {

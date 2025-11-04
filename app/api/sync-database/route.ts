@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { readdir, readFile } from "fs/promises"
 import { join } from "path"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST() {
   try {
+    const sql = await getSql()
+
     const results = {
       migrationsRun: [] as string[],
       errors: [] as string[],

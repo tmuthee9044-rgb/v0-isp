@@ -1,6 +1,6 @@
 "use server"
 
-import { neon as createNeonClient, type NeonQueryFunction } from "@neondatabase/serverless"
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless"
 
 // Cache for database clients
 const clientCache = new Map<string, any>()
@@ -77,7 +77,7 @@ export async function getSql(): Promise<NeonQueryFunction<false, false>> {
     })
 
     try {
-      const client = createNeonClient(connectionString, {
+      const client = neon(connectionString, {
         fetchOptions: {
           cache: "no-store",
         },
@@ -103,14 +103,14 @@ export async function getSql(): Promise<NeonQueryFunction<false, false>> {
       if (isLocal && process.env.DATABASE_URL) {
         logActivity("FALLBACK", { from: "local", to: "neon" })
         const fallbackString = process.env.DATABASE_URL
-        const fallbackClient = createNeonClient(fallbackString)
+        const fallbackClient = neon(fallbackString)
         await fallbackClient`SELECT 1 as health_check`
         sqlClient = fallbackClient
         return fallbackClient
       } else if (!isLocal) {
         logActivity("FALLBACK", { from: "neon", to: "local" })
         const fallbackString = `postgresql://isp_admin:SecurePass123!@127.0.0.1:5432/isp_system`
-        const fallbackClient = createNeonClient(fallbackString)
+        const fallbackClient = neon(fallbackString)
         await fallbackClient`SELECT 1 as health_check`
         sqlClient = fallbackClient
         return fallbackClient
@@ -151,4 +151,5 @@ export async function getDatabaseStatus() {
 export default getSql
 
 export const getSqlConnection = getSql
-export { getSql as sql, getSql as db }
+export const sql = getSql
+export const db = getSql

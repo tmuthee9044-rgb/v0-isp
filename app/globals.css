@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Updated color tokens to match the finance dashboard design brief */
+    --background: 0 0% 100%;
+    --foreground: 220 13% 15%;
+    --card: 210 40% 97%;
+    --card-foreground: 220 13% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 15%;
+    --primary: 220 13% 15%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 13% 42%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 40% 97%;
+    --muted-foreground: 220 13% 42%;
+    --accent: 262 83% 70%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 210 40% 97%;
+    --ring: 262 83% 70%;
+    --chart-1: 25 95% 53%;
+    --chart-2: 25 95% 45%;
+    --chart-3: 0 84% 60%;
+    --chart-4: 220 13% 28%;
+    --chart-5: 220 13% 15%;
+    --radius: 0.5rem;
+    --sidebar-background: 210 40% 97%;
+    --sidebar-foreground: 220 13% 15%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 220 13% 15%;
+    --sidebar-accent: 262 83% 70%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 262 83% 70%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 262 83% 70%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 262 83% 70%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 262 83% 70%;
+    --sidebar-primary-foreground: 240 5.9% 10%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 262 83% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Restructured mobile sidebar CSS to avoid compilation issues */
+@layer components {
+  .mobile-sidebar {
+    width: 280px;
+    max-width: 80vw;
+  }
+}
+
+/* Mobile sidebar improvements */
+@media (max-width: 768px) {
+  .group\/sidebar-wrapper {
+    @apply min-h-screen;
+  }
+
+  [data-sidebar="sidebar"] {
+    @apply w-full max-w-xs;
+  }
+
+  /* Using custom class instead of @apply with bracket notation */
+  [data-sidebar="sidebar"][data-mobile="true"] {
+    @apply mobile-sidebar;
+  }
+}
+
+/* Ensure content doesn't overflow on mobile */
+@media (max-width: 640px) {
+  .sidebar-inset {
+    @apply min-w-0;
+  }
+
+  /* Make sure tables and content are responsive */
+  .table-container {
+    @apply overflow-x-auto;
+  }
+
+  /* Responsive padding adjustments */
+  .main-content {
+    @apply px-2 sm:px-4;
+  }
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { neon } from "@/lib/neon-wrapper"
+import { neon } from "@neondatabase/serverless"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"

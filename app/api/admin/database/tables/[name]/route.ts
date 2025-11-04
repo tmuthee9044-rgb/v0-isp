@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { neon } from "@/lib/neon-wrapper"
+import { neon } from "@neondatabase/serverless"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -30,7 +30,7 @@ export async function GET(request: Request, { params }: { params: { name: string
     // Get total count
     const countResult = await sql`
       SELECT COUNT(*) as total 
-      FROM ${sql(tableName)}
+      FROM ${tableName}
     `
     const total = Number(countResult[0].total)
 
@@ -39,13 +39,13 @@ export async function GET(request: Request, { params }: { params: { name: string
     if (search) {
       // Simple search across all columns (convert to text for searching)
       rows = await sql`
-        SELECT * FROM ${sql(tableName)}
-        WHERE ${sql(tableName)}::text ILIKE ${"%" + search + "%"}
+        SELECT * FROM ${tableName}
+        WHERE ${tableName}::text ILIKE ${"%" + search + "%"}
         LIMIT ${pageSize} OFFSET ${offset}
       `
     } else {
       rows = await sql`
-        SELECT * FROM ${sql(tableName)}
+        SELECT * FROM ${tableName}
         LIMIT ${pageSize} OFFSET ${offset}
       `
     }

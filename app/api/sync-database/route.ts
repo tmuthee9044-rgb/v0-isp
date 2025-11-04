@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { neon } from "@/lib/neon-wrapper"
+import { neon } from "@neondatabase/serverless"
 import { readdir, readFile } from "fs/promises"
 import { join } from "path"
 

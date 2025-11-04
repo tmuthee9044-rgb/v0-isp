@@ -1,4 +1,4 @@
-import { neon } from "@/lib/neon-wrapper"
+import { neon } from "@neondatabase/serverless"
 import { DatabaseUtils } from "@/lib/db-utils"
 
 const sql = neon(process.env.DATABASE_URL!)

@@ -1,4 +1,4 @@
-import { neon } from "@neondatabase/serverless"
+import { neon as createNeonClient } from "@neondatabase/serverless"
 
 function getSqlConnection() {
   const databaseUrl =
@@ -12,7 +12,7 @@ function getSqlConnection() {
     throw new Error("No database connection string found. Please set DATABASE_URL environment variable.")
   }
 
-  return neon(databaseUrl)
+  return createNeonClient(databaseUrl)
 }
 
 const isLocalDatabase = () => {

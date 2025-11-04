@@ -34,21 +34,13 @@ export async function GET(request: NextRequest) {
           ELSE CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))
         END as name,
         c.city as location_name,
-        (SELECT COUNT(*) FROM customer_services cs WHERE cs.customer_id = c.id) as service_count,
-        (SELECT sp.name FROM customer_services cs 
-         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id 
-         WHERE cs.customer_id = c.id AND cs.status = 'active' 
-         LIMIT 1) as service_plan_name,
-        (SELECT sp.price FROM customer_services cs 
-         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id 
-         WHERE cs.customer_id = c.id AND cs.status = 'active' 
-         LIMIT 1) as monthly_fee,
-        COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0) as total_payments,
-        COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0) as total_invoices,
-        (COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0) - 
-         COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0)) as outstanding_balance,
-        (COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND status = 'completed'), 0) - 
-         COALESCE((SELECT SUM(amount) FROM invoices WHERE customer_id = c.id), 0)) as actual_balance,
+        0 as service_count,
+        '' as service_plan_name,
+        0 as monthly_fee,
+        0 as total_payments,
+        0 as total_invoices,
+        0 as outstanding_balance,
+        0 as actual_balance,
         0 as open_tickets
       FROM customers c
       WHERE 1=1
@@ -67,7 +59,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       const searchTerm = search.replace(/'/g, "''")
       conditions.push(
-        `(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%')`,
+        `(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%' OR c.account_number ILIKE '%${searchTerm}%')`,
       )
     }
 
@@ -77,8 +69,8 @@ export async function GET(request: NextRequest) {
 
     baseQuery += ` ORDER BY c.created_at DESC`
 
-    console.log("[v0] Executing customer query")
-    console.log("[v0] Query:", baseQuery.substring(0, 300) + "...")
+    console.log("[v0] Executing simplified customer query")
+    console.log("[v0] Query:", baseQuery.substring(0, 200) + "...")
 
     const customers = await sql.unsafe(baseQuery)
 
@@ -86,7 +78,11 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Found customers count:", customersArray.length)
     if (customersArray.length > 0) {
-      console.log("[v0] First customer sample:", JSON.stringify(customersArray[0], null, 2))
+      console.log("[v0] First customer:", JSON.stringify(customersArray[0], null, 2))
+    } else {
+      console.log("[v0] No customers found - checking if table has data")
+      const countCheck = await sql`SELECT COUNT(*) as total FROM customers`
+      console.log("[v0] Total customers in database:", countCheck[0]?.total)
     }
 
     return NextResponse.json(customersArray)

@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql, executeWithRetry } from "@/lib/db-client"
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sqlClient = await getSql()
+
     const searchParams = request.nextUrl.searchParams
     const asOfDateParam = searchParams.get("asOfDate")
 
@@ -15,8 +17,7 @@ export async function GET(request: NextRequest) {
       asOfDate = new Date().toISOString().split("T")[0]
     }
 
-    const chartAccountsData = await executeWithRetry(
-      () => sql`
+    const chartAccountsData = await sqlClient`
       SELECT 
         account_type,
         account_name,
@@ -32,10 +33,8 @@ export async function GET(request: NextRequest) {
       LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
       WHERE je.entry_date <= ${asOfDate} OR je.entry_date IS NULL
       GROUP BY coa.account_type, coa.account_name
-    `,
-    )
+    `
 
-    // Calculate totals from Chart of Accounts
     const chartAssets = chartAccountsData
       .filter((row: any) => row.account_type === "Asset")
       .reduce((sum: number, row: any) => sum + Number.parseFloat(row.balance || 0), 0)
@@ -48,73 +47,63 @@ export async function GET(request: NextRequest) {
       .filter((row: any) => row.account_type === "Equity")
       .reduce((sum: number, row: any) => sum + Number.parseFloat(row.balance || 0), 0)
 
-    const [accountsPayableResult] = await executeWithRetry(
-      () => sql`
+    const accountsPayableResult = await sqlClient`
       SELECT COALESCE(SUM(total_amount - paid_amount), 0) as accounts_payable
       FROM supplier_invoices
       WHERE status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
         AND invoice_date <= ${asOfDate}
-    `,
-    )
+    `
 
-    const operationalAccountsPayable = Number.parseFloat(accountsPayableResult?.accounts_payable || 0)
+    const operationalAccountsPayable = Number.parseFloat(accountsPayableResult[0]?.accounts_payable || 0)
 
-    const [accountsReceivableResult] = await executeWithRetry(
-      () => sql`
+    const accountsReceivableResult = await sqlClient`
       SELECT COALESCE(SUM(amount - paid_amount), 0) as accounts_receivable
       FROM invoices
       WHERE status IN ('pending', 'overdue', 'partially_paid')
         AND created_at <= ${asOfDate}
-    `,
-    )
+    `
 
-    const operationalAccountsReceivable = Number.parseFloat(accountsReceivableResult?.accounts_receivable || 0)
+    const operationalAccountsReceivable = Number.parseFloat(accountsReceivableResult[0]?.accounts_receivable || 0)
 
-    const [inventoryResult] = await executeWithRetry(
-      () => sql`
+    const inventoryResult = await sqlClient`
       SELECT COALESCE(SUM(stock_quantity * unit_cost), 0) as inventory_value
       FROM inventory_items
       WHERE status = 'active'
-    `,
-    )
+    `
 
-    const inventoryValue = Number.parseFloat(inventoryResult?.inventory_value || 0)
+    const inventoryValue = Number.parseFloat(inventoryResult[0]?.inventory_value || 0)
 
-    const [cashResult] = await executeWithRetry(
-      () => sql`
+    const cashResult = await sqlClient`
       SELECT COALESCE(SUM(amount), 0) as cash_balance
       FROM payments
       WHERE status = 'completed'
         AND payment_date <= ${asOfDate}
-    `,
-    )
+    `
 
-    const operationalCashBalance = Number.parseFloat(cashResult?.cash_balance || 0)
+    const operationalCashBalance = Number.parseFloat(cashResult[0]?.cash_balance || 0)
 
-    const [profitResult] = await executeWithRetry(
-      () => sql`
+    const profitResult = await sqlClient`
       SELECT 
         COALESCE(SUM(i.amount), 0) as total_revenue,
         COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.status = 'approved' AND e.expense_date <= ${asOfDate}), 0) as total_expenses
       FROM invoices i
       WHERE i.status = 'paid'
         AND i.created_at <= ${asOfDate}
-    `,
-    )
+    `
 
-    const totalRevenue = Number.parseFloat(profitResult?.total_revenue || 0)
-    const totalExpenses = Number.parseFloat(profitResult?.total_expenses || 0)
+    const totalRevenue = Number.parseFloat(profitResult[0]?.total_revenue || 0)
+    const totalExpenses = Number.parseFloat(profitResult[0]?.total_expenses || 0)
     const netIncome = totalRevenue - totalExpenses
 
     const totalCurrentAssets = Math.max(
       chartAssets,
       operationalCashBalance + operationalAccountsReceivable + inventoryValue,
     )
-    const totalFixedAssets = 0 // Can be updated when fixed assets are tracked
+    const totalFixedAssets = 0
     const totalAssets = totalCurrentAssets + totalFixedAssets
 
     const totalCurrentLiabilities = Math.max(chartLiabilities, operationalAccountsPayable)
-    const totalLongTermLiabilities = 0 // Can be updated when long-term debt is tracked
+    const totalLongTermLiabilities = 0
     const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities
 
     const totalEquity = Math.max(chartEquity, totalAssets - totalLiabilities)

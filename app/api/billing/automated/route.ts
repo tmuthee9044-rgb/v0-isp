@@ -220,11 +220,17 @@ export async function POST(request: NextRequest) {
 
             // Log the suspension
             await sql`
-              INSERT INTO system_logs (category, message, metadata, created_at)
+              INSERT INTO system_logs (category, message, details, created_at)
               VALUES (
                 'suspension',
                 'Service ' || ${service.service_name} || ' automatically suspended for customer ' || ${invoice.customer_name} || ' due to overdue payment (' || ${daysPastDue} || ' days)',
-                '{"customer_id": ' || ${invoice.customer_id} || ', "service_id": ' || ${service.id} || ', "invoice_id": ' || ${invoice.id} || ', "reason": "overdue_payment", "days_overdue": ' || ${daysPastDue} || '}',
+                jsonb_build_object(
+                  'customer_id', ${invoice.customer_id},
+                  'service_id', ${service.id},
+                  'invoice_id', ${invoice.id},
+                  'reason', 'overdue_payment',
+                  'days_overdue', ${daysPastDue}
+                ),
                 NOW()
               )
             `
@@ -243,11 +249,16 @@ export async function POST(request: NextRequest) {
 
         // Log the overdue status
         await sql`
-          INSERT INTO system_logs (category, message, metadata, created_at)
+          INSERT INTO system_logs (category, message, details, created_at)
           VALUES (
             'billing',
             'Invoice ' || ${invoice.invoice_number} || ' marked as overdue for customer ' || ${invoice.customer_name} || ' (' || ${daysPastDue} || ' days past due)',
-            '{"customer_id": ' || ${invoice.customer_id} || ', "invoice_id": ' || ${invoice.id} || ', "amount": ' || ${invoice.amount} || ', "days_overdue": ' || ${daysPastDue} || '}',
+            jsonb_build_object(
+              'customer_id', ${invoice.customer_id},
+              'invoice_id', ${invoice.id},
+              'amount', ${invoice.amount},
+              'days_overdue', ${daysPastDue}
+            ),
             NOW()
           )
         `
@@ -352,11 +363,17 @@ export async function POST(request: NextRequest) {
 
           // Log the suspension
           await sql`
-            INSERT INTO system_logs (category, message, metadata, created_at)
+            INSERT INTO system_logs (category, message, details, created_at)
             VALUES (
               'monthly_suspension',
               'Service ' || ${service.service_name} || ' suspended for customer ' || ${service.first_name} || ' ' || ${service.last_name} || ' - monthly cycle completed without payment',
-              '{"customer_id": ' || ${service.customer_id} || ', "service_id": ' || ${service.id} || ', "reason": "monthly_cycle_unpaid", "required_amount": ' || ${service.price} || ', "account_balance": ' || ${service.account_balance} || '}',
+              jsonb_build_object(
+                'customer_id', ${service.customer_id},
+                'service_id', ${service.id},
+                'reason', 'monthly_cycle_unpaid',
+                'required_amount', ${service.price},
+                'account_balance', ${service.account_balance}
+              ),
               NOW()
             )
           `
@@ -446,11 +463,15 @@ export async function POST(request: NextRequest) {
 
             // Log the reactivation
             await sql`
-              INSERT INTO system_logs (category, message, metadata, created_at)
+              INSERT INTO system_logs (category, message, details, created_at)
               VALUES (
                 'reactivation',
                 'Service ' || ${service.service_name} || ' automatically reactivated for customer ' || ${payment.customer_name} || ' after payment received',
-                '{"customer_id": ' || ${payment.customer_id} || ', "service_id": ' || ${service.id} || ', "reason": "payment_received"}',
+                jsonb_build_object(
+                  'customer_id', ${payment.customer_id},
+                  'service_id', ${service.id},
+                  'reason', 'payment_received'
+                ),
                 NOW()
               )
             `

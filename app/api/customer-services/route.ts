@@ -1,10 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+"use server"
 
-const sql = neon(process.env.DATABASE_URL!)
+import { type NextRequest, NextResponse } from "next/server"
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const searchParams = request.nextUrl.searchParams
     const customerId = searchParams.get("customer_id")
 
@@ -16,6 +18,8 @@ export async function GET(request: NextRequest) {
     if (isNaN(customerIdNum)) {
       return NextResponse.json({ success: false, error: "customer_id must be a valid integer" }, { status: 400 })
     }
+
+    console.log("[v0] Fetching services for customer:", customerIdNum)
 
     // Fetch customer services with service plan details
     const services = await sql`
@@ -39,13 +43,21 @@ export async function GET(request: NextRequest) {
       ORDER BY cs.created_at DESC
     `
 
+    console.log("[v0] Found services:", services.length)
+
     return NextResponse.json({
       success: true,
       services: services || [],
       total: services.length,
     })
   } catch (error) {
-    console.error("Error fetching customer services:", error)
-    return NextResponse.json({ success: false, error: "Failed to fetch customer services" }, { status: 500 })
+    console.error("[v0] Error fetching customer services:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch customer services",
+      },
+      { status: 500 },
+    )
   }
 }

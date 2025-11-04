@@ -101,10 +101,16 @@ export default function CustomersPage() {
       const response = await fetch("/api/customers")
       if (response.ok) {
         const data = await response.json()
-        setCustomers(data)
+        const customersData = Array.isArray(data) ? data : data.customers || []
+        console.log("[v0] Setting customers data:", customersData.length, "customers")
+        setCustomers(customersData)
+      } else {
+        console.error("[v0] Failed to fetch customers, status:", response.status)
+        setCustomers([])
       }
     } catch (error) {
       console.error("Failed to fetch customers:", error)
+      setCustomers([])
       toast({
         title: "Error",
         description: "Failed to fetch customers",
@@ -272,37 +278,39 @@ export default function CustomersPage() {
     }
   }
 
-  const filteredCustomers = customers.filter((customer) => {
-    const matchesSearch =
-      (customer.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (customer.first_name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (customer.last_name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (customer.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (customer.phone || "").includes(searchTerm)
+  const filteredCustomers = Array.isArray(customers)
+    ? customers.filter((customer) => {
+        const matchesSearch =
+          (customer.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+          (customer.first_name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+          (customer.last_name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+          (customer.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+          (customer.phone || "").includes(searchTerm)
 
-    const matchesStatus = statusFilter === "all" || customer.status === statusFilter
-    const matchesType = typeFilter === "all" || customer.customer_type === typeFilter
-    const matchesLocation = locationFilter === "all" || (customer.location_name || "") === locationFilter
+        const matchesStatus = statusFilter === "all" || customer.status === statusFilter
+        const matchesType = typeFilter === "all" || customer.customer_type === typeFilter
+        const matchesLocation = locationFilter === "all" || (customer.location_name || "") === locationFilter
 
-    // Balance filter logic
-    const matchesBalance =
-      balanceFilter === "all" ||
-      (balanceFilter === "positive" && (customer.actual_balance || 0) > 0) ||
-      (balanceFilter === "negative" && (customer.actual_balance || 0) < 0) ||
-      (balanceFilter === "zero" && (customer.actual_balance || 0) === 0)
+        // Balance filter logic
+        const matchesBalance =
+          balanceFilter === "all" ||
+          (balanceFilter === "positive" && (customer.actual_balance || 0) > 0) ||
+          (balanceFilter === "negative" && (customer.actual_balance || 0) < 0) ||
+          (balanceFilter === "zero" && (customer.actual_balance || 0) === 0)
 
-    // Date filter logic
-    const customerDate = new Date(customer.created_at)
-    const now = new Date()
-    const matchesDate =
-      dateFilter === "all" ||
-      (dateFilter === "today" && customerDate.toDateString() === now.toDateString()) ||
-      (dateFilter === "week" && now.getTime() - customerDate.getTime() <= 7 * 24 * 60 * 60 * 1000) ||
-      (dateFilter === "month" && now.getTime() - customerDate.getTime() <= 30 * 24 * 60 * 60 * 1000) ||
-      (dateFilter === "year" && now.getTime() - customerDate.getTime() <= 365 * 24 * 60 * 60 * 1000)
+        // Date filter logic
+        const customerDate = new Date(customer.created_at)
+        const now = new Date()
+        const matchesDate =
+          dateFilter === "all" ||
+          (dateFilter === "today" && customerDate.toDateString() === now.toDateString()) ||
+          (dateFilter === "week" && now.getTime() - customerDate.getTime() <= 7 * 24 * 60 * 60 * 1000) ||
+          (dateFilter === "month" && now.getTime() - customerDate.getTime() <= 30 * 24 * 60 * 60 * 1000) ||
+          (dateFilter === "year" && now.getTime() - customerDate.getTime() <= 365 * 24 * 60 * 60 * 1000)
 
-    return matchesSearch && matchesStatus && matchesType && matchesLocation && matchesBalance && matchesDate
-  })
+        return matchesSearch && matchesStatus && matchesType && matchesLocation && matchesBalance && matchesDate
+      })
+    : []
 
   const getStatusBadge = (status: string | undefined) => {
     if (!status) {

@@ -97,11 +97,16 @@ export async function GET(request: NextRequest) {
 
         // Log the suspension
         await sql`
-          INSERT INTO system_logs (category, message, metadata, created_at)
+          INSERT INTO system_logs (category, message, details, created_at)
           VALUES (
             'midnight_suspension',
             'Service ' || ${service.service_name} || ' suspended at midnight for customer ' || ${service.customer_name} || ' - no payment received after admin override',
-            '{"customer_id": ' || ${service.customer_id} || ', "service_id": ' || ${service.id} || ', "invoice_id": ' || ${service.invoice_id} || ', "reason": "no_payment_after_admin_override"}',
+            jsonb_build_object(
+              'customer_id', ${service.customer_id},
+              'service_id', ${service.id},
+              'invoice_id', ${service.invoice_id},
+              'reason', 'no_payment_after_admin_override'
+            ),
             NOW()
           )
         `

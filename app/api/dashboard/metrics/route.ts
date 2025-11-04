@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { neon } from "@/lib/neon-wrapper"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     const [customerCount, monthlyRevenue, networkDevices, overdueInvoices, bandwidthUsage, recentActivity] =
       await Promise.all([
         // Total active customers

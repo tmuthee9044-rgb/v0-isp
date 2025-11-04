@@ -1,51 +1,56 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const location = searchParams.get("location")
     const type = searchParams.get("type")
     const search = searchParams.get("search")
 
-    let query = `
+    let baseQuery = `
       SELECT 
-        c.*,
+        c.id,
+        c.account_number,
+        c.first_name,
+        c.last_name,
+        c.business_name,
+        c.customer_type,
+        c.email,
+        c.phone,
+        c.address,
+        c.city,
+        c.state,
+        c.country,
+        c.postal_code,
+        c.status,
+        c.created_at,
+        c.updated_at,
         CASE 
           WHEN c.business_name IS NOT NULL AND c.business_name != '' THEN c.business_name
           ELSE CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))
         END as name,
         c.city as location_name,
-        (SELECT COUNT(*) FROM customer_services cs WHERE cs.customer_id = c.id) as service_count,
-        (SELECT sp.name FROM customer_services cs 
-         JOIN service_plans sp ON cs.service_plan_id = sp.id 
-         WHERE cs.customer_id = c.id AND cs.status = 'active' 
-         LIMIT 1) as service_plan_name,
-        (SELECT sp.price FROM customer_services cs 
-         JOIN service_plans sp ON cs.service_plan_id = sp.id 
-         WHERE cs.customer_id = c.id AND cs.status = 'active' 
-         LIMIT 1) as monthly_fee,
-        COALESCE(
-          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.customer_id = c.id AND p.status = 'completed') +
-          (SELECT COALESCE(SUM(cn.amount), 0) FROM credit_notes cn WHERE cn.customer_id = c.id AND cn.status = 'approved') -
-          (SELECT SUM(i2.amount) FROM invoices i2 WHERE i2.customer_id = c.id), 
-          0
-        ) as outstanding_balance,
-        COALESCE(
-          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.customer_id = c.id AND p.status = 'completed') +
-          (SELECT COALESCE(SUM(cn.amount), 0) FROM credit_notes cn WHERE cn.customer_id = c.id AND cn.status = 'approved') -
-          (SELECT SUM(i2.amount) FROM invoices i2 WHERE i2.customer_id = c.id), 
-          0
-        ) as actual_balance,
-        (SELECT COUNT(*) FROM support_tickets t WHERE t.customer_id = c.id AND t.status IN ('open', 'pending')) as open_tickets
+        COUNT(DISTINCT cs.id) as service_count,
+        MAX(sp.name) as service_plan_name,
+        MAX(sp.price) as monthly_fee,
+        COALESCE(SUM(DISTINCT p.amount), 0) as total_payments,
+        COALESCE(SUM(DISTINCT i.amount), 0) as total_invoices,
+        (COALESCE(SUM(DISTINCT p.amount), 0) - COALESCE(SUM(DISTINCT i.amount), 0)) as outstanding_balance,
+        (COALESCE(SUM(DISTINCT p.amount), 0) - COALESCE(SUM(DISTINCT i.amount), 0)) as actual_balance,
+        COUNT(DISTINCT CASE WHEN t.status IN ('open', 'pending') THEN t.id END) as open_tickets
       FROM customers c
+      LEFT JOIN customer_services cs ON cs.customer_id = c.id
+      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id AND cs.status = 'active'
+      LEFT JOIN payments p ON p.customer_id = c.id AND p.status = 'completed'
+      LEFT JOIN invoices i ON i.customer_id = c.id
+      LEFT JOIN support_tickets t ON t.customer_id = c.id
       WHERE 1=1
     `
 
-    // Build WHERE conditions dynamically
     const conditions = []
     if (status && status !== "all") {
       conditions.push(`c.status = '${status.replace(/'/g, "''")}'`)
@@ -53,35 +58,65 @@ export async function GET(request: NextRequest) {
     if (location && location !== "all") {
       conditions.push(`c.city = '${location.replace(/'/g, "''")}'`)
     }
+    if (type && type !== "all") {
+      conditions.push(`c.customer_type = '${type.replace(/'/g, "''")}'`)
+    }
     if (search) {
-      const searchTerm = search.replace(/'/g, "''") // Escape single quotes
+      const searchTerm = search.replace(/'/g, "''")
       conditions.push(
-        `(CONCAT(c.first_name, ' ', c.last_name) ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%')`,
+        `(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%')`,
       )
     }
 
     if (conditions.length > 0) {
-      query += ` AND ${conditions.join(" AND ")}`
+      baseQuery += ` AND ${conditions.join(" AND ")}`
     }
 
-    query += `
+    baseQuery += ` 
+      GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, 
+               c.customer_type, c.email, c.phone, c.address, c.city, c.state, 
+               c.country, c.postal_code, c.status, c.created_at, c.updated_at
       ORDER BY c.created_at DESC
     `
 
-    console.log("[v0] Executing customer query:", query)
-    const customers = await sql.query(query)
-    console.log("[v0] Found customers count:", customers.length)
-    console.log("[v0] First customer sample:", customers[0])
+    console.log("[v0] Executing customer query")
+    console.log("[v0] Query:", baseQuery.substring(0, 200) + "...")
 
-    return NextResponse.json(customers)
+    const customers = await sql.unsafe(baseQuery)
+
+    const customersArray = Array.isArray(customers) ? customers : []
+
+    console.log("[v0] Found customers count:", customersArray.length)
+    if (customersArray.length > 0) {
+      console.log("[v0] First customer sample:", JSON.stringify(customersArray[0], null, 2))
+    }
+
+    return NextResponse.json({
+      success: true,
+      customers: customersArray,
+      count: customersArray.length,
+    })
   } catch (error) {
-    console.error("Failed to fetch customers:", error)
-    return NextResponse.json({ error: "Failed to fetch customers" }, { status: 500 })
+    console.error("[v0] Failed to fetch customers:", error)
+    console.error("[v0] Error details:", error.message)
+    console.error("[v0] Error stack:", error.stack)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to fetch customers",
+        details: error.message,
+        customers: [],
+        count: 0,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const data = await request.json()
 
     console.log("[v0] Received customer data:", JSON.stringify(data, null, 2))

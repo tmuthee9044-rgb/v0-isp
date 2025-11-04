@@ -186,11 +186,15 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
           try {
             await sql`
-              INSERT INTO system_logs (category, message, metadata, created_at)
+              INSERT INTO system_logs (category, message, details, created_at)
               VALUES (
                 'service_activation',
                 'Service ' || ${service.service_name} || ' automatically activated after payment',
-                '{"customer_id": ' || ${customerId} || ', "service_id": ' || ${service.id} || ', "payment_id": ' || ${paymentId} || '}',
+                jsonb_build_object(
+                  'customer_id', ${customerId},
+                  'service_id', ${service.id},
+                  'payment_id', ${paymentId}
+                ),
                 NOW()
               )
             `

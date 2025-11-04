@@ -237,11 +237,16 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     `
 
     await sql`
-      INSERT INTO system_logs (category, message, metadata, created_at)
+      INSERT INTO system_logs (category, message, details, created_at)
       VALUES (
         'service_deletion',
         'Service deleted with credit note issued for customer ' || ${customerId},
-        '{"customer_id": ' || ${customerId} || ', "service_id": ' || ${serviceId} || ', "credit_amount": ' || ${Math.abs(service.monthly_fee || service.service_price || 0)} || ', "credit_note_id": ' || ${creditNoteResult[0].id} || '}',
+        jsonb_build_object(
+          'customer_id', ${customerId}::integer,
+          'service_id', ${serviceId}::integer,
+          'credit_amount', ${Math.abs(service.monthly_fee || service.service_price || 0)},
+          'credit_note_id', ${creditNoteResult[0].id}
+        ),
         NOW()
       )
     `

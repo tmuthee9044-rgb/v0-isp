@@ -5,7 +5,7 @@
 **This single command downloads, installs, and configures EVERYTHING:**
 
 \`\`\`bash
-wget https://github.com/tmuthee9044-rgb/v0-main-project-o6/archive/refs/heads/main.zip -O isp.zip && unzip isp.zip && mv v0-main-project-o6-main isp-system && cd isp-system && chmod +x install.sh && ./install.sh
+wget https://github.com/tmuthee9044-rgb/v0-isp/archive/refs/heads/main.zip -O isp.zip && unzip isp.zip && mv v0-isp-main isp-system && cd isp-system && chmod +x install.sh && ./install.sh
 \`\`\`
 
 ### What This Does Automatically:
@@ -78,14 +78,14 @@ If the one-command installation doesn't work, follow these steps:
 ### Step 1: Download the Project
 
 \`\`\`bash
-wget https://github.com/tmuthee9044-rgb/v0-main-project-o6/archive/refs/heads/main.zip -O isp.zip
+wget https://github.com/tmuthee9044-rgb/v0-isp/archive/refs/heads/main.zip -O isp.zip
 \`\`\`
 
 ### Step 2: Extract Files
 
 \`\`\`bash
 unzip isp.zip
-mv v0-main-project-o6-main isp-system
+mv v0-isp-main isp-system
 cd isp-system
 \`\`\`
 

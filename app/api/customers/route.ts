@@ -11,73 +11,100 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type")
     const search = searchParams.get("search")
 
-    let baseQuery = `
-      SELECT 
-        c.id,
-        c.account_number,
-        c.first_name,
-        c.last_name,
-        c.business_name,
-        c.customer_type,
-        c.email,
-        c.phone,
-        c.address,
-        c.city,
-        c.state,
-        c.country,
-        c.postal_code,
-        c.status,
-        c.created_at,
-        c.updated_at
-      FROM customers c
-      WHERE 1=1
-    `
+    console.log("[v0] Fetching customers with filters:", { status, location, type, search })
 
-    const conditions = []
-    if (status && status !== "all") {
-      conditions.push(`c.status = '${status.replace(/'/g, "''")}'`)
-    }
-    if (location && location !== "all") {
-      conditions.push(`c.city = '${location.replace(/'/g, "''")}'`)
-    }
-    if (type && type !== "all") {
-      conditions.push(`c.customer_type = '${type.replace(/'/g, "''")}'`)
-    }
-    if (search) {
-      const searchTerm = search.replace(/'/g, "''")
-      conditions.push(
-        `(c.first_name ILIKE '%${searchTerm}%' OR c.last_name ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%' OR c.account_number ILIKE '%${searchTerm}%')`,
-      )
-    }
+    let customers
 
-    if (conditions.length > 0) {
-      baseQuery += ` AND ${conditions.join(" AND ")}`
-    }
-
-    baseQuery += ` ORDER BY c.created_at DESC`
-
-    console.log("[v0] Executing customer query")
-    console.log("[v0] Full query:", baseQuery)
-
-    const customers = await sql.unsafe(baseQuery)
-
-    const customersArray = Array.isArray(customers) ? customers : []
-
-    console.log("[v0] Raw query result:", JSON.stringify(customers).substring(0, 500))
-    console.log("[v0] Found customers count:", customersArray.length)
-
-    if (customersArray.length > 0) {
-      console.log("[v0] First customer:", JSON.stringify(customersArray[0]))
+    // Build the query dynamically using tagged template literals
+    if (!status && !location && !type && !search) {
+      // No filters - simple query
+      customers = await sql`
+        SELECT 
+          id,
+          account_number,
+          first_name,
+          last_name,
+          business_name,
+          customer_type,
+          email,
+          phone,
+          address,
+          city,
+          state,
+          country,
+          postal_code,
+          status,
+          created_at,
+          updated_at
+        FROM customers
+        ORDER BY created_at DESC
+      `
     } else {
-      console.log("[v0] No customers found - checking if table has data")
-      const countCheck = await sql`SELECT COUNT(*) as total FROM customers`
-      console.log("[v0] Total customers in database:", countCheck[0]?.total)
+      // With filters - build conditions
+      const conditions = []
+      const values = []
 
-      const simpleQuery = await sql`SELECT * FROM customers LIMIT 3`
-      console.log("[v0] Simple query result:", JSON.stringify(simpleQuery))
+      if (status && status !== "all") {
+        conditions.push(`status = ${sql(status.replace(/'/g, "''"))}`)
+      }
+      if (location && location !== "all") {
+        conditions.push(`city = ${sql(location.replace(/'/g, "''"))}`)
+      }
+      if (type && type !== "all") {
+        conditions.push(`customer_type = ${sql(type.replace(/'/g, "''"))}`)
+      }
+      if (search) {
+        const searchTerm = `%${search.replace(/'/g, "''").toLowerCase()}%`
+        conditions.push(
+          `(first_name ILIKE ${sql(searchTerm)} OR last_name ILIKE ${sql(searchTerm)} OR business_name ILIKE ${sql(searchTerm)} OR email ILIKE ${sql(searchTerm)} OR phone ILIKE ${sql(searchTerm)} OR account_number ILIKE ${sql(searchTerm)})`,
+        )
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+      // Use unsafe for dynamic queries (this is the correct way for dynamic SQL)
+      const query = `
+        SELECT 
+          id,
+          account_number,
+          first_name,
+          last_name,
+          business_name,
+          customer_type,
+          email,
+          phone,
+          address,
+          city,
+          state,
+          country,
+          postal_code,
+          status,
+          created_at,
+          updated_at
+        FROM customers
+        ${whereClause}
+        ORDER BY created_at DESC
+      `
+
+      console.log("[v0] Executing query with filters:", query)
+
+      // For dynamic queries, we need to use a different approach
+      // Let's use the neon client's query method if available, or construct with template literals
+      customers = await sql.unsafe(query)
     }
 
-    const transformedCustomers = customersArray.map((customer: any) => ({
+    console.log("[v0] Query executed, found customers:", customers.length)
+
+    if (customers.length > 0) {
+      console.log("[v0] First customer sample:", {
+        id: customers[0].id,
+        name: customers[0].business_name || `${customers[0].first_name} ${customers[0].last_name}`,
+        email: customers[0].email,
+      })
+    }
+
+    // Transform customers to match frontend expectations
+    const transformedCustomers = customers.map((customer: any) => ({
       ...customer,
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
@@ -91,12 +118,10 @@ export async function GET(request: NextRequest) {
       open_tickets: 0,
     }))
 
-    console.log("[v0] Returning transformed customers:", transformedCustomers.length)
+    console.log("[v0] Returning customers:", transformedCustomers.length)
     return NextResponse.json(transformedCustomers)
   } catch (error) {
     console.error("[v0] Failed to fetch customers:", error)
-    console.error("[v0] Error details:", error.message)
-    console.error("[v0] Error stack:", error.stack)
     return NextResponse.json(
       {
         success: false,

@@ -7,6 +7,7 @@
     "dev": "bash scripts/pre-dev-check.sh && next dev",
     "dev:skip-checks": "next dev",
     "lint": "next lint",
+    "migrate:dual-db": "node scripts/migrate-all-routes-to-dual-db.js",
     "start": "next start"
   },
   "dependencies": {
@@ -53,6 +54,7 @@
     "embla-carousel-react": "8.5.1",
     "fs": "latest",
     "geist": "^1.3.1",
+    "glob": "latest",
     "input-otp": "1.4.1",
     "jsonwebtoken": "latest",
     "jspdf": "latest",

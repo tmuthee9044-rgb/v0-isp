@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET() {
   try {
+    const sql = await getSql()
+
     // Check database connection
     const connectionTest = await sql`SELECT 1 as test`
 
@@ -36,10 +36,10 @@ export async function GET() {
 
     // Check specific module schemas
     const moduleStatus = {
-      customers: await checkCustomerSchema(),
-      billing: await checkBillingSchema(),
-      network: await checkNetworkSchema(),
-      hr: await checkHRSchema(),
+      customers: await checkCustomerSchema(sql),
+      billing: await checkBillingSchema(sql),
+      network: await checkNetworkSchema(sql),
+      hr: await checkHRSchema(sql),
     }
 
     const totalRecords = Object.values(recordCounts).reduce((sum: number, count: number) => sum + count, 0)
@@ -84,7 +84,7 @@ export async function GET() {
   }
 }
 
-async function checkCustomerSchema() {
+async function checkCustomerSchema(sql: any) {
   try {
     const columns = await sql`
       SELECT column_name 
@@ -92,7 +92,8 @@ async function checkCustomerSchema() {
       WHERE table_name = 'customers'
     `
 
-    const requiredColumns = ["customer_type", "plan", "monthly_fee", "balance", "connection_quality"]
+    // Check for essential columns that should exist
+    const requiredColumns = ["id", "account_number", "customer_type", "email", "phone", "status", "created_at"]
     const existingColumns = columns.map((col: any) => col.column_name)
     const missingColumns = requiredColumns.filter((col) => !existingColumns.includes(col))
 
@@ -106,7 +107,7 @@ async function checkCustomerSchema() {
   }
 }
 
-async function checkBillingSchema() {
+async function checkBillingSchema(sql: any) {
   try {
     const tables = await sql`
       SELECT table_name 
@@ -129,7 +130,7 @@ async function checkBillingSchema() {
   }
 }
 
-async function checkNetworkSchema() {
+async function checkNetworkSchema(sql: any) {
   try {
     const tables = await sql`
       SELECT table_name 
@@ -152,13 +153,13 @@ async function checkNetworkSchema() {
   }
 }
 
-async function checkHRSchema() {
+async function checkHRSchema(sql: any) {
   try {
     const tables = await sql`
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public' 
-      AND table_name IN ('employees', 'payroll', 'leave_requests')
+      AND table_name IN ('employees', 'payroll_records', 'performance_reviews')
     `
 
     return {

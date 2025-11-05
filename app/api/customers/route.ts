@@ -28,20 +28,7 @@ export async function GET(request: NextRequest) {
         c.postal_code,
         c.status,
         c.created_at,
-        c.updated_at,
-        CASE 
-          WHEN c.business_name IS NOT NULL AND c.business_name != '' THEN c.business_name
-          ELSE CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))
-        END as name,
-        c.city as location_name,
-        0 as service_count,
-        '' as service_plan_name,
-        0 as monthly_fee,
-        0 as total_payments,
-        0 as total_invoices,
-        0 as outstanding_balance,
-        0 as actual_balance,
-        0 as open_tickets
+        c.updated_at
       FROM customers c
       WHERE 1=1
     `
@@ -59,7 +46,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       const searchTerm = search.replace(/'/g, "''")
       conditions.push(
-        `(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%' OR c.account_number ILIKE '%${searchTerm}%')`,
+        `(c.first_name ILIKE '%${searchTerm}%' OR c.last_name ILIKE '%${searchTerm}%' OR c.business_name ILIKE '%${searchTerm}%' OR c.email ILIKE '%${searchTerm}%' OR c.phone ILIKE '%${searchTerm}%' OR c.account_number ILIKE '%${searchTerm}%')`,
       )
     }
 
@@ -69,23 +56,43 @@ export async function GET(request: NextRequest) {
 
     baseQuery += ` ORDER BY c.created_at DESC`
 
-    console.log("[v0] Executing simplified customer query")
-    console.log("[v0] Query:", baseQuery.substring(0, 200) + "...")
+    console.log("[v0] Executing customer query")
+    console.log("[v0] Full query:", baseQuery)
 
     const customers = await sql.unsafe(baseQuery)
 
     const customersArray = Array.isArray(customers) ? customers : []
 
+    console.log("[v0] Raw query result:", JSON.stringify(customers).substring(0, 500))
     console.log("[v0] Found customers count:", customersArray.length)
+
     if (customersArray.length > 0) {
-      console.log("[v0] First customer:", JSON.stringify(customersArray[0], null, 2))
+      console.log("[v0] First customer:", JSON.stringify(customersArray[0]))
     } else {
       console.log("[v0] No customers found - checking if table has data")
       const countCheck = await sql`SELECT COUNT(*) as total FROM customers`
       console.log("[v0] Total customers in database:", countCheck[0]?.total)
+
+      const simpleQuery = await sql`SELECT * FROM customers LIMIT 3`
+      console.log("[v0] Simple query result:", JSON.stringify(simpleQuery))
     }
 
-    return NextResponse.json(customersArray)
+    const transformedCustomers = customersArray.map((customer: any) => ({
+      ...customer,
+      name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
+      location_name: customer.city || "Not Set",
+      service_count: 0,
+      service_plan_name: "",
+      monthly_fee: 0,
+      total_payments: 0,
+      total_invoices: 0,
+      outstanding_balance: 0,
+      actual_balance: 0,
+      open_tickets: 0,
+    }))
+
+    console.log("[v0] Returning transformed customers:", transformedCustomers.length)
+    return NextResponse.json(transformedCustomers)
   } catch (error) {
     console.error("[v0] Failed to fetch customers:", error)
     console.error("[v0] Error details:", error.message)

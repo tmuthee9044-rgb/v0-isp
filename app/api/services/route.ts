@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 const parseIntOrNull = (value: any): number | null => {
   if (value === "" || value === null || value === undefined) return null
@@ -17,6 +15,7 @@ const parseFloatOrNull = (value: any): number | null => {
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const data = await request.json()
 
     const { basic, speed, pricing, fup, advanced, qos, restrictions } = data
@@ -72,6 +71,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    const sql = await getSql()
     const servicePlans = await sql`
       SELECT 
         id, name, description, category, status,

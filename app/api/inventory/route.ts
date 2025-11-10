@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const warehouseId = searchParams.get("warehouse_id")
     const category = searchParams.get("category")
@@ -259,6 +259,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
+
+    const sql = await getSql()
 
     const inventoryItem = await sql`
       INSERT INTO inventory_items (

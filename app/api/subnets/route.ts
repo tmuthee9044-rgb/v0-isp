@@ -1,24 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import { validateAndNormalizeCIDR, validateIPAddress } from "@/lib/cidr-utils"
 
-function getDatabaseConnection() {
-  const databaseUrl =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.NEON_DATABASE_URL ||
-    process.env.POSTGRES_PRISMA_URL
-
-  if (!databaseUrl) {
-    throw new Error("No database connection string found")
-  }
-
-  return neon(databaseUrl)
-}
-
-const sql = getDatabaseConnection()
-
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const subnets = await sql`
       SELECT 
@@ -61,6 +47,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     let body
     try {
@@ -238,6 +226,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const url = new URL(request.url)
     const pathSegments = url.pathname.split("/")

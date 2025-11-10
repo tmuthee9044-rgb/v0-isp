@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 // Customer Inventory Report
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const customerId = searchParams.get("customer_id")
     const status = searchParams.get("status") || "all"

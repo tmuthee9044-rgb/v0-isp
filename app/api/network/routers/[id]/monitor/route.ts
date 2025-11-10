@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const routerId = Number.parseInt(params.id)
 
@@ -81,6 +81,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const routerId = Number.parseInt(params.id)
     const performanceData = await request.json()

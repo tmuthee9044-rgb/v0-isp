@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET() {
   try {
+    const sql = await getSql()
     console.log("[v0] Fetching automation workflows...")
 
     const workflows = await sql`
@@ -41,6 +40,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const body = await request.json()
     const { name, description, trigger_type, trigger_conditions, actions } = body
 

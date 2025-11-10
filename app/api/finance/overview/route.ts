@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 export const runtime = "edge"
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const sql = neon(process.env.DATABASE_URL)
+    const sql = await getSql()
 
     const [revenueResult, expensesResult, invoicesResult] = await Promise.all([
       sql`

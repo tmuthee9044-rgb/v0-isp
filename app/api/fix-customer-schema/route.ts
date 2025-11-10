@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function POST() {
   try {
+    const sql = await getSql()
+
     console.log("[v0] Starting comprehensive customer schema update...")
 
     const alterQueries = [

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 function getDatabaseConnection() {
   const dbUrl =
@@ -22,12 +22,12 @@ function getDatabaseConnection() {
     throw new Error("No database connection string found")
   }
 
-  return neon(dbUrl)
+  return getSql()
 }
 
 export async function GET() {
   try {
-    const sql = getDatabaseConnection()
+    const sql = await getSql()
 
     console.log("[v0] Fetching employees from database...")
 
@@ -60,7 +60,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = getDatabaseConnection()
+    const sql = await getSql()
 
     const contentType = request.headers.get("content-type")
     let data: any

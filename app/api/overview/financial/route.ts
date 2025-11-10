@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || "")
+import { getSql } from "@/lib/database"
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     // Get monthly revenue from payments
     const monthlyRevenue = await sql`
       SELECT COALESCE(SUM(amount), 0) as revenue

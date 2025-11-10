@@ -1,11 +1,11 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import { NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 // Get stock alerts and low inventory warnings
 export async function GET() {
   try {
+    const sql = await getSql()
+
     // Get low stock items
     const lowStockItems = await sql`
       SELECT 
@@ -177,6 +177,7 @@ export async function GET() {
 // Create or update stock alert thresholds
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const { item_id, min_stock_level, max_stock_level, alert_threshold } = await request.json()
 
     if (!item_id || min_stock_level === undefined) {

@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const purchaseOrderId = searchParams.get("purchase_order_id")
     const limit = Number.parseInt(searchParams.get("limit") || "50")
@@ -49,6 +48,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const data = await request.json()
 
     const ipAddress = data.ip_address === "unknown" || !data.ip_address ? null : data.ip_address

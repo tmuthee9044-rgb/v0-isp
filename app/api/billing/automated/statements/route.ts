@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +48,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function generateCustomerStatement(customerId: number, startDate: Date, endDate: Date) {
+  const sql = await getSql()
+
   // Get customer information
   const [customer] = await sql`
     SELECT * FROM customers WHERE id = ${customerId}
@@ -138,6 +138,8 @@ async function generateCustomerStatement(customerId: number, startDate: Date, en
 }
 
 async function getCustomerBalance(customerId: number, asOfDate: Date) {
+  const sql = await getSql()
+
   const [result] = await sql`
     SELECT 
       COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.amount ELSE 0 END), 0) as total_payments,
@@ -157,6 +159,8 @@ async function getCustomerBalance(customerId: number, asOfDate: Date) {
 }
 
 async function sendStatementEmail(customerId: number, statement: any) {
+  const sql = await getSql()
+
   // Log email activity
   await sql`
     INSERT INTO activity_logs (

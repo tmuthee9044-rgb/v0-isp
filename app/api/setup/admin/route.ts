@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import bcrypt from "bcryptjs"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const adminData = await request.json()
 

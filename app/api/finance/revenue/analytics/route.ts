@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { dateFrom, dateTo, analysisType = "cohort" } = await request.json()
 
     if (analysisType === "cohort") {

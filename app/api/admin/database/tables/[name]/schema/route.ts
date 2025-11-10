@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request, { params }: { params: { name: string } }) {
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
+
     const tableName = params.name
 
     // Get column information

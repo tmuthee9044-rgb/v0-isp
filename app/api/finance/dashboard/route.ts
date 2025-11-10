@@ -1,9 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,6 +27,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function fetchDashboardData(dateFrom: string, dateTo: string) {
+  const sql = await getSql()
+
   // Get total revenue from completed payments
   const revenueResult = await sql`
     SELECT 

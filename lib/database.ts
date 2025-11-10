@@ -20,6 +20,7 @@ class DatabasePool {
   }
 }
 
+export { getSql }
 export { sql, executeWithRetry }
 // Export the class for advanced usage
 export { DatabasePool }

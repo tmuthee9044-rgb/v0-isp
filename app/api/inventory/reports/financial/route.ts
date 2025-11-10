@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const startDate =
       searchParams.get("startDate") || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]

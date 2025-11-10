@@ -1,14 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
+import sql from "sql-template-tag"
 
 export async function GET() {
+  const db = await getSql()
+
   try {
-    const result = await sql`
+    const result = await db.query(sql`
       SELECT value FROM system_config 
       WHERE key = 'content_privacy'
-    `
+    `)
 
     if (result.length > 0) {
       return NextResponse.json({
@@ -24,6 +25,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const db = await getSql()
   try {
     const { content } = await request.json()
 
@@ -32,12 +34,12 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toLocaleDateString(),
     }
 
-    await sql`
+    await db.query(sql`
       INSERT INTO system_config (key, value, created_at) 
       VALUES ('content_privacy', ${JSON.stringify(contentWithTimestamp)}, CURRENT_TIMESTAMP)
       ON CONFLICT (key) 
       DO UPDATE SET value = ${JSON.stringify(contentWithTimestamp)}, created_at = CURRENT_TIMESTAMP
-    `
+    `)
 
     return NextResponse.json({ success: true, message: "Privacy content saved successfully" })
   } catch (error) {

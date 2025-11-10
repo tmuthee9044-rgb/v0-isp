@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET() {
+  const sql = await getSql()
+
   try {
     // Get service plans from database
     const servicePlans = await sql`

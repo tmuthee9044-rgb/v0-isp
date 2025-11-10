@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 function getDatabaseUrl(): string {
   const possibleUrls = [
@@ -18,10 +18,10 @@ function getDatabaseUrl(): string {
   throw new Error("No database connection string found")
 }
 
-const sql = neon(getDatabaseUrl())
-
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") || ""
     const method = searchParams.get("method") || "all"

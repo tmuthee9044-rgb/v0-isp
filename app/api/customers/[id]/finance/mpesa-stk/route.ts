@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const customerId = Number.parseInt(params.id)
     const { phone_number, amount } = await request.json()
@@ -80,6 +80,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // In production, this would integrate with actual Daraja API
     setTimeout(async () => {
+      const sql = await getSql()
+
       try {
         // Update payment status to completed
         await sql`

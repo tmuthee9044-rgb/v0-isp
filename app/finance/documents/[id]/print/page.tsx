@@ -1,9 +1,9 @@
 "use client"
 
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import { notFound } from "next/navigation"
 
-const sql = neon(process.env.DATABASE_URL!)
+const sql = getSql(process.env.DATABASE_URL!)
 
 interface PrintDocumentPageProps {
   params: { id: string }

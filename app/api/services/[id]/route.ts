@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +18,7 @@ const parseFloatOrNull = (value: any): number | null => {
 // GET - Fetch single service plan
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {
@@ -72,6 +71,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 // PUT - Update service plan
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {
@@ -128,6 +128,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 // DELETE - Delete service plan
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {

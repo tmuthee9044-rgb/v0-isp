@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
 
     // Get all tables with row counts
     const tables = await sql`

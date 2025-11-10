@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const routerId = searchParams.get("router_id")
 
@@ -117,6 +116,7 @@ export async function POST(request: NextRequest) {
     const prefix = Number.parseInt(prefixStr)
 
     // Verify router exists
+    const sql = await getSql()
     const router = await sql`
       SELECT id FROM network_devices 
       WHERE id = ${router_id} 

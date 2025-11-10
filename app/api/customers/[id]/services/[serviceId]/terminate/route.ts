@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { releaseIPAddress } from "@/lib/ip-management"
 import { ActivityLogger } from "@/lib/activity-logger"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest, { params }: { params: { id: string; serviceId: string } }) {
   try {
+    const sql = await getSql()
     const customerId = Number.parseInt(params.id)
     const serviceId = Number.parseInt(params.serviceId)
     const { reason = "Service terminated by admin" } = await request.json()

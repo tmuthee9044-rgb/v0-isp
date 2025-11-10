@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
 // Get all warehouses with inventory summary
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const warehouses = await sql`
       SELECT 
@@ -49,6 +49,8 @@ export async function GET() {
 
 // Create new warehouse
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const data = await request.json()
 

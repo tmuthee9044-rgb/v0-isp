@@ -1,10 +1,9 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = Number.parseInt(params.id)
     const { reason, notes, duration } = await request.json()
 

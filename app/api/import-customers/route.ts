@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
+
     let customers: any[] = []
     let detectedFormat = "unknown"
 

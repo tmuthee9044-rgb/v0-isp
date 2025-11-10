@@ -1,11 +1,9 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-const sql = neon(process.env.DATABASE_URL!)
-
-// Customer Status Validation API for Router Authentication
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const { customer_id, username, check_type = "full" } = await request.json()
 
     if (!customer_id && !username) {

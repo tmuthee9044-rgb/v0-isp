@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
     const level = searchParams.get("level")
@@ -104,6 +104,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const body = await request.json()
     const { level, source, category, message, ip_address, user_id, customer_id, details, session_id, user_agent } = body
 

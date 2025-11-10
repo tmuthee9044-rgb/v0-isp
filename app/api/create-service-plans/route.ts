@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
+import { sql } from "@vercel/postgres" // Declare sql variable
 
 export async function POST() {
+  const sql = await getSql()
+
   try {
     console.log("Creating service_plans table...")
 

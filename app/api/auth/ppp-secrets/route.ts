@@ -1,11 +1,10 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 // PPP Secrets Management API
 export async function GET(request: Request) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const routerId = searchParams.get("router_id")
     const username = searchParams.get("username")
@@ -78,6 +77,7 @@ export async function GET(request: Request) {
 // Create or update PPP secret
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const { customer_id, username, password, ip_address, profile } = await request.json()
 
     if (!customer_id || !username || !password) {

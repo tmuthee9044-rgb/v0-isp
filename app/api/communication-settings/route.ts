@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const settings = await sql`
       SELECT key, value 
@@ -96,6 +96,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const body = await request.json()
     const { type, settings } = body
@@ -150,7 +152,7 @@ export async function POST(request: NextRequest) {
 
       // Save SMS settings
       if (allSettings.sms) {
-        for (const [key, value] of Object.entries(settings)) {
+        for (const [key, value] of Object.entries(allSettings.sms)) {
           await sql`
             INSERT INTO system_config (key, value, created_at)
             VALUES (${`communication.sms.${key}`}, ${JSON.stringify(value)}, NOW())

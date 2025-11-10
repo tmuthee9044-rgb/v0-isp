@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const routerId = Number.parseInt(params.id)
 
@@ -32,6 +32,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       } else {
         if (routerData.type === "mikrotik") {
           connectionResult = await testMikroTikConnection(routerId, routerData)
+        } else if (routerData.type === "ubiquiti") {
+          connectionResult = await testUbiquitiConnection(routerData)
+        } else if (routerData.type === "cisco") {
+          connectionResult = await testCiscoConnection(routerData)
         } else {
           connectionResult = await testGenericConnection(routerData)
         }

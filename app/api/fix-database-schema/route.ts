@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function POST() {
   try {
+    const sql = await getSql()
+
     console.log("[v0] Starting database schema fixes...")
 
     // Read the SQL fix script content
@@ -178,6 +178,8 @@ export async function POST() {
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     // Check current database status
     const tablesToCheck = ["inventory_movements", "invoice_items"]
     const columnsToCheck = [

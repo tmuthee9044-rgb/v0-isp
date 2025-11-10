@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Wifi, Users, Activity, MapPin } from "lucide-react"
 import Link from "next/link"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
 async function getHotspots() {
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
+
     const hotspots = await sql`
       SELECT 
         h.*,

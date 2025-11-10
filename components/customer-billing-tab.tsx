@@ -284,23 +284,39 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
         method: "POST",
       })
 
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
-        toast.success("Statement generated successfully")
-      } else {
-        const error = await response.json()
-        toast.error(error.error || "Failed to generate statement")
+      // Check if response is successful
+      if (!response.ok) {
+        const errorData = await response.json()
+        toast.error(errorData.error || "Failed to generate statement")
+        return
       }
+
+      // Check content type to ensure we have PDF
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/pdf")) {
+        toast.error("Invalid response format - expected PDF")
+        return
+      }
+
+      const blob = await response.blob()
+
+      // Verify blob is valid PDF
+      if (blob.type !== "application/pdf") {
+        toast.error("Failed to generate valid PDF")
+        return
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success("Statement generated successfully")
     } catch (error) {
-      console.error("Error generating statement:", error)
+      console.error("[v0] Error generating statement:", error)
       toast.error("Failed to generate statement")
     } finally {
       setGeneratingStatement(false)
@@ -464,7 +480,6 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
-        toast.success("Credit note downloaded")
       } else {
         toast.error("Failed to generate credit note")
       }

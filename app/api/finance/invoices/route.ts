@@ -33,6 +33,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Customer, amount, and description are required" }, { status: 400 })
     }
 
+    const getSql = (await import("@/lib/db")).getSql
+    const sql = await getSql()
+
     // Generate invoice number
     const invoiceCount = await sql`SELECT COUNT(*) as count FROM invoices`
     const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Number(invoiceCount[0].count) + 1).padStart(3, "0")}`

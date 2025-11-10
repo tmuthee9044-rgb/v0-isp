@@ -1,10 +1,10 @@
-const { neon } = require("@neondatabase/serverless")
-
-const sql = neon(process.env.DATABASE_URL)
+const { getSql } = require("@/lib/db")
 
 async function createInvoiceItemsTable() {
   try {
     console.log("[v0] Starting invoice_items table migration...")
+
+    const sql = await getSql()
 
     // Create invoice_items table
     await sql`

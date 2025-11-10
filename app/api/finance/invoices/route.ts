@@ -1,10 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
-const sql = neon(process.env.DATABASE_URL!)
+export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     const invoices = await sql`
       SELECT 
         i.*,
@@ -20,7 +22,7 @@ export async function GET() {
 
     return NextResponse.json({ invoices })
   } catch (error) {
-    console.error("Error fetching invoices:", error)
+    console.error("[v0] Error fetching invoices:", error)
     return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 })
   }
 }
@@ -33,7 +35,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Customer, amount, and description are required" }, { status: 400 })
     }
 
-    const getSql = (await import("@/lib/db")).getSql
     const sql = await getSql()
 
     // Generate invoice number

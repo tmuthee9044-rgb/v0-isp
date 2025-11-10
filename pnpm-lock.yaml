@@ -169,7 +169,7 @@ importers:
         specifier: latest
         version: 0.12.7
       pdfkit:
-        specifier: latest
+        specifier: 0.17.2
         version: 0.17.2
       pg:
         specifier: latest

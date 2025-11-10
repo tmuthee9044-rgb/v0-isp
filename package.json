@@ -65,7 +65,7 @@
     "next-themes": "latest",
     "os": "latest",
     "path": "latest",
-    "pdfkit": "latest",
+    "pdfkit": "0.17.2",
     "pg": "latest",
     "pg-native": "latest",
     "react": "^18.3.1",

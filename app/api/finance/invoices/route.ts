@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import { ensureInvoiceItemsTable } from "@/lib/ensure-invoice-items-table"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +30,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureInvoiceItemsTable()
+
     const { customer_id, amount, description, due_date, items } = await request.json()
 
     if (!customer_id || !amount || !description) {
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
           'invoice',
           ${invoice.id},
           ${JSON.stringify({ invoice_number: invoiceNumber, customer_id, amount, description })},
-          'system',
+          NULL,
           NOW()
         )
       `
@@ -219,7 +222,7 @@ export async function POST(request: NextRequest) {
                       payment_method: "Credit Balance",
                       reason: "Invoice paid by customer credit balance",
                     })},
-                    'system',
+                    NULL,
                     NOW()
                   )
                 `
@@ -254,7 +257,7 @@ export async function POST(request: NextRequest) {
                 payment_method: "Credit Balance",
                 status: newStatus,
               })},
-              'system',
+              NULL,
               NOW()
             )
           `

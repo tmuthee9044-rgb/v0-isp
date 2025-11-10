@@ -71,46 +71,87 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const transactions = await sql`
       SELECT 
+        'invoice' as type,
         id,
-        reference_number,
-        type,
-        COALESCE(description, '') as description,
-        COALESCE(amount, total_amount, 0) as amount,
-        total_amount,
+        invoice_number as reference_number,
+        'Invoice #' || invoice_number as description,
+        amount as amount,
+        amount as total_amount,
         created_at,
         status,
         due_date,
-        invoice_date,
-        payment_date
-      FROM finance_documents
+        created_at::date as invoice_date,
+        NULL::date as payment_date
+      FROM invoices
       WHERE customer_id = ${customerId}
-      AND (
-        (created_at::date >= ${startDateStr}::date AND created_at::date <= ${endDateStr}::date)
-        OR (invoice_date >= ${startDateStr}::date AND invoice_date <= ${endDateStr}::date)
-        OR (payment_date >= ${startDateStr}::date AND payment_date <= ${endDateStr}::date)
-      )
-      ORDER BY COALESCE(payment_date, invoice_date, created_at::date) DESC
+      AND created_at::date >= ${startDateStr}::date 
+      AND created_at::date <= ${endDateStr}::date
+      
+      UNION ALL
+      
+      SELECT 
+        'credit_note' as type,
+        id,
+        credit_note_number as reference_number,
+        'Credit Note: ' || COALESCE(reason, 'No reason specified') as description,
+        -1 * amount as amount,
+        amount as total_amount,
+        created_at,
+        status,
+        NULL as due_date,
+        created_at::date as invoice_date,
+        NULL::date as payment_date
+      FROM credit_notes
+      WHERE customer_id = ${customerId}
+      AND created_at::date >= ${startDateStr}::date 
+      AND created_at::date <= ${endDateStr}::date
+      
+      UNION ALL
+      
+      SELECT 
+        'payment' as type,
+        id,
+        transaction_id as reference_number,
+        'Payment via ' || COALESCE(payment_method, 'Unknown') as description,
+        -1 * amount as amount,
+        amount as total_amount,
+        payment_date as created_at,
+        status,
+        NULL as due_date,
+        NULL::date as invoice_date,
+        payment_date::date as payment_date
+      FROM payments
+      WHERE customer_id = ${customerId}
+      AND payment_date::date >= ${startDateStr}::date 
+      AND payment_date::date <= ${endDateStr}::date
+      
+      ORDER BY created_at DESC
     `
 
     console.log("[v0] Found transactions for statement:", transactions.length)
 
     if (transactions.length === 0) {
       const allCustomerDocs = await sql`
-        SELECT id, type, created_at::date as created, invoice_date, payment_date
-        FROM finance_documents
-        WHERE customer_id = ${customerId}
-        ORDER BY created_at DESC
-        LIMIT 5
+        SELECT 'invoice' as source, COUNT(*) as count, MIN(created_at::date) as earliest, MAX(created_at::date) as latest
+        FROM invoices WHERE customer_id = ${customerId}
+        UNION ALL
+        SELECT 'payment' as source, COUNT(*) as count, MIN(payment_date::date) as earliest, MAX(payment_date::date) as latest
+        FROM payments WHERE customer_id = ${customerId}
+        UNION ALL
+        SELECT 'credit_note' as source, COUNT(*) as count, MIN(created_at::date) as earliest, MAX(created_at::date) as latest
+        FROM credit_notes WHERE customer_id = ${customerId}
       `
-      console.log("[v0] Sample of all customer documents:", allCustomerDocs)
+      console.log("[v0] Document counts by table:", allCustomerDocs)
       console.log("[v0] Query date range:", { startDateStr, endDateStr })
     }
 
     const allDocs = await sql`
-      SELECT COUNT(*) as total
-      FROM finance_documents
-      WHERE customer_id = ${customerId}
+      SELECT 
+        (SELECT COUNT(*) FROM invoices WHERE customer_id = ${customerId}) +
+        (SELECT COUNT(*) FROM credit_notes WHERE customer_id = ${customerId}) +
+        (SELECT COUNT(*) FROM payments WHERE customer_id = ${customerId}) as total
     `
+
     console.log("[v0] Total finance documents for customer:", allDocs[0]?.total || 0)
 
     // Calculate totals

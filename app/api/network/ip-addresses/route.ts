@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 // GET - List all IP addresses with filtering
 export async function GET(request: NextRequest) {
@@ -14,6 +12,8 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Fetching IP addresses with filters:", { status, subnetId, customerId, routerId })
 
+    const sql = await getSql()
+
     const whereConditions: string[] = []
 
     if (status) {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (customerId) {
-      whereConditions.push(`ia.customer_id = ${Number.parseInt(customerId)}`)
+      whereConditions.push(`c.id = ${Number.parseInt(customerId)}`)
     }
 
     if (routerId) {
@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
         ia.id,
         ia.ip_address,
         ia.subnet_id,
-        ia.customer_id,
         ia.status,
         ia.created_at,
         ia.assigned_at,
@@ -47,13 +46,16 @@ export async function GET(request: NextRequest) {
         s.name as subnet_name,
         s.router_id,
         nd.name as router_name,
+        cs.id as service_id,
+        cs.customer_id,
         c.first_name,
         c.last_name,
         c.business_name
       FROM ip_addresses ia
       LEFT JOIN ip_subnets s ON ia.subnet_id = s.id
       LEFT JOIN network_devices nd ON s.router_id = nd.id
-      LEFT JOIN customers c ON ia.customer_id = c.id
+      LEFT JOIN customer_services cs ON ia.ip_address = cs.ip_address::inet
+      LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1 ${sql.unsafe(whereClause)}
       ORDER BY ia.ip_address
     `

@@ -1,155 +1,68 @@
-"use server"
+import { neon } from "@neondatabase/serverless"
+import { Pool } from "pg"
 
-import { neon, type NeonQueryFunction } from "@neondatabase/serverless"
-
-// Cache for database clients
-const clientCache = new Map<string, any>()
-
-// Database connection status
-const currentDatabaseType: "neon" | "postgresql" | "unknown" = "unknown"
-const connectionAttempts = 0
-const MAX_RETRY_ATTEMPTS = 3
+let localPool: Pool | null = null
+let neonSql: ReturnType<typeof neon> | null = null
 
 /**
- * Simple environment detection based on environment variables only
+ * Get SQL client with dual database support (Rule 4)
+ * Tries Neon serverless first, falls back to local PostgreSQL if offline
  */
-function isLocalEnvironment(): boolean {
-  return (
-    process.env.NODE_ENV === "development" || process.env.LOCAL_DEV === "true" || process.env.USE_LOCAL_DB === "true"
-  )
-}
-
-/**
- * Get the appropriate database connection string
- */
-function getConnectionString(): string {
-  const isLocal = isLocalEnvironment()
-
-  // Local PostgreSQL configuration (static credentials for 127.0.0.1)
-  const localConnectionString =
-    process.env.LOCAL_DATABASE_URL || `postgresql://isp_admin:SecurePass123!@127.0.0.1:5432/isp_system`
-
-  // Neon serverless configuration
-  const neonConnectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL
-
-  // Priority logic based on environment
-  if (isLocal) {
-    // Development: Try local first, fallback to Neon
-    return localConnectionString
-  } else {
-    // Production: Use Neon
-    return neonConnectionString || localConnectionString
-  }
-}
-
-/**
- * Log database activity
- */
-function logActivity(action: string, details: any) {
-  const timestamp = new Date().toISOString()
-  console.log(`[DB ${timestamp}] ${action}:`, JSON.stringify(details))
-}
-
-// Singleton SQL client
-let sqlClient: NeonQueryFunction<false, false> | null = null
-let initializationPromise: Promise<NeonQueryFunction<false, false>> | null = null
-
-/**
- * Get SQL client with automatic database detection
- * Supports both Neon serverless and local PostgreSQL
- */
-export async function getSql(): Promise<NeonQueryFunction<false, false>> {
-  if (sqlClient) {
-    return sqlClient
-  }
-
-  if (initializationPromise) {
-    return initializationPromise
-  }
-
-  initializationPromise = (async () => {
-    const connectionString = getConnectionString()
-    const isLocal = connectionString.includes("127.0.0.1") || connectionString.includes("localhost")
-
-    logActivity("INITIALIZING", {
-      type: isLocal ? "PostgreSQL (Local)" : "Neon Serverless",
-      environment: isLocalEnvironment() ? "development" : "production",
-    })
-
+export async function getSql() {
+  // Try Neon serverless first
+  if (process.env.DATABASE_URL) {
     try {
-      const client = neon(connectionString, {
-        fetchOptions: {
-          cache: "no-store",
-        },
-      })
+      if (!neonSql) {
+        neonSql = neon(process.env.DATABASE_URL)
+      }
+      return neonSql
+    } catch (error) {
+      console.error("[v0] Neon connection failed, falling back to local PostgreSQL:", error)
+    }
+  }
 
-      // Test connection
-      await client`SELECT 1 as health_check`
+  // Fall back to local PostgreSQL
+  if (!localPool) {
+    localPool = new Pool({
+      host: process.env.PGHOST || "127.0.0.1",
+      port: Number.parseInt(process.env.PGPORT || "5432"),
+      user: process.env.PGUSER || "postgres",
+      password: process.env.PGPASSWORD,
+      database: process.env.PGDATABASE || "isp_system",
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    })
+  }
 
-      logActivity("CONNECTED", {
-        type: isLocal ? "PostgreSQL (Local)" : "Neon Serverless",
-        status: "success",
-      })
+  // Return a wrapper that converts Pool query interface to Neon-like tagged template
+  return async (strings: TemplateStringsArray, ...values: any[]) => {
+    const client = await localPool!.connect()
+    try {
+      // Convert tagged template to parameterized query
+      let query = strings[0]
+      const params: any[] = []
 
-      sqlClient = client
-      return client
-    } catch (error: any) {
-      logActivity("CONNECTION_ERROR", {
-        error: error.message,
-        attempted: isLocal ? "local" : "neon",
-      })
-
-      // Fallback logic
-      if (isLocal && process.env.DATABASE_URL) {
-        logActivity("FALLBACK", { from: "local", to: "neon" })
-        const fallbackString = process.env.DATABASE_URL
-        const fallbackClient = neon(fallbackString)
-        await fallbackClient`SELECT 1 as health_check`
-        sqlClient = fallbackClient
-        return fallbackClient
-      } else if (!isLocal) {
-        logActivity("FALLBACK", { from: "neon", to: "local" })
-        const fallbackString = `postgresql://isp_admin:SecurePass123!@127.0.0.1:5432/isp_system`
-        const fallbackClient = neon(fallbackString)
-        await fallbackClient`SELECT 1 as health_check`
-        sqlClient = fallbackClient
-        return fallbackClient
+      for (let i = 0; i < values.length; i++) {
+        params.push(values[i])
+        query += `$${i + 1}` + strings[i + 1]
       }
 
-      throw new Error(`Error connecting to database: ${error.message}`)
+      const result = await client.query(query, params)
+      return result.rows
     } finally {
-      initializationPromise = null
-    }
-  })()
-
-  return initializationPromise
-}
-
-/**
- * Get database status
- */
-export async function getDatabaseStatus() {
-  try {
-    const sql = await getSql()
-    const result = await sql`SELECT current_database() as db, version() as version`
-
-    return {
-      connected: true,
-      database: result[0]?.db,
-      version: result[0]?.version,
-      environment: isLocalEnvironment() ? "development" : "production",
-    }
-  } catch (error: any) {
-    return {
-      connected: false,
-      error: error.message,
-      environment: isLocalEnvironment() ? "development" : "production",
+      client.release()
     }
   }
 }
 
-export default getSql
-
-export const getSqlConnection = getSql
-export const sql = getSql
-export const db = getSql
+/**
+ * Close database connections
+ */
+export async function closeConnections() {
+  if (localPool) {
+    await localPool.end()
+    localPool = null
+  }
+  neonSql = null
+}

@@ -1,14 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import sql from "sql-template-strings"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const subnetId = Number.parseInt(params.id)
 
-    const db = await getSql()
+    console.log("[v0] Fetching subnet with ID:", subnetId)
 
-    const subnet = await db.query(sql`
+    const sql = await getSql()
+
+    const subnet = await sql`
       SELECT 
         s.*,
         r.name as router_name,
@@ -26,7 +27,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       LEFT JOIN ip_addresses ip ON s.id = ip.subnet_id
       WHERE s.id = ${subnetId}
       GROUP BY s.id, r.name, r.ip_address, l.name, l.city, l.address
-    `)
+    `
+
+    console.log("[v0] Subnet query result:", subnet)
 
     if (subnet.length === 0) {
       return NextResponse.json({ message: "Subnet not found" }, { status: 404 })
@@ -35,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json(subnet[0])
   } catch (error) {
     console.error("[v0] Error fetching subnet:", error)
-    return NextResponse.json({ message: "Failed to fetch subnet" }, { status: 500 })
+    return NextResponse.json({ message: "Failed to fetch subnet", error: String(error) }, { status: 500 })
   }
 }
 
@@ -46,18 +49,19 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const { name, description, type, gateway, vlan_id } = body
 
-    const db = await getSql()
+    const sql = await getSql()
 
-    const result = await db.query(sql`
+    const result = await sql`
       UPDATE ip_subnets SET
         name = COALESCE(${name}, name),
         description = COALESCE(${description}, description),
         type = COALESCE(${type}, type),
         gateway = COALESCE(${gateway}, gateway),
-        vlan_id = COALESCE(${vlan_id}, vlan_id)
+        vlan_id = COALESCE(${vlan_id}, vlan_id),
+        updated_at = NOW()
       WHERE id = ${subnetId}
       RETURNING *
-    `)
+    `
 
     if (result.length === 0) {
       return NextResponse.json({ message: "Subnet not found" }, { status: 404 })
@@ -74,13 +78,13 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   try {
     const subnetId = Number.parseInt(params.id)
 
-    const db = await getSql()
+    const sql = await getSql()
 
     // Check if subnet has assigned IP addresses
-    const assignedIPs = await db.query(sql`
+    const assignedIPs = await sql`
       SELECT COUNT(*) as count FROM ip_addresses 
       WHERE subnet_id = ${subnetId} AND status = 'assigned'
-    `)
+    `
 
     if (Number(assignedIPs[0].count) > 0) {
       return NextResponse.json(
@@ -90,9 +94,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Delete the subnet (cascade will delete IP addresses)
-    await db.query(sql`
+    await sql`
       DELETE FROM ip_subnets WHERE id = ${subnetId}
-    `)
+    `
 
     return NextResponse.json({ message: "Subnet deleted successfully" })
   } catch (error) {

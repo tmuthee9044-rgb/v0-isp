@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
 
     const customerCheck = await sql`
@@ -104,6 +103,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
     const updates = await request.json()
 
@@ -150,15 +150,55 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     if (Object.keys(dbUpdates).length > 0) {
-      const setClauses = Object.entries(dbUpdates)
-        .map(([key, value]) => `${key} = ${typeof value === "string" ? `'${value}'` : value}`)
-        .join(", ")
-
-      await sql.unsafe(`
-        UPDATE customer_billing_configurations 
-        SET ${setClauses}, updated_at = NOW()
+      const existingConfig = await sql`
+        SELECT * FROM customer_billing_configurations 
         WHERE customer_id = ${customerId}
-      `)
+      `
+
+      if (existingConfig.length === 0) {
+        // Create new config if it doesn't exist
+        await sql`
+          INSERT INTO customer_billing_configurations (
+            customer_id, 
+            auto_generate_invoices,
+            billing_cycle,
+            billing_day,
+            payment_terms,
+            overdue_threshold_days,
+            auto_send_invoices,
+            auto_send_reminders,
+            reminder_days_before,
+            created_by
+          ) VALUES (
+            ${customerId},
+            ${dbUpdates.auto_generate_invoices ?? true},
+            ${dbUpdates.billing_cycle || "monthly"},
+            ${dbUpdates.billing_day || 1},
+            ${dbUpdates.payment_terms || 15},
+            ${dbUpdates.overdue_threshold_days || 10},
+            ${dbUpdates.auto_send_invoices ?? true},
+            ${dbUpdates.auto_send_reminders ?? true},
+            ${dbUpdates.reminder_days_before || 3},
+            1
+          )
+        `
+      } else {
+        // Update existing config
+        await sql`
+          UPDATE customer_billing_configurations 
+          SET 
+            auto_generate_invoices = ${dbUpdates.auto_generate_invoices ?? existingConfig[0].auto_generate_invoices},
+            billing_cycle = ${dbUpdates.billing_cycle || existingConfig[0].billing_cycle},
+            billing_day = ${dbUpdates.billing_day ?? existingConfig[0].billing_day},
+            payment_terms = ${dbUpdates.payment_terms ?? existingConfig[0].payment_terms},
+            overdue_threshold_days = ${dbUpdates.overdue_threshold_days ?? existingConfig[0].overdue_threshold_days},
+            auto_send_invoices = ${dbUpdates.auto_send_invoices ?? existingConfig[0].auto_send_invoices},
+            auto_send_reminders = ${dbUpdates.auto_send_reminders ?? existingConfig[0].auto_send_reminders},
+            reminder_days_before = ${dbUpdates.reminder_days_before ?? existingConfig[0].reminder_days_before},
+            updated_at = NOW()
+          WHERE customer_id = ${customerId}
+        `
+      }
     }
 
     return NextResponse.json({
@@ -173,6 +213,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
     const configData = await request.json()
 

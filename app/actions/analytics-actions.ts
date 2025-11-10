@@ -1,8 +1,8 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
-const sql = neon(process.env.DATABASE_URL!)
+const sql = await getSql()
 
 export interface AnalyticsData {
   routerPerformance: RouterPerformanceData[]

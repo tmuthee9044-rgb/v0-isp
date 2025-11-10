@@ -1,7 +1,5 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export interface PaymentRequest {
   customer_id: number
@@ -51,6 +49,8 @@ export class UnifiedPaymentGateway {
           reference: request.reference,
         },
       )
+
+      const sql = await getSql()
 
       // Get appropriate gateway
       const gateway = this.getGateway(request.payment_method)
@@ -157,6 +157,8 @@ export class UnifiedPaymentGateway {
 
   async confirmPayment(payment_id: string, transaction_data: any): Promise<void> {
     try {
+      const sql = await getSql()
+
       await sql`
         UPDATE payments 
         SET 
@@ -210,6 +212,8 @@ export class UnifiedPaymentGateway {
   }
 
   private async triggerServiceActivation(payment_id: string, customer_id: number, amount: number): Promise<void> {
+    const sql = await getSql()
+
     const services = await sql`
       SELECT cs.*, sp.name as service_name, sp.monthly_fee
       FROM customer_services cs
@@ -258,6 +262,8 @@ export class UnifiedPaymentGateway {
   }
 
   private async generateReceipt(payment: any): Promise<void> {
+    const sql = await getSql()
+
     const receiptNumber = `RCP-${new Date().getFullYear()}-${String(payment.id).padStart(6, "0")}`
 
     await sql`
@@ -283,6 +289,8 @@ export class UnifiedPaymentGateway {
   }
 
   private async updateCustomerServices(customer_id: number, amount: number): Promise<void> {
+    const sql = await getSql()
+
     const services = await sql`
       SELECT cs.*, sp.monthly_fee, sp.name as service_name
       FROM customer_services cs
@@ -325,6 +333,8 @@ export class UnifiedPaymentGateway {
   }
 
   private async generateInvoiceIfNeeded(payment: any): Promise<void> {
+    const sql = await getSql()
+
     const existingInvoice = await sql`
       SELECT id FROM invoices 
       WHERE customer_id = ${payment.customer_id} 
@@ -375,6 +385,8 @@ export class UnifiedPaymentGateway {
   }
 
   private async sendPaymentConfirmation(payment: any): Promise<void> {
+    const sql = await getSql()
+
     const [customer] = await sql`
       SELECT first_name, last_name, email, phone 
       FROM customers 
@@ -396,6 +408,8 @@ export class UnifiedPaymentGateway {
   private async applyPaymentToInvoices(customerId: number, paymentAmount: number, paymentId: number) {
     try {
       console.log("[v0] Applying payment to invoices:", { customerId, paymentAmount, paymentId })
+
+      const sql = await getSql()
 
       // Ensure account balance exists
       await sql`
@@ -498,6 +512,8 @@ export interface PaymentGatewayInterface {
 export class MpesaGateway implements PaymentGatewayInterface {
   async processPayment(request: PaymentRequest & { payment_id: string }): Promise<PaymentResponse> {
     try {
+      const sql = await getSql()
+
       // Get M-Pesa configuration
       const [config] = await sql`
         SELECT * FROM payment_gateway_configs LIMIT 1
@@ -546,6 +562,8 @@ export class MpesaGateway implements PaymentGatewayInterface {
   }
 
   async verifyPayment(transaction_id: string): Promise<boolean> {
+    const sql = await getSql()
+
     const [transaction] = await sql`
       SELECT status FROM mpesa_transactions 
       WHERE checkout_request_id = ${transaction_id} OR transaction_id = ${transaction_id}
@@ -566,6 +584,8 @@ export class MpesaGateway implements PaymentGatewayInterface {
 export class CashGateway implements PaymentGatewayInterface {
   async processPayment(request: PaymentRequest & { payment_id: string }): Promise<PaymentResponse> {
     try {
+      const sql = await getSql()
+
       const transactionId = `CASH-${Date.now()}-${request.payment_id}`
 
       await sql`
@@ -609,6 +629,8 @@ export class CashGateway implements PaymentGatewayInterface {
   }
 
   async verifyPayment(transaction_id: string): Promise<boolean> {
+    const sql = await getSql()
+
     const [transaction] = await sql`
       SELECT status FROM cash_transactions 
       WHERE transaction_id = ${transaction_id}
@@ -629,6 +651,8 @@ export class CashGateway implements PaymentGatewayInterface {
 export class CardGateway implements PaymentGatewayInterface {
   async processPayment(request: PaymentRequest & { payment_id: string }): Promise<PaymentResponse> {
     try {
+      const sql = await getSql()
+
       // For now, simulate card payment processing
       // In production, integrate with Stripe, Flutterwave, or other card processors
       const transactionId = `CARD-${Date.now()}-${request.payment_id}`
@@ -687,6 +711,8 @@ export class CardGateway implements PaymentGatewayInterface {
   }
 
   async verifyPayment(transaction_id: string): Promise<boolean> {
+    const sql = await getSql()
+
     const [transaction] = await sql`
       SELECT status FROM card_transactions 
       WHERE transaction_id = ${transaction_id}
@@ -707,6 +733,8 @@ export class CardGateway implements PaymentGatewayInterface {
 export class BankTransferGateway implements PaymentGatewayInterface {
   async processPayment(request: PaymentRequest & { payment_id: string }): Promise<PaymentResponse> {
     try {
+      const sql = await getSql()
+
       const transactionId = `BANK-${Date.now()}-${request.payment_id}`
 
       console.log("[v0] Processing bank transfer payment:", {
@@ -759,6 +787,8 @@ export class BankTransferGateway implements PaymentGatewayInterface {
   }
 
   async verifyPayment(transaction_id: string): Promise<boolean> {
+    const sql = await getSql()
+
     const [transaction] = await sql`
       SELECT status FROM bank_transactions 
       WHERE transaction_id = ${transaction_id}

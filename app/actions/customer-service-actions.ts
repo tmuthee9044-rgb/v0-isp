@@ -1,38 +1,13 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { allocateIPAddress, releaseIPAddress } from "@/lib/ip-management"
 
-function createDatabaseConnection() {
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL_UNPOOLED ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_PRISMA_URL
-
-  console.log("[v0] Environment check:", {
-    DATABASE_URL: !!process.env.DATABASE_URL,
-    POSTGRES_URL: !!process.env.POSTGRES_URL,
-    DATABASE_URL_UNPOOLED: !!process.env.DATABASE_URL_UNPOOLED,
-    POSTGRES_URL_NON_POOLING: !!process.env.POSTGRES_URL_NON_POOLING,
-    POSTGRES_PRISMA_URL: !!process.env.POSTGRES_PRISMA_URL,
-  })
-
-  if (!connectionString) {
-    console.error("[v0] No database connection string found")
-    throw new Error("Database connection not available. Please check environment variables.")
-  }
-
-  console.log("[v0] Using database connection string:", connectionString.substring(0, 20) + "...")
-  return neon(connectionString)
-}
-
 export async function getCustomerServices(customerId: number) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const services = await sql`
       SELECT 
@@ -58,7 +33,7 @@ export async function getCustomerServices(customerId: number) {
 
 export async function getServicePlans() {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const plans = await sql`
       SELECT * FROM service_plans 
@@ -75,7 +50,7 @@ export async function getServicePlans() {
 
 export async function addCustomerService(customerId: number, formData: FormData) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
@@ -355,7 +330,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
 export async function updateCustomerService(serviceId: number, formData: FormData) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const monthlyFee = Number.parseFloat(formData.get("monthly_fee") as string)
     const startDateInput = formData.get("start_date") as string
@@ -398,7 +373,7 @@ export async function deleteCustomerService(serviceId: number) {
     console.log("[v0] ========== STARTING SERVICE DELETION ==========")
     console.log("[v0] Service ID to delete:", serviceId)
 
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     console.log("[v0] Fetching service details...")
     const [service] = await sql`
@@ -607,7 +582,7 @@ export async function deleteCustomerService(serviceId: number) {
 
 export async function updateServiceStatus(serviceId: number, status: string) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const result = await sql`
       UPDATE customer_services 
@@ -630,7 +605,7 @@ export async function updateServiceStatus(serviceId: number, status: string) {
 
 export async function activateServiceOnPayment(paymentId: number, customerId: number) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const pendingServices = await sql`
       SELECT cs.*, sp.name as service_name
@@ -681,7 +656,7 @@ export async function activateServiceOnPayment(paymentId: number, customerId: nu
 
 export async function processPayment(formData: FormData) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const customerId = Number.parseInt(formData.get("customer_id") as string)
     const amount = Number.parseFloat(formData.get("amount") as string)
@@ -800,7 +775,7 @@ export async function processPayment(formData: FormData) {
 
 export async function removeCustomerService(serviceId: number, customerId: number) {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const [service] = await sql`
       SELECT * FROM customer_services WHERE id = ${serviceId} AND customer_id = ${customerId}
@@ -841,7 +816,7 @@ export async function removeCustomerService(serviceId: number, customerId: numbe
 
 export async function validateCustomerServiceRelationships() {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const orphanedServices = await sql`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
@@ -875,7 +850,7 @@ export async function validateCustomerServiceRelationships() {
 
 export async function fixOrphanedServices() {
   try {
-    const sql = createDatabaseConnection()
+    const sql = await getSql()
 
     const result = await sql`
       DELETE FROM customer_services 

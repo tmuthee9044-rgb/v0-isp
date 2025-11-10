@@ -1,7 +1,5 @@
 import { smsService } from "./sms-service"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 interface InvoiceNotificationData {
   invoiceId: number
@@ -34,6 +32,8 @@ class InvoiceNotificationService {
 
   async loadConfig(): Promise<void> {
     try {
+      const sql = await getSql()
+
       const settings = await sql`
         SELECT key, value 
         FROM system_config 
@@ -290,6 +290,8 @@ class InvoiceNotificationService {
 
   private async getCompanySettings(): Promise<any> {
     try {
+      const sql = await getSql()
+
       const settings = await sql`
         SELECT key, value 
         FROM system_config 
@@ -319,6 +321,8 @@ class InvoiceNotificationService {
     error?: string,
   ): Promise<void> {
     try {
+      const sql = await getSql()
+
       await sql`
         INSERT INTO notification_logs (
           customer_id,
@@ -351,7 +355,8 @@ class InvoiceNotificationService {
     try {
       await this.loadConfig()
 
-      // Find invoices that need reminders
+      const sql = await getSql()
+
       const invoicesNeedingReminders = await sql`
         SELECT 
           i.id as invoice_id,

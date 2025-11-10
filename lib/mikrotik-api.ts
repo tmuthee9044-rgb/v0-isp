@@ -1,6 +1,4 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export interface MikroTikConfig {
   host: string
@@ -310,6 +308,8 @@ export class MikroTikAPI {
  */
 export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null> {
   try {
+    const sql = await getSql()
+
     // Fetch router configuration from database
     const [router] = await sql`
       SELECT 

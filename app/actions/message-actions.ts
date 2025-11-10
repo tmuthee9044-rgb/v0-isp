@@ -1,9 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export interface MessageTemplate {
   id: number
@@ -61,6 +59,8 @@ export interface MessageCampaign {
 
 async function getCommunicationSettings() {
   try {
+    const sql = await getSql()
+
     const settings = await sql`
       SELECT key, value 
       FROM system_config 
@@ -183,6 +183,8 @@ async function canSendMessage(type: "email" | "sms"): Promise<{ canSend: boolean
 
 export async function getMessageTemplates(type?: "email" | "sms") {
   try {
+    const sql = await getSql()
+
     let templates
     if (type) {
       templates = await sql`
@@ -211,6 +213,8 @@ export async function getMessageTemplates(type?: "email" | "sms") {
 
 export async function createMessageTemplate(data: FormData | any) {
   try {
+    const sql = await getSql()
+
     let name: string, type: "email" | "sms", subject: string, content: string
 
     if (data instanceof FormData) {
@@ -244,6 +248,8 @@ export async function createMessageTemplate(data: FormData | any) {
 
 export async function updateMessageTemplate(id: number, data: FormData | any) {
   try {
+    const sql = await getSql()
+
     let name: string, type: "email" | "sms", subject: string, content: string
 
     if (data instanceof FormData) {
@@ -279,6 +285,8 @@ export async function updateMessageTemplate(id: number, data: FormData | any) {
 
 export async function deleteMessageTemplate(id: number) {
   try {
+    const sql = await getSql()
+
     await sql`
       UPDATE message_templates 
       SET is_active = false, updated_at = NOW()
@@ -295,6 +303,8 @@ export async function deleteMessageTemplate(id: number) {
 
 export async function sendMessage(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const type = formData.get("type") as "email" | "sms"
     const recipients = JSON.parse(formData.get("recipients") as string) as number[]
     const subject = formData.get("subject") as string
@@ -413,6 +423,8 @@ export async function getMessageHistory(filters?: {
   date_to?: string
 }) {
   try {
+    const sql = await getSql()
+
     let messages
 
     if (!filters || Object.keys(filters).length === 0) {
@@ -468,6 +480,8 @@ export async function getMessageHistory(filters?: {
 
 export async function createMessageCampaign(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const name = formData.get("name") as string
     const description = formData.get("description") as string
     const type = formData.get("type") as "email" | "sms" | "mixed"
@@ -506,6 +520,8 @@ export async function createMessageCampaign(formData: FormData) {
 
 export async function getMessageStats() {
   try {
+    const sql = await getSql()
+
     const [totalResult, todayResult, yesterdayResult, deliveryResult] = await Promise.all([
       sql`SELECT COUNT(*) as total FROM messages`,
       sql`SELECT COUNT(*) as today FROM messages WHERE DATE(created_at) = CURRENT_DATE`,

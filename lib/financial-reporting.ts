@@ -1,6 +1,4 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export interface FinancialReport {
   period: string
@@ -125,6 +123,7 @@ export interface CustomerAgingReport {
 
 export class FinancialReportingEngine {
   async generateComprehensiveReport(startDate: Date, endDate: Date): Promise<FinancialReport> {
+    const sql = await getSql()
     const [revenueData, expenseData, paymentMethodData, revenueStreamData, customerData, growthData] =
       await Promise.all([
         this.getRevenueData(startDate, endDate),
@@ -152,6 +151,7 @@ export class FinancialReportingEngine {
   }
 
   private async getRevenueData(startDate: Date, endDate: Date) {
+    const sql = await getSql()
     const [result] = await sql`
       SELECT 
         COALESCE(SUM(amount), 0) as total_revenue,
@@ -166,6 +166,7 @@ export class FinancialReportingEngine {
   }
 
   private async getExpenseData(startDate: Date, endDate: Date) {
+    const sql = await getSql()
     const [result] = await sql`
       SELECT 
         COALESCE(SUM(amount), 0) as total_expenses,
@@ -178,6 +179,7 @@ export class FinancialReportingEngine {
   }
 
   private async getPaymentMethodBreakdown(startDate: Date, endDate: Date): Promise<PaymentMethodBreakdown[]> {
+    const sql = await getSql()
     const results = await sql`
       SELECT 
         payment_method as method,
@@ -209,6 +211,7 @@ export class FinancialReportingEngine {
   }
 
   private async getRevenueStreams(startDate: Date, endDate: Date): Promise<RevenueStream[]> {
+    const sql = await getSql()
     const results = await sql`
       SELECT 
         sp.name as source,
@@ -239,6 +242,7 @@ export class FinancialReportingEngine {
   }
 
   private async getCustomerSegments(startDate: Date, endDate: Date): Promise<CustomerSegment[]> {
+    const sql = await getSql()
     const results = await sql`
       SELECT 
         c.customer_type as segment,
@@ -266,6 +270,7 @@ export class FinancialReportingEngine {
   }
 
   private async getGrowthMetrics(startDate: Date, endDate: Date): Promise<GrowthMetrics> {
+    const sql = await getSql()
     // Calculate previous period for comparison
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
     const prevStartDate = new Date(startDate.getTime() - daysDiff * 24 * 60 * 60 * 1000)
@@ -315,6 +320,7 @@ export class FinancialReportingEngine {
   }
 
   async generateProfitLossStatement(startDate: Date, endDate: Date) {
+    const sql = await getSql()
     const revenue = await this.getRevenueData(startDate, endDate)
     const expenses = await this.getExpenseData(startDate, endDate)
 
@@ -349,6 +355,7 @@ export class FinancialReportingEngine {
   }
 
   async generateCashFlowStatement(startDate: Date, endDate: Date) {
+    const sql = await getSql()
     const [operatingCashFlow] = await sql`
       SELECT 
         COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as cash_inflow,
@@ -384,6 +391,7 @@ export class FinancialReportingEngine {
   }
 
   async generateBalanceSheet(asOfDate: Date): Promise<BalanceSheet> {
+    const sql = await getSql()
     const [cashData] = await sql`
       SELECT COALESCE(SUM(amount), 0) as cash_balance
       FROM payments 
@@ -466,6 +474,7 @@ export class FinancialReportingEngine {
   }
 
   async generateTrialBalance(asOfDate: Date): Promise<TrialBalance> {
+    const sql = await getSql()
     const accounts = await sql`
       SELECT 
         'Cash and Bank' as account_name,
@@ -538,6 +547,7 @@ export class FinancialReportingEngine {
   }
 
   async generateCustomerAgingReport(asOfDate: Date): Promise<CustomerAgingReport> {
+    const sql = await getSql()
     const customers = await sql`
       SELECT 
         c.id as customer_id,

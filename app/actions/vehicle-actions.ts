@@ -1,12 +1,12 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function getVehicles() {
   try {
+    const sql = await getSql()
+
     const vehicles = await sql`
       SELECT 
         v.*,
@@ -41,6 +41,7 @@ export async function getVehicles() {
 
 export async function getVehicleStats() {
   try {
+    const sql = await getSql()
     const stats = await sql`
       SELECT 
         COUNT(*) as total_vehicles,
@@ -78,6 +79,7 @@ export async function getVehicleStats() {
 
 export async function addVehicle(formData: FormData) {
   try {
+    const sql = await getSql()
     const name = formData.get("name") as string
     if (!name || name.trim() === "") {
       return { success: false, message: "Vehicle name is required" }
@@ -131,6 +133,7 @@ export async function addVehicle(formData: FormData) {
 
 export async function updateVehicle(id: number, formData: FormData) {
   try {
+    const sql = await getSql()
     const updates = {
       name: formData.get("name") as string,
       type: formData.get("type") as string,
@@ -176,6 +179,7 @@ export async function updateVehicle(id: number, formData: FormData) {
 
 export async function addFuelLog(formData: FormData) {
   try {
+    const sql = await getSql()
     const fuelData = {
       vehicle_id: Number.parseInt(formData.get("vehicle_id") as string),
       log_date: formData.get("log_date") as string,
@@ -216,6 +220,7 @@ export async function addFuelLog(formData: FormData) {
 
 export async function addMaintenanceLog(formData: FormData) {
   try {
+    const sql = await getSql()
     const maintenanceData = {
       vehicle_id: Number.parseInt(formData.get("vehicle_id") as string),
       service_date: formData.get("service_date") as string,
@@ -260,6 +265,7 @@ export async function addMaintenanceLog(formData: FormData) {
 
 export async function addBusFareRecord(formData: FormData) {
   try {
+    const sql = await getSql()
     const busFareData = {
       employee_name: formData.get("employee_name") as string,
       employee_id: formData.get("employee_id") as string,
@@ -295,6 +301,7 @@ export async function addBusFareRecord(formData: FormData) {
 
 export async function getFuelStats() {
   try {
+    const sql = await getSql()
     const stats = await sql`
       SELECT 
         SUM(cost) as total_fuel_cost,
@@ -312,6 +319,7 @@ export async function getFuelStats() {
 
 export async function getMaintenanceStats() {
   try {
+    const sql = await getSql()
     const stats = await sql`
       SELECT 
         SUM(cost) as total_maintenance_cost,

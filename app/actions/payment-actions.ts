@@ -1,13 +1,13 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function processSmartPayment(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const customerId = Number.parseInt(formData.get("customer_id") as string)
     const amount = Number.parseFloat(formData.get("amount") as string)
     const method = formData.get("method") as string
@@ -133,6 +133,8 @@ export async function processSmartPayment(formData: FormData) {
 
 export async function updateFinanceSettings(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const customerId = Number.parseInt(formData.get("customer_id") as string)
     const paymentMethod = formData.get("payment_method") as string
     const mpesaNumber = formData.get("mpesa_number") as string

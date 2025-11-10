@@ -33,6 +33,14 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface FinanceDocument {
   id: string
@@ -107,6 +115,10 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
     total_outstanding: 0,
     last_payment_date: null as string | null,
   })
+
+  const [showDateRangePicker, setShowDateRangePicker] = useState(false)
+  const [statementStartDate, setStatementStartDate] = useState("")
+  const [statementEndDate, setStatementEndDate] = useState("")
 
   useEffect(() => {
     loadBillingData()
@@ -280,9 +292,15 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
     try {
       setGeneratingStatement(true)
       console.log("[v0] Generating statement for customer:", customerId)
+      console.log("[v0] Date range:", { start: statementStartDate, end: statementEndDate })
 
       const response = await fetch(`/api/customers/${customerId}/statement`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate: statementStartDate || undefined,
+          endDate: statementEndDate || undefined,
+        }),
       })
 
       console.log("[v0] Statement API response status:", response.status)
@@ -400,12 +418,22 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
       doc.save(`statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf`)
 
       toast.success("Statement generated successfully")
+      setShowDateRangePicker(false)
     } catch (error: any) {
       console.error("[v0] Error generating statement:", error.message)
       toast.error(error.message || "Failed to generate statement")
     } finally {
       setGeneratingStatement(false)
     }
+  }
+
+  const handleOpenStatementDialog = () => {
+    // Set default dates - last 30 days
+    const end = new Date()
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
+    setStatementEndDate(end.toISOString().split("T")[0])
+    setStatementStartDate(start.toISOString().split("T")[0])
+    setShowDateRangePicker(true)
   }
 
   const getStatusColor = (status: string) => {
@@ -606,9 +634,9 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
                     <FileText className="h-4 w-4 mr-2" />
                     Add Invoice
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleGenerateStatement} disabled={generatingStatement}>
+                  <DropdownMenuItem onClick={handleOpenStatementDialog} disabled={generatingStatement}>
                     <Download className="h-4 w-4 mr-2" />
-                    {generatingStatement ? "Generating..." : "Generate Statement"}
+                    Generate Statement
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1050,6 +1078,45 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showDateRangePicker} onOpenChange={setShowDateRangePicker}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Statement</DialogTitle>
+            <DialogDescription>Select the date range for the customer statement</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="start-date">Start Date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={statementStartDate}
+                onChange={(e) => setStatementStartDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="end-date">End Date</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={statementEndDate}
+                onChange={(e) => setStatementEndDate(e.target.value)}
+                min={statementStartDate}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDateRangePicker(false)} disabled={generatingStatement}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerateStatement} disabled={generatingStatement}>
+              <Download className="h-4 w-4 mr-2" />
+              {generatingStatement ? "Generating..." : "Generate Statement"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {customerData && (
         <>

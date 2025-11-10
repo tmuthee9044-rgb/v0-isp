@@ -11,7 +11,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ success: false, error: "Invalid customer ID" }, { status: 400 })
     }
 
+    const body = await request.json()
+    const { startDate: requestStartDate, endDate: requestEndDate } = body
+
     console.log("[v0] Generating statement for customer:", customerId)
+    console.log("[v0] Date range:", { requestStartDate, requestEndDate })
 
     const sql = await getSql()
 
@@ -54,30 +58,60 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const customer = customers[0]
 
-    // Get statement period (last 30 days by default)
-    const endDate = new Date()
-    const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const endDate = requestEndDate ? new Date(requestEndDate) : new Date()
+    const startDate = requestStartDate
+      ? new Date(requestStartDate)
+      : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    // Get transactions for the period
+    // Format dates as YYYY-MM-DD for proper comparison
+    const startDateStr = startDate.toISOString().split("T")[0]
+    const endDateStr = endDate.toISOString().split("T")[0]
+
+    console.log("[v0] Using date range:", { start: startDateStr, end: endDateStr })
+
     const transactions = await sql`
       SELECT 
         id,
         reference_number,
         type,
-        COALESCE(description, 'No description') as description,
+        COALESCE(description, '') as description,
         COALESCE(amount, total_amount, 0) as amount,
         total_amount,
         created_at,
         status,
-        due_date
+        due_date,
+        invoice_date,
+        payment_date
       FROM finance_documents
       WHERE customer_id = ${customerId}
-      AND created_at >= ${startDate.toISOString()}
-      AND created_at <= ${endDate.toISOString()}
-      ORDER BY created_at DESC
+      AND (
+        (created_at::date >= ${startDateStr}::date AND created_at::date <= ${endDateStr}::date)
+        OR (invoice_date >= ${startDateStr}::date AND invoice_date <= ${endDateStr}::date)
+        OR (payment_date >= ${startDateStr}::date AND payment_date <= ${endDateStr}::date)
+      )
+      ORDER BY COALESCE(payment_date, invoice_date, created_at::date) DESC
     `
 
     console.log("[v0] Found transactions for statement:", transactions.length)
+
+    if (transactions.length === 0) {
+      const allCustomerDocs = await sql`
+        SELECT id, type, created_at::date as created, invoice_date, payment_date
+        FROM finance_documents
+        WHERE customer_id = ${customerId}
+        ORDER BY created_at DESC
+        LIMIT 5
+      `
+      console.log("[v0] Sample of all customer documents:", allCustomerDocs)
+      console.log("[v0] Query date range:", { startDateStr, endDateStr })
+    }
+
+    const allDocs = await sql`
+      SELECT COUNT(*) as total
+      FROM finance_documents
+      WHERE customer_id = ${customerId}
+    `
+    console.log("[v0] Total finance documents for customer:", allDocs[0]?.total || 0)
 
     // Calculate totals
     const openingBalance = 0
@@ -96,7 +130,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     closingBalance = openingBalance + totalDebits - totalCredits
 
-    // Create statement record
     const statementNumber = `ST-${customerId}-${Date.now()}`
 
     await sql`
@@ -114,8 +147,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       ) VALUES (
         ${customerId},
         ${statementNumber},
-        ${startDate.toISOString().split("T")[0]},
-        ${endDate.toISOString().split("T")[0]},
+        ${startDateStr},
+        ${endDateStr},
         ${new Date().toISOString().split("T")[0]},
         ${openingBalance},
         ${closingBalance},
@@ -129,11 +162,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const formattedTransactions = transactions.map((t: any) => {
       const amount = Number.parseFloat(t.amount || t.total_amount || "0")
+      const transactionDate = t.payment_date || t.invoice_date || t.created_at
+
       return {
-        date: t.created_at,
-        description: t.description || `${t.type} - ${t.reference_number}`,
+        date: transactionDate,
+        description:
+          t.description || `${(t.type || "Transaction").toUpperCase()} - ${t.reference_number || `REF-${t.id}`}`,
         reference: t.reference_number || `REF-${t.id}`,
-        type: t.type,
+        type: t.type || "transaction",
         amount: amount,
       }
     })
@@ -156,9 +192,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         phone: customer.phone || "No phone",
         address: customer.address || "No address",
         city: customer.city || "Unknown",
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        generatedDate: new Date().toISOString(),
+        startDate: startDateStr,
+        endDate: endDateStr,
+        generatedDate: new Date().toISOString().split("T")[0],
         openingBalance,
         closingBalance,
         totalDebits,

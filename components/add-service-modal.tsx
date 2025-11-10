@@ -74,6 +74,7 @@ function AddServiceModal({
   const [pppoePassword, setPppoePassword] = useState("")
   const [currentTab, setCurrentTab] = useState("plans")
   const [adminOverride, setAdminOverride] = useState(false)
+  const [customerAccountNumber, setCustomerAccountNumber] = useState("")
 
   const fetchServicePlans = async () => {
     try {
@@ -119,11 +120,15 @@ function AddServiceModal({
       const data = await response.json()
 
       if (Array.isArray(data)) {
-        const availableIps = data.filter((ip: IPPool) => ip.status === "available" && !ip.customer_id)
+        const availableIps = data.filter(
+          (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
+        )
         console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
         setIpPools(availableIps)
       } else if (data.success && Array.isArray(data.addresses)) {
-        const availableIps = data.addresses.filter((ip: IPPool) => ip.status === "available" && !ip.customer_id)
+        const availableIps = data.addresses.filter(
+          (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
+        )
         console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
         setIpPools(availableIps)
       } else {
@@ -137,9 +142,28 @@ function AddServiceModal({
   }
 
   const generatePppoeCredentials = () => {
-    if (customerData.portal_username) {
-      setPppoeUsername(`${customerData.portal_username}_ppp`)
-      setPppoePassword(Math.random().toString(36).substring(2, 12))
+    if (customerAccountNumber) {
+      setPppoeUsername(customerAccountNumber)
+
+      const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      const lowercase = "abcdefghijklmnopqrstuvwxyz"
+      const numbers = "0123456789"
+      const allChars = uppercase + lowercase + numbers
+
+      let password = ""
+      password += uppercase[Math.floor(Math.random() * uppercase.length)]
+      password += lowercase[Math.floor(Math.random() * lowercase.length)]
+      password += numbers[Math.floor(Math.random() * numbers.length)]
+
+      for (let i = 3; i < 12; i++) {
+        password += allChars[Math.floor(Math.random() * allChars.length)]
+      }
+
+      password = password
+        .split("")
+        .sort(() => Math.random() - 0.5)
+        .join("")
+      setPppoePassword(password)
     }
   }
 
@@ -226,7 +250,6 @@ function AddServiceModal({
 
         if (result.success) {
           onOpenChange(false)
-          // Reset form
           setSelectedPlan("")
           setConnectionType("")
           setSelectedIpAddress("")
@@ -278,7 +301,6 @@ function AddServiceModal({
 
         if (result.success) {
           onOpenChange(false)
-          // Reset form
           setSelectedPlan("")
           setConnectionType("")
           setSelectedIpAddress("")
@@ -305,6 +327,19 @@ function AddServiceModal({
   }
 
   useEffect(() => {
+    const fetchCustomerDetails = async () => {
+      try {
+        const response = await fetch(`/api/customers/${customerId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setCustomerAccountNumber(data.account_number || "")
+        }
+      } catch (error) {
+        console.error("Error fetching customer details:", error)
+      }
+    }
+
+    fetchCustomerDetails()
     fetchServicePlans()
     fetchIpPools()
 
@@ -315,13 +350,19 @@ function AddServiceModal({
       setMacAddress(editingService.device_id || "")
       setCurrentTab("plans")
     }
-  }, [editMode, editingService])
+  }, [editMode, editingService, customerId])
 
   useEffect(() => {
-    if (pppoeEnabled && !pppoeUsername) {
+    if (pppoeEnabled && !pppoeUsername && customerAccountNumber) {
       generatePppoeCredentials()
     }
-  }, [pppoeEnabled, customerData.portal_username])
+  }, [pppoeEnabled, customerAccountNumber])
+
+  useEffect(() => {
+    if (selectedIpAddress && selectedIpAddress !== "auto") {
+      fetchIpPools()
+    }
+  }, [selectedIpAddress])
 
   const connectionTypes = [
     { value: "fiber", label: "Fiber Optic", icon: Zap, description: "High-speed fiber connection" },
@@ -514,6 +555,7 @@ function AddServiceModal({
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-sm text-muted-foreground mt-1">{ipPools.length} IP addresses available</p>
                   </div>
 
                   <div>
@@ -567,6 +609,7 @@ function AddServiceModal({
                         onChange={(e) => setPppoeUsername(e.target.value)}
                         placeholder="Enter PPPoE username"
                       />
+                      <p className="text-xs text-muted-foreground mt-1">Account number: {customerAccountNumber}</p>
                     </div>
                     <div>
                       <Label htmlFor="pppoe-password">PPPoE Password</Label>
@@ -582,6 +625,7 @@ function AddServiceModal({
                           Generate
                         </Button>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-1">Click Generate for a secure password</p>
                     </div>
                   </div>
                 )}

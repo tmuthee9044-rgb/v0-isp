@@ -306,26 +306,28 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
       }
 
       const doc = new jsPDF()
-
       const statement = data.statement
 
+      // Header
       doc.setFontSize(18)
       doc.setFont("helvetica", "bold")
-      doc.text(statement.companyInfo.name, 105, 20, { align: "center" })
+      doc.text(statement.companyInfo?.name || "ISP Management", 105, 20, { align: "center" })
 
       doc.setFontSize(12)
       doc.setFont("helvetica", "normal")
       doc.text("Statement of Account", 105, 28, { align: "center" })
 
+      // Customer Info
       doc.setFontSize(10)
       doc.setFont("helvetica", "bold")
       doc.text("Bill To:", 20, 45)
       doc.setFont("helvetica", "normal")
-      doc.text(statement.customerName, 20, 52)
-      doc.text(`Email: ${statement.email}`, 20, 59)
-      doc.text(`Phone: ${statement.phone}`, 20, 66)
-      doc.text(`Address: ${statement.address}, ${statement.city}`, 20, 73)
+      doc.text(statement.customerName || "Unknown Customer", 20, 52)
+      doc.text(`Email: ${statement.email || "N/A"}`, 20, 59)
+      doc.text(`Phone: ${statement.phone || "N/A"}`, 20, 66)
+      doc.text(`Address: ${statement.address || "N/A"}, ${statement.city || ""}`, 20, 73)
 
+      // Statement Info
       doc.setFont("helvetica", "bold")
       doc.text(`Statement #: ${statement.statementNumber}`, 20, 85)
       doc.text(
@@ -335,14 +337,15 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
       )
       doc.text(`Generated: ${new Date(statement.generatedDate).toLocaleDateString()}`, 20, 99)
 
+      // Table Header
       let yPos = 115
       doc.setFontSize(9)
       doc.setFont("helvetica", "bold")
       doc.text("Date", 20, yPos)
       doc.text("Description", 50, yPos)
       doc.text("Reference", 110, yPos)
-      doc.text("Debit", 150, yPos)
-      doc.text("Credit", 175, yPos)
+      doc.text("Debit", 150, yPos, { align: "right" })
+      doc.text("Credit", 180, yPos, { align: "right" })
 
       doc.line(20, yPos + 2, 190, yPos + 2)
       yPos += 8
@@ -350,36 +353,44 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
       doc.setFont("helvetica", "normal")
       doc.setFontSize(8)
 
-      for (const transaction of statement.transactions) {
-        if (yPos > 270) {
-          doc.addPage()
-          yPos = 20
+      if (statement.transactions && statement.transactions.length > 0) {
+        for (const transaction of statement.transactions) {
+          if (yPos > 270) {
+            doc.addPage()
+            yPos = 20
+          }
+
+          const amount = Number(transaction.amount) || 0
+          const debit = transaction.type === "invoice" ? amount.toFixed(2) : "-"
+          const credit = transaction.type === "payment" ? amount.toFixed(2) : "-"
+
+          doc.text(new Date(transaction.date).toLocaleDateString(), 20, yPos)
+          doc.text((transaction.description || "N/A").substring(0, 25), 50, yPos)
+          doc.text(transaction.reference || "N/A", 110, yPos)
+          doc.text(debit, 150, yPos, { align: "right" })
+          doc.text(credit, 180, yPos, { align: "right" })
+
+          yPos += 6
         }
-
-        const debit = transaction.type === "invoice" ? transaction.amount.toFixed(2) : "-"
-        const credit = transaction.type === "payment" ? transaction.amount.toFixed(2) : "-"
-
-        doc.text(new Date(transaction.date).toLocaleDateString(), 20, yPos)
-        doc.text(transaction.description?.substring(0, 25) || "", 50, yPos)
-        doc.text(transaction.reference || "", 110, yPos)
-        doc.text(debit, 150, yPos)
-        doc.text(credit, 175, yPos)
-
+      } else {
+        doc.text("No transactions found for this period", 20, yPos)
         yPos += 6
       }
 
+      // Summary
       yPos += 5
       doc.line(20, yPos, 190, yPos)
       yPos += 8
 
       doc.setFont("helvetica", "bold")
       doc.setFontSize(10)
-      doc.text(`Opening Balance: KES ${statement.openingBalance.toFixed(2)}`, 120, yPos)
-      doc.text(`Total Debits: KES ${statement.totalDebits.toFixed(2)}`, 120, yPos + 7)
-      doc.text(`Total Credits: KES ${statement.totalCredits.toFixed(2)}`, 120, yPos + 14)
+      doc.text(`Opening Balance: KES ${(statement.openingBalance || 0).toFixed(2)}`, 120, yPos)
+      doc.text(`Total Debits: KES ${(statement.totalDebits || 0).toFixed(2)}`, 120, yPos + 7)
+      doc.text(`Total Credits: KES ${(statement.totalCredits || 0).toFixed(2)}`, 120, yPos + 14)
       doc.setFontSize(11)
-      doc.text(`Closing Balance: KES ${statement.closingBalance.toFixed(2)}`, 120, yPos + 21)
+      doc.text(`Closing Balance: KES ${(statement.closingBalance || 0).toFixed(2)}`, 120, yPos + 21)
 
+      // Footer
       doc.setFontSize(9)
       doc.setFont("helvetica", "normal")
       doc.text("This statement is generated automatically. Thank you for your business!", 105, 280, {

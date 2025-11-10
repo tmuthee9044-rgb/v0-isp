@@ -21,11 +21,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       configMap = Object.fromEntries(companyConfig.map((row: any) => [row.key, row.value]))
     } catch (err) {
       console.log("[v0] No system_config found, using defaults")
-      configMap = {
-        company_name: "ISP Management System",
-        company_email: "support@isp.com",
-        company_phone: "+254 123 456 789",
-      }
+    }
+
+    const companyInfo = {
+      name: configMap.company_name || "ISP Management System",
+      email: configMap.company_email || "support@isp.com",
+      phone: configMap.company_phone || "+254 123 456 789",
     }
 
     // Get customer details
@@ -63,8 +64,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         id,
         reference_number,
         type,
-        description,
-        amount,
+        COALESCE(description, 'No description') as description,
+        COALESCE(amount, total_amount, 0) as amount,
         total_amount,
         created_at,
         status,
@@ -75,6 +76,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       AND created_at <= ${endDate.toISOString()}
       ORDER BY created_at DESC
     `
+
+    console.log("[v0] Found transactions for statement:", transactions.length)
 
     // Calculate totals
     const openingBalance = 0
@@ -124,16 +127,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const customerName = customer.business_name || `${customer.first_name} ${customer.last_name}`
 
+    const formattedTransactions = transactions.map((t: any) => {
+      const amount = Number.parseFloat(t.amount || t.total_amount || "0")
+      return {
+        date: t.created_at,
+        description: t.description || `${t.type} - ${t.reference_number}`,
+        reference: t.reference_number || `REF-${t.id}`,
+        type: t.type,
+        amount: amount,
+      }
+    })
+
+    console.log("[v0] Statement data:", {
+      customerName,
+      transactionCount: formattedTransactions.length,
+      totalDebits,
+      totalCredits,
+      closingBalance,
+    })
+
     // The frontend will handle PDF generation using jsPDF which works in the browser
     return NextResponse.json({
       success: true,
       statement: {
         statementNumber,
         customerName,
-        email: customer.email,
-        phone: customer.phone,
-        address: customer.address,
-        city: customer.city,
+        email: customer.email || "No email",
+        phone: customer.phone || "No phone",
+        address: customer.address || "No address",
+        city: customer.city || "Unknown",
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         generatedDate: new Date().toISOString(),
@@ -141,18 +163,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         closingBalance,
         totalDebits,
         totalCredits,
-        transactions: transactions.map((t: any) => ({
-          date: t.created_at,
-          description: t.description,
-          reference: t.reference_number,
-          type: t.type,
-          amount: Number.parseFloat(t.amount || t.total_amount || "0"),
-        })),
-        companyInfo: {
-          name: configMap.company_name || "ISP Management System",
-          email: configMap.company_email || "support@isp.com",
-          phone: configMap.company_phone || "+254 123 456 789",
-        },
+        transactions: formattedTransactions,
+        companyInfo,
       },
     })
   } catch (error: any) {

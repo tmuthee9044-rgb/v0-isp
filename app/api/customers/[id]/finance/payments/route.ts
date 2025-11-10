@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { paymentGateway } from "@/lib/payment-gateway"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 async function ensureAccountBalance(customerId: number) {
   try {
+    const sql = await getSql()
     const [existingBalance] = await sql`
       SELECT id FROM account_balances WHERE customer_id = ${customerId}
     `
@@ -36,6 +35,7 @@ async function applyPaymentToInvoices(
     let unpaidInvoices
 
     if (selectedInvoiceIds && selectedInvoiceIds.length > 0) {
+      const sql = await getSql()
       unpaidInvoices = await sql`
         SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
         FROM invoices 
@@ -46,6 +46,7 @@ async function applyPaymentToInvoices(
         ORDER BY due_date ASC, created_at ASC
       `
     } else {
+      const sql = await getSql()
       unpaidInvoices = await sql`
         SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
         FROM invoices 
@@ -70,6 +71,7 @@ async function applyPaymentToInvoices(
 
       console.log("[v0] Applying", applicationAmount, "to invoice", invoice.id)
 
+      const sql = await getSql()
       try {
         await sql`
           INSERT INTO payment_applications (payment_id, invoice_id, amount_applied, created_at)
@@ -106,6 +108,7 @@ async function applyPaymentToInvoices(
 
     if (remainingPayment > 0) {
       console.log("[v0] Creating credit adjustment for remaining amount:", remainingPayment)
+      const sql = await getSql()
       try {
         await sql`
           INSERT INTO financial_adjustments (
@@ -120,6 +123,7 @@ async function applyPaymentToInvoices(
       }
     }
 
+    const sql = await getSql()
     const updateResult = await sql`
       UPDATE account_balances 
       SET balance = balance + ${paymentAmount},
@@ -146,7 +150,8 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
   try {
     console.log("[v0] Checking for services to activate after payment for customer", customerId)
 
-    // Find pending services that should be activated (status = 'pending' and not yet activated)
+    const sql = await getSql()
+
     const pendingServices = await sql`
       SELECT cs.*, sp.name as service_name
       FROM customer_services cs
@@ -166,7 +171,6 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
     for (const service of pendingServices) {
       try {
-        // Call the activation endpoint
         const activationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/services/activate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -184,17 +188,19 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
             service_name: service.service_name,
           })
 
+          const logDetails = JSON.stringify({
+            customer_id: customerId,
+            service_id: service.id,
+            payment_id: paymentId,
+          })
+
           try {
             await sql`
               INSERT INTO system_logs (category, message, details, created_at)
               VALUES (
                 'service_activation',
-                'Service ' || ${service.service_name} || ' automatically activated after payment',
-                jsonb_build_object(
-                  'customer_id', ${customerId},
-                  'service_id', ${service.id},
-                  'payment_id', ${paymentId}
-                ),
+                ${`Service ${service.service_name} automatically activated after payment`},
+                ${logDetails}::jsonb,
                 NOW()
               )
             `
@@ -261,6 +267,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     }
 
+    const sql = await getSql()
     const customerResult = await sql`
       SELECT id, first_name, last_name, status FROM customers WHERE id = ${customerId}
     `
@@ -452,6 +459,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       if (paymentId) {
         try {
+          const sql = await getSql()
           await sql`
             UPDATE payments 
             SET status = 'failed'
@@ -496,7 +504,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const limit = Number.parseInt(searchParams.get("limit") || "10")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    // Get payment history
+    const sql = await getSql()
     const payments = await sql`
       SELECT 
         p.*,
@@ -514,7 +522,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       LIMIT ${limit} OFFSET ${offset}
     `
 
-    // Get total count
     const [{ count }] = await sql`
       SELECT COUNT(*) as count FROM payments WHERE customer_id = ${customerId}
     `

@@ -17,14 +17,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         l.name as location_name,
         l.city as location_city,
         l.address as location_address,
-        COUNT(ip.id) as total_ips_generated,
-        COUNT(CASE WHEN ip.status = 'assigned' THEN 1 END)::int as assigned_ips,
-        COUNT(CASE WHEN ip.status = 'available' THEN 1 END)::int as available_ips,
+        COUNT(ip.id)::int as total_ips_generated,
+        COUNT(CASE WHEN cs.id IS NOT NULL THEN 1 END)::int as assigned_ips,
+        COUNT(CASE WHEN cs.id IS NULL AND ip.status = 'available' THEN 1 END)::int as available_ips,
         COUNT(CASE WHEN ip.status = 'reserved' THEN 1 END)::int as reserved_ips
       FROM ip_subnets s
       LEFT JOIN network_devices r ON s.router_id = r.id
       LEFT JOIN locations l ON r.location_id = l.id
       LEFT JOIN ip_addresses ip ON s.id = ip.subnet_id
+      LEFT JOIN customer_services cs ON cs.ip_address = ip.ip_address AND cs.status != 'terminated'
       WHERE s.id = ${subnetId}
       GROUP BY s.id, r.name, r.ip_address, l.name, l.city, l.address
     `

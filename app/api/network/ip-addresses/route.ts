@@ -14,27 +14,21 @@ export async function GET(request: NextRequest) {
 
     const sql = await getSql()
 
-    const whereConditions: string[] = []
-
-    if (status) {
-      whereConditions.push(`ia.status = '${status}'`)
+    const servicesWithIps = await sql`
+      SELECT id, customer_id, ip_address, status, pg_typeof(ip_address) as ip_type
+      FROM customer_services
+      WHERE ip_address IS NOT NULL
+      AND status NOT IN ('terminated', 'cancelled')
+      LIMIT 5
+    `
+    console.log("[v0] Services with IP addresses assigned:", servicesWithIps.length)
+    if (servicesWithIps.length > 0) {
+      console.log("[v0] Sample service with IP:", servicesWithIps[0])
+      console.log("[v0] IP address value:", servicesWithIps[0].ip_address)
+      console.log("[v0] IP address type:", servicesWithIps[0].ip_type)
     }
 
-    if (subnetId) {
-      whereConditions.push(`ia.subnet_id = ${Number.parseInt(subnetId)}`)
-    }
-
-    if (customerId) {
-      whereConditions.push(`c.id = ${Number.parseInt(customerId)}`)
-    }
-
-    if (routerId) {
-      whereConditions.push(`s.router_id = ${Number.parseInt(routerId)}`)
-    }
-
-    const whereClause = whereConditions.length > 0 ? `AND ${whereConditions.join(" AND ")}` : ""
-
-    const addresses = await sql`
+    let query = `
       SELECT 
         ia.id,
         ia.ip_address,
@@ -50,18 +44,60 @@ export async function GET(request: NextRequest) {
         cs.customer_id,
         c.first_name,
         c.last_name,
-        c.business_name
+        c.business_name,
+        cs.activated_at as assigned_date
       FROM ip_addresses ia
       LEFT JOIN ip_subnets s ON ia.subnet_id = s.id
       LEFT JOIN network_devices nd ON s.router_id = nd.id
-      LEFT JOIN customer_services cs ON ia.ip_address = cs.ip_address::inet
+      LEFT JOIN customer_services cs ON 
+        host(ia.ip_address) = host(cs.ip_address) 
+        AND cs.status NOT IN ('terminated', 'cancelled')
       LEFT JOIN customers c ON cs.customer_id = c.id
-      WHERE 1=1 ${sql.unsafe(whereClause)}
-      ORDER BY ia.ip_address
+      WHERE 1=1
     `
 
+    const params: any[] = []
+    let paramIndex = 1
+
+    if (subnetId) {
+      query += ` AND ia.subnet_id = $${paramIndex}`
+      params.push(Number.parseInt(subnetId))
+      paramIndex++
+    }
+
+    if (status && status !== "all") {
+      query += ` AND ia.status = $${paramIndex}`
+      params.push(status)
+      paramIndex++
+
+      if (status === "available") {
+        query += ` AND cs.id IS NULL`
+      }
+    }
+
+    if (customerId) {
+      query += ` AND cs.customer_id = $${paramIndex}`
+      params.push(Number.parseInt(customerId))
+      paramIndex++
+    }
+
+    if (routerId) {
+      query += ` AND s.router_id = $${paramIndex}`
+      params.push(Number.parseInt(routerId))
+      paramIndex++
+    }
+
+    query += ` ORDER BY ia.ip_address`
+
+    const addresses = await sql.unsafe(query, params)
+
     console.log("[v0] Found IP addresses:", addresses.length)
-    console.log("[v0] IP addresses data:", addresses.slice(0, 3)) // Log first 3 for debugging
+    if (addresses.length > 0) {
+      console.log("[v0] Sample IP address data:", addresses[0])
+    }
+
+    const assignedCount = addresses.filter((addr: any) => addr.service_id !== null).length
+    console.log("[v0] IPs with service assignment:", assignedCount, "out of", addresses.length)
 
     return NextResponse.json({
       success: true,

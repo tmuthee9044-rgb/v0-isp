@@ -57,6 +57,7 @@ interface IPAddress {
   service_id?: number
   assigned_at?: string
   last_seen?: string
+  assigned_date?: string
 }
 
 function SubnetViewContent() {
@@ -482,37 +483,46 @@ function SubnetViewContent() {
                 <TableBody>
                   {filteredIPs.map((ip) => {
                     const isReserved = isReservedIP(ip.ip_address)
+                    const isAssigned = ip.service_id !== null && ip.service_id !== undefined
+
                     return (
-                      <TableRow key={ip.id} className={ip.status === "assigned" ? "bg-green-50" : ""}>
+                      <TableRow key={ip.id} className={isAssigned ? "bg-blue-50" : ""}>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {getStatusIcon(ip.status)}
+                            {getStatusIcon(isAssigned ? "assigned" : ip.status)}
                             <span className="font-mono font-medium">{ip.ip_address}</span>
                           </div>
                         </TableCell>
+                        <TableCell>{isAssigned ? getStatusBadge("assigned") : getStatusBadge(ip.status)}</TableCell>
                         <TableCell>
-                          {ip.status === "assigned" ? (
-                            <span className="text-sm font-medium">Yes</span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {ip.status === "assigned" && ip.customer_id ? (
+                          {isAssigned && ip.customer_id ? (
                             <Link href={`/customers/${ip.customer_id}`} className="hover:underline text-blue-600">
                               <div className="font-medium">
-                                {ip.business_name || `${ip.first_name} ${ip.last_name}`}
+                                {ip.business_name || `${ip.first_name || ""} ${ip.last_name || ""}`.trim()}
                               </div>
-                              {ip.service_id && (
-                                <div className="text-xs text-muted-foreground">Service ID: {ip.service_id}</div>
-                              )}
                             </Link>
                           ) : (
-                            <span className="text-muted-foreground">---</span>
+                            <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                        <TableCell>{ip.service_id ? <Badge variant="outline">#{ip.service_id}</Badge> : "-"}</TableCell>
-                        <TableCell>{ip.assigned_at ? new Date(ip.assigned_at).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell>
+                          {ip.service_id ? (
+                            <Badge variant="outline" className="font-mono">
+                              #{ip.service_id}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {ip.assigned_date ? (
+                            new Date(ip.assigned_date).toLocaleDateString()
+                          ) : ip.assigned_at ? (
+                            new Date(ip.assigned_at).toLocaleDateString()
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {isReserved && (
                             <Badge variant="outline" className="bg-orange-100 text-orange-800">

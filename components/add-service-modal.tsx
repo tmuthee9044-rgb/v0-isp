@@ -120,6 +120,7 @@ function AddServiceModal({
       const data = await response.json()
 
       if (Array.isArray(data)) {
+        // Filter out IPs that are currently assigned to active services
         const availableIps = data.filter(
           (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
         )

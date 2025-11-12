@@ -1,20 +1,15 @@
 "use server"
 
 import { neon } from "@neondatabase/serverless"
+import { Pool } from "pg" // Used only for local PostgreSQL
 
-// This ensures Rule 4 compliance with dual database support
-// Both local PostgreSQL and Neon serverless use the same Neon driver
-// Local DB: postgresql://user:pass@127.0.0.1:5432/dbname
-// Neon DB: postgresql://user:pass@ep-xxx.neon.tech/dbname
-
-// Database connection cache
+// Cached database client
 let sqlClient: any = null
 
 /**
- * Get the appropriate database connection string
+ * Determine which connection string to use.
  */
 function getConnectionString(): string {
-  // Try environment variables in order of preference
   const connectionString =
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
@@ -23,38 +18,64 @@ function getConnectionString(): string {
     process.env.POSTGRES_URL_NON_POOLING
 
   if (!connectionString) {
-    throw new Error("No database connection string found in environment variables")
+    throw new Error("❌ No database connection string found in environment variables")
   }
 
   return connectionString
 }
 
 /**
- * Get SQL client with automatic database detection
- * Supports both Neon serverless and local PostgreSQL via Neon driver
- * Implements Rule 4: Dual database support
+ * Detects if we are running locally or in production
+ * - localhost / 127.0.0.1 / NODE_ENV === development → local PostgreSQL
+ * - anything else → Neon serverless
+ */
+function isLocalEnvironment(): boolean {
+  const host = process.env.HOST || ""
+  return (
+    process.env.NODE_ENV === "development" ||
+    host.includes("localhost") ||
+    host.includes("127.0.0.1") ||
+    process.env.USE_LOCAL_DB === "true"
+  )
+}
+
+/**
+ * Unified SQL client — automatically selects local or Neon DB
  */
 export async function getSql(): Promise<any> {
-  if (sqlClient) {
-    return sqlClient
-  }
+  if (sqlClient) return sqlClient
+
+  const connectionString = getConnectionString()
 
   try {
-    const connectionString = getConnectionString()
+    if (isLocalEnvironment()) {
+      console.log("[DB] Using local PostgreSQL database")
 
-    const client = neon(connectionString, {
-      fetchOptions: {
-        cache: "no-store",
-      },
-    })
+      // Create and test local Pool connection
+      const pool = new Pool({ connectionString })
 
-    // Test connection
-    await client`SELECT 1 as health_check`
+      await pool.query("SELECT 1 as health_check")
 
-    console.log("[DB] Connected successfully")
+      console.log("[DB] Local PostgreSQL connected successfully")
 
-    sqlClient = client
-    return client
+      sqlClient = async (query: string, params?: any[]) => {
+        const result = await pool.query(query, params)
+        return result.rows
+      }
+    } else {
+      console.log("[DB] Using Neon serverless database")
+
+      const neonClient = neon(connectionString)
+
+      // Test Neon connection
+      await neonClient`SELECT 1 as health_check`
+
+      console.log("[DB] Neon serverless connected successfully")
+
+      sqlClient = neonClient
+    }
+
+    return sqlClient
   } catch (error: any) {
     console.error("[DB] Connection error:", error.message)
     throw new Error(`Failed to connect to database: ${error.message}`)
@@ -62,7 +83,7 @@ export async function getSql(): Promise<any> {
 }
 
 /**
- * Get database status
+ * Get database status for diagnostics
  */
 export async function getDatabaseStatus() {
   try {
@@ -73,6 +94,7 @@ export async function getDatabaseStatus() {
       connected: true,
       database: result[0]?.db,
       version: result[0]?.version,
+      driver: isLocalEnvironment() ? "pg (local)" : "neon (serverless)",
     }
   } catch (error: any) {
     return {
@@ -83,7 +105,6 @@ export async function getDatabaseStatus() {
 }
 
 export default getSql
-
-export const getSqlConnection = getSql
 export const sql = getSql
 export const db = getSql
+export const getSqlConnection = getSql

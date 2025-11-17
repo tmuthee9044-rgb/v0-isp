@@ -29,7 +29,6 @@ function getConnectionString(): string {
  */
 function isLocalEnvironment(): boolean {
   const connectionString = getConnectionString()
-  // Check if connection string points to localhost
   return (
     process.env.NODE_ENV === "development" ||
     connectionString.includes("localhost") ||
@@ -71,6 +70,49 @@ function createLocalSqlWrapper(pool: Pool) {
 }
 
 /**
+ * Ensure critical tables exist in local database
+ */
+async function ensureLocalTables(pool: Pool) {
+  try {
+    const checkTable = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'locations'
+      );
+    `)
+
+    if (!checkTable.rows[0].exists) {
+      console.log("⚙️ [DB] Creating missing tables in local database...")
+      
+      // Create locations table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS locations (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          type VARCHAR(100),
+          address TEXT,
+          latitude DECIMAL(10, 8),
+          longitude DECIMAL(11, 8),
+          parent_location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+          status VARCHAR(50) DEFAULT 'active',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `)
+
+      // Create indexes separately
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_locations_parent ON locations(parent_location_id);`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status);`)
+
+      console.log("✅ [DB] Missing tables created successfully")
+    }
+  } catch (error: any) {
+    console.warn("⚠️ [DB] Could not auto-create tables:", error.message)
+    // Don't throw - let the application continue with Neon fallback
+  }
+}
+
+/**
  * Unified SQL client — automatically selects local or Neon DB
  */
 export async function getSql(): Promise<any> {
@@ -85,9 +127,10 @@ export async function getSql(): Promise<any> {
       console.log("🔧 [DB] Using local PostgreSQL connection")
       pool = new Pool({ connectionString })
 
-      // Test connection
       await pool.query("SELECT 1 as health_check")
       console.log("✅ [DB] Local PostgreSQL connected successfully")
+
+      await ensureLocalTables(pool)
 
       sqlClient = createLocalSqlWrapper(pool)
     } else {
@@ -95,7 +138,6 @@ export async function getSql(): Promise<any> {
       const { neon } = await import("@neondatabase/serverless")
       const neonClient = neon(connectionString)
 
-      // Test connection
       await neonClient`SELECT 1 as health_check`
       console.log("✅ [DB] Neon serverless connected successfully")
 

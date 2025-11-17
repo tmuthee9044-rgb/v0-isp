@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
@@ -28,15 +28,17 @@ export async function POST(request: Request) {
 
     let imported = 0
 
-    // Import based on type
     if (importType === "customers") {
       for (const row of data) {
-        const accountNumber = `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const accountNumber = row["Account Number"] || `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        
         await sql`
           INSERT INTO customers (
             account_number, first_name, last_name, email, phone, id_number,
-            customer_type, business_name, address, city, state, postal_code,
-            installation_address, status, created_at
+            customer_type, business_name, business_type, tax_number,
+            address, city, state, postal_code, country,
+            installation_address, billing_address, gps_coordinates,
+            preferred_contact_method, referral_source, status, created_at
           ) VALUES (
             ${accountNumber},
             ${row["First Name"] || ""},
@@ -46,23 +48,31 @@ export async function POST(request: Request) {
             ${row["ID Number"] || null},
             ${row["Customer Type"] || "individual"},
             ${row["Business Name"] || null},
+            ${row["Business Type"] || null},
+            ${row["Tax Number"] || null},
             ${row["Address"] || null},
             ${row["City"] || null},
             ${row["State/Region"] || null},
             ${row["Postal Code"] || null},
+            ${row["Country"] || null},
             ${row["Installation Address"] || null},
+            ${row["Billing Address"] || null},
+            ${row["GPS Coordinates"] || null},
+            ${row["Preferred Contact Method"] || null},
+            ${row["Referral Source"] || null},
             ${row["Status"] || "active"},
             NOW()
           )
         `
         imported++
       }
-    } else if (importType === "service_plans") {
+    } else if (importType === "services") {
       for (const row of data) {
         await sql`
           INSERT INTO service_plans (
             name, description, price, download_speed, upload_speed,
-            data_limit, billing_cycle, status, created_at
+            data_limit, billing_cycle, currency, priority_level,
+            fair_usage_policy, status, created_at
           ) VALUES (
             ${row["Plan Name"]},
             ${row["Description"] || null},
@@ -71,6 +81,9 @@ export async function POST(request: Request) {
             ${Number.parseInt(row["Upload Speed (Mbps)"]) || 0},
             ${Number.parseInt(row["Data Limit (GB)"]) || null},
             ${row["Billing Cycle"] || "monthly"},
+            ${row["Currency"] || "KES"},
+            ${Number.parseInt(row["Priority Level"]) || 5},
+            ${row["Fair Usage Policy"] || null},
             ${row["Status"] || "active"},
             NOW()
           )
@@ -82,7 +95,9 @@ export async function POST(request: Request) {
         await sql`
           INSERT INTO vehicles (
             name, registration, type, model, year, fuel_type,
-            purchase_date, purchase_cost, mileage, status, created_at
+            mileage, fuel_consumption, purchase_date, purchase_cost,
+            insurance_expiry, license_expiry, last_service, next_service,
+            assigned_to, location, status, created_at
           ) VALUES (
             ${row["Vehicle Name"]},
             ${row["Registration Number"]},
@@ -90,9 +105,16 @@ export async function POST(request: Request) {
             ${row["Model"] || null},
             ${Number.parseInt(row["Year"]) || null},
             ${row["Fuel Type"] || null},
+            ${Number.parseInt(row["Current Mileage"]) || null},
+            ${Number.parseFloat(row["Fuel Consumption (L/100km)"]) || null},
             ${row["Purchase Date"] || null},
             ${Number.parseFloat(row["Purchase Cost"]) || null},
-            ${Number.parseInt(row["Current Mileage"]) || null},
+            ${row["Insurance Expiry"] || null},
+            ${row["License Expiry"] || null},
+            ${row["Last Service Date"] || null},
+            ${row["Next Service Date"] || null},
+            ${row["Assigned To"] || null},
+            ${row["Location"] || null},
             ${row["Status"] || "active"},
             NOW()
           )
@@ -125,7 +147,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ imported, total: data.length })
   } catch (error) {
-    console.error("Import error:", error)
-    return NextResponse.json({ error: "Import failed" }, { status: 500 })
+    console.error("[v0] Import error:", error)
+    return NextResponse.json({ 
+      error: "Import failed", 
+      details: error instanceof Error ? error.message : "Unknown error" 
+    }, { status: 500 })
   }
 }

@@ -3,13 +3,13 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Upload, CheckCircle, AlertCircle, Download, Users, Car, Briefcase, Settings } from "lucide-react"
+import { ArrowLeft, Upload, CheckCircle, AlertCircle, Download, Users, Car, Briefcase, Settings } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 
@@ -34,37 +34,47 @@ const ENTITY_CONFIGS = {
     name: "Customers",
     icon: Users,
     backUrl: "/customers",
-    apiEndpoint: "/api/import-customers/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
+      { key: "account_number", label: "Account Number", required: false },
       { key: "first_name", label: "First Name", required: true },
       { key: "last_name", label: "Last Name", required: true },
-      { key: "email", label: "Email", required: true },
+      { key: "email", label: "Email", required: false },
       { key: "phone", label: "Phone", required: true },
-      { key: "address", label: "Address", required: false },
-      { key: "city", label: "City", required: false },
-      { key: "postal_code", label: "Postal Code", required: false },
+      { key: "id_number", label: "ID Number", required: false },
       { key: "customer_type", label: "Customer Type", required: false },
       { key: "business_name", label: "Business Name", required: false },
-      { key: "national_id", label: "National ID", required: false },
-      { key: "date_of_birth", label: "Date of Birth", required: false },
-      { key: "gender", label: "Gender", required: false },
+      { key: "business_type", label: "Business Type", required: false },
+      { key: "tax_number", label: "Tax Number", required: false },
+      { key: "address", label: "Address", required: false },
+      { key: "city", label: "City", required: false },
+      { key: "state", label: "State/Region", required: false },
+      { key: "postal_code", label: "Postal Code", required: false },
+      { key: "country", label: "Country", required: false },
+      { key: "installation_address", label: "Installation Address", required: false },
+      { key: "billing_address", label: "Billing Address", required: false },
+      { key: "gps_coordinates", label: "GPS Coordinates", required: false },
+      { key: "preferred_contact_method", label: "Preferred Contact Method", required: false },
+      { key: "referral_source", label: "Referral Source", required: false },
+      { key: "status", label: "Status", required: false },
     ],
   },
   services: {
     name: "Service Plans",
     icon: Settings,
     backUrl: "/services",
-    apiEndpoint: "/api/import-services/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
       { key: "name", label: "Plan Name", required: true },
+      { key: "description", label: "Description", required: false },
       { key: "price", label: "Price", required: true },
       { key: "download_speed", label: "Download Speed (Mbps)", required: true },
       { key: "upload_speed", label: "Upload Speed (Mbps)", required: true },
-      { key: "service_type", label: "Service Type", required: false },
-      { key: "description", label: "Description", required: false },
       { key: "data_limit", label: "Data Limit (GB)", required: false },
-      { key: "contract_length", label: "Contract Length (months)", required: false },
-      { key: "setup_fee", label: "Setup Fee", required: false },
+      { key: "billing_cycle", label: "Billing Cycle", required: false },
+      { key: "currency", label: "Currency", required: false },
+      { key: "priority_level", label: "Priority Level", required: false },
+      { key: "fair_usage_policy", label: "Fair Usage Policy", required: false },
       { key: "status", label: "Status", required: false },
     ],
   },
@@ -72,18 +82,24 @@ const ENTITY_CONFIGS = {
     name: "Vehicles",
     icon: Car,
     backUrl: "/vehicles",
-    apiEndpoint: "/api/import-vehicles/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
-      { key: "vehicle_number", label: "Vehicle Number", required: true },
-      { key: "make", label: "Make", required: true },
-      { key: "model", label: "Model", required: true },
-      { key: "year", label: "Year", required: true },
-      { key: "vehicle_type", label: "Vehicle Type", required: false },
+      { key: "name", label: "Vehicle Name", required: true },
+      { key: "registration", label: "Registration Number", required: true },
+      { key: "type", label: "Vehicle Type", required: true },
+      { key: "model", label: "Model", required: false },
+      { key: "year", label: "Year", required: false },
       { key: "fuel_type", label: "Fuel Type", required: false },
-      { key: "engine_capacity", label: "Engine Capacity", required: false },
-      { key: "seating_capacity", label: "Seating Capacity", required: false },
-      { key: "insurance_policy", label: "Insurance Policy", required: false },
-      { key: "registration_date", label: "Registration Date", required: false },
+      { key: "mileage", label: "Current Mileage", required: false },
+      { key: "fuel_consumption", label: "Fuel Consumption (L/100km)", required: false },
+      { key: "purchase_date", label: "Purchase Date", required: false },
+      { key: "purchase_cost", label: "Purchase Cost", required: false },
+      { key: "insurance_expiry", label: "Insurance Expiry", required: false },
+      { key: "license_expiry", label: "License Expiry", required: false },
+      { key: "last_service", label: "Last Service Date", required: false },
+      { key: "next_service", label: "Next Service Date", required: false },
+      { key: "assigned_to", label: "Assigned To", required: false },
+      { key: "location", label: "Location", required: false },
       { key: "status", label: "Status", required: false },
     ],
   },
@@ -91,18 +107,17 @@ const ENTITY_CONFIGS = {
     name: "Employees",
     icon: Briefcase,
     backUrl: "/hr",
-    apiEndpoint: "/api/import-employees/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
+      { key: "employee_id", label: "Employee ID", required: true },
       { key: "first_name", label: "First Name", required: true },
       { key: "last_name", label: "Last Name", required: true },
       { key: "email", label: "Email", required: true },
-      { key: "phone", label: "Phone", required: true },
-      { key: "employee_id", label: "Employee ID", required: true },
+      { key: "phone", label: "Phone", required: false },
       { key: "department", label: "Department", required: false },
       { key: "position", label: "Position", required: false },
       { key: "hire_date", label: "Hire Date", required: false },
       { key: "salary", label: "Salary", required: false },
-      { key: "manager", label: "Manager", required: false },
       { key: "status", label: "Status", required: false },
     ],
   },
@@ -302,6 +317,8 @@ export default function UniversalImportPage() {
         switch (entityType) {
           case "customers":
             switch (col.key) {
+              case "account_number":
+                return "ACC123456"
               case "first_name":
                 return "John"
               case "last_name":
@@ -310,8 +327,38 @@ export default function UniversalImportPage() {
                 return "john.doe@example.com"
               case "phone":
                 return "+254700000000"
+              case "id_number":
+                return "ID123456"
               case "customer_type":
                 return "individual"
+              case "business_name":
+                return "Example Business"
+              case "business_type":
+                return "Retail"
+              case "tax_number":
+                return "TX123456"
+              case "address":
+                return "123 Main St"
+              case "city":
+                return "Nairobi"
+              case "state":
+                return "Nairobi"
+              case "postal_code":
+                return "00100"
+              case "country":
+                return "Kenya"
+              case "installation_address":
+                return "456 Installation St"
+              case "billing_address":
+                return "789 Billing St"
+              case "gps_coordinates":
+                return "36.7783,-1.2939"
+              case "preferred_contact_method":
+                return "email"
+              case "referral_source":
+                return "Friend"
+              case "status":
+                return "active"
               default:
                 return ""
             }
@@ -319,34 +366,72 @@ export default function UniversalImportPage() {
             switch (col.key) {
               case "name":
                 return "Basic Home Plan"
+              case "description":
+                return "A basic home internet service plan"
               case "price":
                 return "2999"
               case "download_speed":
                 return "25"
               case "upload_speed":
                 return "10"
-              case "service_type":
-                return "residential"
+              case "data_limit":
+                return "100"
+              case "billing_cycle":
+                return "monthly"
+              case "currency":
+                return "KES"
+              case "priority_level":
+                return "standard"
+              case "fair_usage_policy":
+                return "fair"
+              case "status":
+                return "active"
               default:
                 return ""
             }
           case "vehicles":
             switch (col.key) {
-              case "vehicle_number":
+              case "name":
+                return "Toyota Hiace"
+              case "registration":
                 return "KCA 123A"
-              case "make":
-                return "Toyota"
+              case "type":
+                return "van"
               case "model":
                 return "Hiace"
               case "year":
                 return "2020"
-              case "vehicle_type":
-                return "van"
+              case "fuel_type":
+                return "petrol"
+              case "mileage":
+                return "50000"
+              case "fuel_consumption":
+                return "8.5"
+              case "purchase_date":
+                return "2020-01-01"
+              case "purchase_cost":
+                return "200000"
+              case "insurance_expiry":
+                return "2025-01-01"
+              case "license_expiry":
+                return "2025-01-01"
+              case "last_service":
+                return "2023-01-01"
+              case "next_service":
+                return "2023-06-01"
+              case "assigned_to":
+                return "John Doe"
+              case "location":
+                return "Nairobi"
+              case "status":
+                return "active"
               default:
                 return ""
             }
           case "employees":
             switch (col.key) {
+              case "employee_id":
+                return "EMP001"
               case "first_name":
                 return "Jane"
               case "last_name":
@@ -355,8 +440,16 @@ export default function UniversalImportPage() {
                 return "jane.smith@company.com"
               case "phone":
                 return "+254700000001"
-              case "employee_id":
-                return "EMP001"
+              case "department":
+                return "IT"
+              case "position":
+                return "Developer"
+              case "hire_date":
+                return "2020-01-01"
+              case "salary":
+                return "50000"
+              case "status":
+                return "active"
               default:
                 return ""
             }

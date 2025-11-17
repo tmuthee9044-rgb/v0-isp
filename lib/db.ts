@@ -1,13 +1,14 @@
 "use server"
 
 import { neon } from "@neondatabase/serverless"
-import { Pool } from "pg" // Used only for local PostgreSQL
+import { Pool } from "pg"
 
 // Cached database client
 let sqlClient: any = null
+let pool: Pool | null = null
 
 /**
- * Determine which connection string to use.
+ * Determine which connection string to use
  */
 function getConnectionString(): string {
   const connectionString =
@@ -26,58 +27,80 @@ function getConnectionString(): string {
 
 /**
  * Detects if we are running locally or in production
- * - localhost / 127.0.0.1 / NODE_ENV === development → local PostgreSQL
- * - anything else → Neon serverless
  */
 function isLocalEnvironment(): boolean {
-  const host = process.env.HOST || ""
+  const connectionString = getConnectionString()
+  // Check if connection string points to localhost
   return (
     process.env.NODE_ENV === "development" ||
-    host.includes("localhost") ||
-    host.includes("127.0.0.1") ||
+    connectionString.includes("localhost") ||
+    connectionString.includes("127.0.0.1") ||
     process.env.USE_LOCAL_DB === "true"
   )
+}
+
+/**
+ * Create a Neon-compatible wrapper for local PostgreSQL Pool
+ */
+function createLocalSqlWrapper(pool: Pool) {
+  const wrapper: any = async (strings: TemplateStringsArray | string, ...values: any[]) => {
+    if (typeof strings === "string") {
+      // Called as sql.unsafe(query)
+      const result = await pool.query(strings)
+      return result.rows
+    } else {
+      // Called as sql`query ${value}`
+      let query = ""
+      for (let i = 0; i < strings.length; i++) {
+        query += strings[i]
+        if (i < values.length) {
+          query += `$${i + 1}`
+        }
+      }
+      const result = await pool.query(query, values)
+      return result.rows
+    }
+  }
+
+  // Add unsafe method for raw queries
+  wrapper.unsafe = async (query: string, params: any[] = []) => {
+    const result = await pool.query(query, params)
+    return result.rows
+  }
+
+  return wrapper
 }
 
 /**
  * Unified SQL client — automatically selects local or Neon DB
  */
 export async function getSql(): Promise<any> {
-  if (sqlClient) return sqlClient
+  if (sqlClient) {
+    return sqlClient
+  }
 
   const connectionString = getConnectionString()
 
   try {
     if (isLocalEnvironment()) {
-      console.log("[DB] Using local PostgreSQL database")
+      pool = new Pool({ connectionString })
 
-      // Create and test local Pool connection
-      const pool = new Pool({ connectionString })
-
+      // Test connection
       await pool.query("SELECT 1 as health_check")
 
-      console.log("[DB] Local PostgreSQL connected successfully")
-
-      sqlClient = async (query: string, params?: any[]) => {
-        const result = await pool.query(query, params)
-        return result.rows
-      }
+      sqlClient = createLocalSqlWrapper(pool)
     } else {
-      console.log("[DB] Using Neon serverless database")
-
       const neonClient = neon(connectionString)
 
-      // Test Neon connection
+      // Test connection
       await neonClient`SELECT 1 as health_check`
-
-      console.log("[DB] Neon serverless connected successfully")
 
       sqlClient = neonClient
     }
 
     return sqlClient
   } catch (error: any) {
-    console.error("[DB] Connection error:", error.message)
+    console.error("[DB] Failed to connect to database:", error.message)
     throw new Error(`Failed to connect to database: ${error.message}`)
   }
 }

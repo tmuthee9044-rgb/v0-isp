@@ -11,8 +11,6 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type")
     const search = searchParams.get("search")
 
-    console.log("[v0] Fetching customers with filters:", { status, location, type, search })
-
     const queryConditions = []
 
     if (status && status !== "all") {
@@ -86,25 +84,10 @@ export async function GET(request: NextRequest) {
 
     const customers = await sql.unsafe(query)
 
-    console.log("[v0] Query executed, found customers:", customers.length)
-
-    if (customers.length > 0) {
-      console.log("[v0] First customer sample:", {
-        id: customers[0].id,
-        name: customers[0].business_name || `${customers[0].first_name} ${customers[0].last_name}`,
-        email: customers[0].email,
-        service_count: customers[0].service_count,
-        outstanding_balance: customers[0].outstanding_balance,
-        actual_balance: customers[0].actual_balance,
-        open_tickets: customers[0].open_tickets,
-      })
-    }
-
     const transformedCustomers = customers.map((customer: any) => ({
       ...customer,
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
-      // Use actual aggregated values from the query
       service_count: Number(customer.service_count) || 0,
       service_plan_name: customer.service_plan_name || "",
       monthly_fee: Number(customer.monthly_fee) || 0,
@@ -115,10 +98,9 @@ export async function GET(request: NextRequest) {
       open_tickets: Number(customer.open_tickets) || 0,
     }))
 
-    console.log("[v0] Returning customers:", transformedCustomers.length)
     return NextResponse.json(transformedCustomers)
   } catch (error) {
-    console.error("[v0] Failed to fetch customers:", error)
+    console.error("Failed to fetch customers:", error)
     return NextResponse.json(
       {
         success: false,

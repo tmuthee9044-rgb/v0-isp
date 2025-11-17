@@ -8,7 +8,7 @@ export async function GET() {
     const [customerCount, monthlyRevenue, networkDevices, overdueInvoices, bandwidthUsage, recentActivity] =
       await Promise.all([
         // Total active customers
-        sql`SELECT COUNT(*) as count FROM customers`, // Fix customer count to use customers table instead of active services
+        sql`SELECT COUNT(*) as count FROM customers`,
 
         // Monthly revenue from payments
         sql`SELECT 
@@ -56,7 +56,7 @@ export async function GET() {
     const metrics = {
       users: {
         value: customerCount[0]?.count || 0,
-        change: "+5%", // This would be calculated from historical data
+        change: "+5%",
         trend: "up",
       },
       revenue: {
@@ -104,7 +104,10 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error("[v0] Dashboard metrics error:", error)
-    return NextResponse.json({ success: false, error: "Failed to fetch dashboard metrics" }, { status: 500 })
+    console.error("Dashboard metrics error:", error)
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch dashboard metrics", details: error.message },
+      { status: 500 },
+    )
   }
 }

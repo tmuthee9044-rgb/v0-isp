@@ -1,6 +1,5 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
 import { Pool } from "pg"
 
 // Cached database client
@@ -83,24 +82,29 @@ export async function getSql(): Promise<any> {
 
   try {
     if (isLocalEnvironment()) {
+      console.log("🔧 [DB] Using local PostgreSQL connection")
       pool = new Pool({ connectionString })
 
       // Test connection
       await pool.query("SELECT 1 as health_check")
+      console.log("✅ [DB] Local PostgreSQL connected successfully")
 
       sqlClient = createLocalSqlWrapper(pool)
     } else {
+      console.log("☁️ [DB] Using Neon serverless connection")
+      const { neon } = await import("@neondatabase/serverless")
       const neonClient = neon(connectionString)
 
       // Test connection
       await neonClient`SELECT 1 as health_check`
+      console.log("✅ [DB] Neon serverless connected successfully")
 
       sqlClient = neonClient
     }
 
     return sqlClient
   } catch (error: any) {
-    console.error("[DB] Failed to connect to database:", error.message)
+    console.error("[DB] Connection error:", error.message)
     throw new Error(`Failed to connect to database: ${error.message}`)
   }
 }

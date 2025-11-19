@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Building2, Server, CreditCard, MessageSquare, Users, Globe, Zap, FileText, Settings, CheckCircle, AlertCircle, Clock, Database, RefreshCw, Upload, Download, FileSpreadsheet, UserPlus, Network, DollarSign, TableIcon, Search } from 'lucide-react'
+import { Building2, Server, CreditCard, MessageSquare, Users, Globe, Zap, FileText, Settings, CheckCircle, AlertCircle, Clock, Database, RefreshCw, Upload, Download, FileSpreadsheet, UserPlus, Network, DollarSign, TableIcon, Search, Loader2 } from 'lucide-react'
 import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 const settingsCategories = [
   {
@@ -174,6 +176,12 @@ const getModuleStatusBadge = (status: string) => {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("overview")
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isSyncingSchema, setIsSyncingSchema] = useState(false)
+  const [showSyncDialog, setShowSyncDialog] = useState(false)
+  const [syncProgress, setSyncProgress] = useState(0)
+  const [syncLogs, setSyncLogs] = useState<string[]>([])
+  const [syncStats, setSyncStats] = useState({ total: 0, processed: 0, updated: 0, created: 0, errors: 0 })
+
   const [dbStatus, setDbStatus] = useState(null)
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [importProgress, setImportProgress] = useState(0)
@@ -227,31 +235,84 @@ export default function SettingsPage() {
     }
   }
 
-  const handleDatabaseSync = async () => {
-    setIsSyncing(true)
+  const addSyncLog = (msg: string) => setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
+
+  const runSchemaSync = async () => {
+    setIsSyncingSchema(true)
+    setSyncProgress(0)
+    setSyncLogs([])
+    setSyncStats({ total: 0, processed: 0, updated: 0, created: 0, errors: 0 })
+    addSyncLog("Starting schema synchronization...")
+    setShowSyncDialog(true)
+
+    let offset = 0
+    const limit = 10
+    let keepGoing = true
+
     try {
-      const response = await fetch("/api/sync-database", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
+      while (keepGoing) {
+        addSyncLog(`Processing batch: offset ${offset}...`)
+        
+        const res = await fetch('/api/admin/sync-schema-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offset, limit })
+        })
 
-      const result = await response.json()
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to fetch batch')
+        }
 
-      if (response.ok) {
-        toast.success("Database sync completed successfully!")
-        await fetchDatabaseStatus()
-        console.log("Database sync result:", result)
-      } else {
-        toast.error(`Database sync failed: ${result.error}`)
+        const data = await res.json()
+        const { total, results } = data
+
+        // Update stats
+        let newUpdated = 0
+        let newCreated = 0
+        let newErrors = 0
+
+        results.forEach((r: any) => {
+          if (r.status === 'updated') {
+            newUpdated++
+            addSyncLog(`✅ Updated table ${r.table}: Added columns [${r.columnsAdded.join(', ')}]`)
+          } else if (r.status === 'created') {
+            newCreated++
+            addSyncLog(`✨ Created table ${r.table}`)
+          } else if (r.status.startsWith('error')) {
+            newErrors++
+            addSyncLog(`❌ Error on table ${r.table}: ${r.error}`)
+          }
+        })
+
+        setSyncStats(prev => ({
+          total,
+          processed: prev.processed + results.length,
+          updated: prev.updated + newUpdated,
+          created: prev.created + newCreated,
+          errors: prev.errors + newErrors
+        }))
+
+        const currentProgress = Math.min(100, Math.round(((offset + results.length) / total) * 100))
+        setSyncProgress(currentProgress)
+
+        if (offset + results.length >= total || results.length === 0) {
+          keepGoing = false
+        } else {
+          offset += limit
+        }
       }
-    } catch (error) {
-      console.error("Database sync error:", error)
-      toast.error("Failed to sync database. Please try again.")
+      addSyncLog("Synchronization complete!")
+      await fetchDatabaseStatus() // Refresh status after sync
+    } catch (error: any) {
+      addSyncLog(`❌ Critical Error: ${error.message}`)
     } finally {
-      setIsSyncing(false)
+      setIsSyncingSchema(false)
     }
+  }
+
+  const handleDatabaseSync = async () => {
+    runSchemaSync()
   }
 
   const handleFileImport = async (file: File, importType: string) => {
@@ -298,11 +359,14 @@ export default function SettingsPage() {
       services: "/templates/services-template.csv",
       billing: "/templates/billing-template.csv",
       users: "/templates/users-template.csv",
+      bulk: "/templates/bulk-import-template.xlsx"
     }
 
     const link = document.createElement("a")
+    // @ts-ignore
     link.href = templates[templateType] || "#"
-    link.download = `${templateType}-template.csv`
+    // @ts-ignore
+    link.download = `${templateType}-template.${templateType === "bulk" ? "xlsx" : "csv"}`
     link.click()
   }
 
@@ -513,19 +577,96 @@ export default function SettingsPage() {
                           </div>
                         )}
                       </div>
-                      <Button onClick={handleDatabaseSync} disabled={isSyncing} className="w-full" size="sm">
-                        {isSyncing ? (
-                          <>
-                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                            Syncing Database...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Sync Database Schema
-                          </>
-                        )}
-                      </Button>
+                      
+                      <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
+                        <DialogTrigger asChild>
+                          <Button onClick={runSchemaSync} disabled={isSyncingSchema} className="w-full" size="sm">
+                            {isSyncingSchema ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Syncing Schema...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                                Start Full Schema Sync
+                              </>
+                            )}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                          <DialogHeader>
+                            <DialogTitle>Database Schema Synchronization</DialogTitle>
+                            <DialogDescription>
+                              Syncing local PostgreSQL schema with Neon Serverless (Source of Truth).
+                            </DialogDescription>
+                          </DialogHeader>
+                          
+                          <div className="grid gap-4 md:grid-cols-4 py-4">
+                            <Card>
+                              <CardHeader className="pb-2 p-4">
+                                <CardTitle className="text-xs font-medium text-muted-foreground">Total Tables</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-4 pt-0">
+                                <div className="text-2xl font-bold">{syncStats.total || '-'}</div>
+                              </CardContent>
+                            </Card>
+                            <Card>
+                              <CardHeader className="pb-2 p-4">
+                                <CardTitle className="text-xs font-medium text-muted-foreground">Processed</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-4 pt-0">
+                                <div className="text-2xl font-bold">{syncStats.processed}</div>
+                              </CardContent>
+                            </Card>
+                            <Card>
+                              <CardHeader className="pb-2 p-4">
+                                <CardTitle className="text-xs font-medium text-muted-foreground">Created</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-4 pt-0">
+                                <div className="text-2xl font-bold text-green-600">{syncStats.created}</div>
+                              </CardContent>
+                            </Card>
+                            <Card>
+                              <CardHeader className="pb-2 p-4">
+                                <CardTitle className="text-xs font-medium text-muted-foreground">Updated</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-4 pt-0">
+                                <div className="text-2xl font-bold text-blue-600">{syncStats.updated}</div>
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span>Progress</span>
+                              <span>{syncProgress}%</span>
+                            </div>
+                            <Progress value={syncProgress} className="h-2" />
+                          </div>
+
+                          <div className="flex-1 min-h-0 mt-4 border rounded-md">
+                            <ScrollArea className="h-[300px] p-4 w-full bg-slate-950 text-slate-50 font-mono text-xs">
+                              {syncLogs.length === 0 ? (
+                                <div className="text-slate-500 italic">Ready to start...</div>
+                              ) : (
+                                syncLogs.map((log, i) => (
+                                  <div key={i} className="mb-1 whitespace-nowrap">
+                                    {log}
+                                  </div>
+                                ))
+                              )}
+                            </ScrollArea>
+                          </div>
+                          
+                          <DialogFooter>
+                            <Button onClick={() => setShowSyncDialog(false)} disabled={isSyncingSchema}>
+                              {isSyncingSchema ? 'Syncing...' : 'Close'}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+
                     </div>
                   </CardContent>
                 </Card>

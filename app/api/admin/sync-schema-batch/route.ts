@@ -11,11 +11,11 @@ async function getConnections() {
   if (!neonUrl) throw new Error("POSTGRES_URL (Neon) not defined");
   if (!localUrl) throw new Error("DATABASE_URL (Local) not defined");
   
-  const { neon } = await import("@neondatabase/serverless");
-  const neonSql = neon(neonUrl);
+  const neonModule = await import("@neondatabase/serverless");
+  const neonClient = neonModule.neon(neonUrl);
   const localPool = new Pool({ connectionString: localUrl });
 
-  return { neonSql, localPool };
+  return { neonSql: neonClient, localPool };
 }
 
 export async function POST(request: Request) {

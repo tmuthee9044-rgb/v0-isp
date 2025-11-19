@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
 import { Pool } from 'pg';
 
 // Helper to get explicit connections
@@ -12,6 +11,7 @@ async function getConnections() {
   if (!neonUrl) throw new Error("POSTGRES_URL (Neon) not defined");
   if (!localUrl) throw new Error("DATABASE_URL (Local) not defined");
   
+  const { neon } = await import("@neondatabase/serverless");
   const neonSql = neon(neonUrl);
   const localPool = new Pool({ connectionString: localUrl });
 

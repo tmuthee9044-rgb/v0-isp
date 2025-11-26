@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS customer_services CASCADE;
 DROP TABLE IF EXISTS service_plans CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS locations CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -28,6 +29,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 
 -- Core Tables
+
+-- Add locations table with all required columns
+CREATE TABLE locations (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    address TEXT,
+    city VARCHAR(255),
+    region VARCHAR(255),
+    description TEXT,
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- 1. Customers Table
 CREATE TABLE customers (
@@ -233,6 +247,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 12';
+    RAISE NOTICE 'Total tables created: 13';
     RAISE NOTICE 'Total indexes created: 18';
 END $$;

@@ -2,9 +2,11 @@
 
 import { Pool } from "pg"
 
-// Cached database client
-let sqlClient: any = null
+// Cached database clients
+let localSqlClient: any = null
+let neonSqlClient: any = null
 let pool: Pool | null = null
+const useNeonFallback = false
 
 /**
  * Determine which connection string to use
@@ -38,32 +40,62 @@ function isLocalEnvironment(): boolean {
 }
 
 /**
- * Create a Neon-compatible wrapper for local PostgreSQL Pool
+ * Create a Neon-compatible wrapper for local PostgreSQL Pool with auto-fallback
  */
 function createLocalSqlWrapper(pool: Pool) {
   const wrapper: any = async (strings: TemplateStringsArray | string, ...values: any[]) => {
-    if (typeof strings === "string") {
-      // Called as sql.unsafe(query)
-      const result = await pool.query(strings)
-      return result.rows
-    } else {
-      // Called as sql`query ${value}`
-      let query = ""
-      for (let i = 0; i < strings.length; i++) {
-        query += strings[i]
-        if (i < values.length) {
-          query += `$${i + 1}`
+    try {
+      if (typeof strings === "string") {
+        // Called as sql.unsafe(query)
+        const result = await pool.query(strings)
+        return result.rows
+      } else {
+        // Called as sql`query ${value}`
+        let query = ""
+        for (let i = 0; i < strings.length; i++) {
+          query += strings[i]
+          if (i < values.length) {
+            query += `$${i + 1}`
+          }
+        }
+        const result = await pool.query(query, values)
+        return result.rows
+      }
+    } catch (error: any) {
+      if (error.code === "42703" || error.code === "42P01" || error.message.includes("does not exist")) {
+        console.warn(`⚠️ [DB] Schema error in local PostgreSQL: ${error.message}`)
+        console.log("🔄 [DB] Falling back to Neon serverless...")
+
+        // Get Neon client and retry query
+        const neonClient = await getNeonClient()
+
+        if (typeof strings === "string") {
+          const result = await neonClient.unsafe(strings)
+          return result
+        } else {
+          // For tagged templates, use Neon directly
+          return await neonClient(strings, ...values)
         }
       }
-      const result = await pool.query(query, values)
-      return result.rows
+      throw error
     }
   }
 
-  // Add unsafe method for raw queries
+  // Add unsafe method for raw queries with fallback
   wrapper.unsafe = async (query: string, params: any[] = []) => {
-    const result = await pool.query(query, params)
-    return result.rows
+    try {
+      const result = await pool.query(query, params)
+      return result.rows
+    } catch (error: any) {
+      if (error.code === "42703" || error.code === "42P01" || error.message.includes("does not exist")) {
+        console.warn(`⚠️ [DB] Schema error in local PostgreSQL: ${error.message}`)
+        console.log("🔄 [DB] Falling back to Neon serverless...")
+
+        const neonClient = await getNeonClient()
+        return await neonClient.unsafe(query, params)
+      }
+      throw error
+    }
   }
 
   return wrapper
@@ -83,7 +115,7 @@ async function ensureLocalTables(pool: Pool) {
 
     if (!checkTable.rows[0].exists) {
       console.log("⚙️ [DB] Creating missing tables in local database...")
-      
+
       // Create locations table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS locations (
@@ -112,27 +144,43 @@ async function ensureLocalTables(pool: Pool) {
   }
 }
 
+async function getNeonClient() {
+  if (neonSqlClient) {
+    return neonSqlClient
+  }
+
+  const connectionString = getConnectionString()
+  console.log("☁️ [DB] Initializing Neon serverless connection for fallback...")
+  const { neon } = await import("@neondatabase/serverless")
+  neonSqlClient = neon(connectionString)
+
+  return neonSqlClient
+}
+
 /**
  * Unified SQL client — automatically selects local or Neon DB
  */
 export async function getSql(): Promise<any> {
-  if (sqlClient) {
-    return sqlClient
+  if (useNeonFallback && neonSqlClient) {
+    return neonSqlClient
+  }
+
+  if (localSqlClient) {
+    return localSqlClient
   }
 
   const connectionString = getConnectionString()
 
   try {
     if (isLocalEnvironment()) {
-      console.log("🔧 [DB] Using local PostgreSQL connection")
+      console.log("🔧 [DB] Using local PostgreSQL connection with auto-fallback")
       pool = new Pool({ connectionString })
 
       await pool.query("SELECT 1 as health_check")
       console.log("✅ [DB] Local PostgreSQL connected successfully")
 
-      await ensureLocalTables(pool)
-
-      sqlClient = createLocalSqlWrapper(pool)
+      localSqlClient = createLocalSqlWrapper(pool)
+      return localSqlClient
     } else {
       console.log("☁️ [DB] Using Neon serverless connection")
       const { neon } = await import("@neondatabase/serverless")
@@ -141,10 +189,9 @@ export async function getSql(): Promise<any> {
       await neonClient`SELECT 1 as health_check`
       console.log("✅ [DB] Neon serverless connected successfully")
 
-      sqlClient = neonClient
+      neonSqlClient = neonClient
+      return neonClient
     }
-
-    return sqlClient
   } catch (error: any) {
     console.error("[DB] Connection error:", error.message)
     throw new Error(`Failed to connect to database: ${error.message}`)

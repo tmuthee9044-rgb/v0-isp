@@ -22,10 +22,25 @@ export async function POST(request: NextRequest) {
     logs.push(`Neon URL: ${neonUrl.substring(0, 30)}...`)
     logs.push(`Local URL: ${localUrl.substring(0, 30)}...`)
 
-    // Connect to both databases
     const { neon } = await import("@neondatabase/serverless")
     const neonSql = neon(neonUrl)
     const localPool = new Pool({ connectionString: localUrl })
+
+    // Test local connection first
+    try {
+      await localPool.query("SELECT 1")
+      logs.push(`✓ Successfully connected to local PostgreSQL`)
+    } catch (connError: any) {
+      logs.push(`✗ Failed to connect to local PostgreSQL: ${connError.message}`)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Cannot connect to local PostgreSQL database. Please ensure PostgreSQL is running on localhost:5432",
+          logs,
+        },
+        { status: 500 },
+      )
+    }
 
     let tablesCreated = 0
     let columnsAdded = 0
@@ -82,7 +97,6 @@ export async function POST(request: NextRequest) {
         const tableExists = tableExistsResult.rows[0].exists
 
         if (!tableExists) {
-          // Create table with all columns
           const columnDefs = neonColumns
             .map((col: any) => {
               let typeDef = col.data_type.toUpperCase()
@@ -101,7 +115,10 @@ export async function POST(request: NextRequest) {
               } else if (col.data_type === "timestamp with time zone") {
                 typeDef = "TIMESTAMPTZ"
               } else if (col.data_type === "ARRAY") {
-                typeDef = "TEXT[]" // Default array type
+                typeDef = "TEXT[]"
+              } else if (col.data_type === "USER-DEFINED") {
+                // Handle enums and custom types as TEXT
+                typeDef = "TEXT"
               }
 
               let columnDef = `"${col.column_name}" ${typeDef}`
@@ -114,8 +131,14 @@ export async function POST(request: NextRequest) {
               // Handle defaults (only for simple defaults)
               if (col.column_default) {
                 const defaultValue = col.column_default
-                // Skip complex defaults like nextval, now(), etc. for initial creation
-                if (!defaultValue.includes("nextval") && !defaultValue.includes("::")) {
+                // Handle common default patterns
+                if (defaultValue.includes("now()")) {
+                  columnDef += " DEFAULT CURRENT_TIMESTAMP"
+                } else if (defaultValue.includes("true")) {
+                  columnDef += " DEFAULT true"
+                } else if (defaultValue.includes("false")) {
+                  columnDef += " DEFAULT false"
+                } else if (!defaultValue.includes("nextval") && !defaultValue.includes("::")) {
                   columnDef += ` DEFAULT ${defaultValue}`
                 }
               }
@@ -124,7 +147,7 @@ export async function POST(request: NextRequest) {
             })
             .join(",\n  ")
 
-          const createTableSQL = `CREATE TABLE "${tableName}" (\n  ${columnDefs}\n)`
+          const createTableSQL = `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${columnDefs}\n)`
 
           await localPool.query(createTableSQL)
           logs.push(`  ✅ Created table: ${tableName} with ${neonColumns.length} columns`)
@@ -159,17 +182,24 @@ export async function POST(request: NextRequest) {
                   typeDef = "TIMESTAMPTZ"
                 } else if (col.data_type === "ARRAY") {
                   typeDef = "TEXT[]"
+                } else if (col.data_type === "USER-DEFINED") {
+                  typeDef = "TEXT"
                 }
 
                 let columnDef = typeDef
 
-                // Add default if simple
-                if (
-                  col.column_default &&
-                  !col.column_default.includes("nextval") &&
-                  !col.column_default.includes("::")
-                ) {
-                  columnDef += ` DEFAULT ${col.column_default}`
+                // Add default if applicable
+                if (col.column_default) {
+                  const defaultValue = col.column_default
+                  if (defaultValue.includes("now()")) {
+                    columnDef += " DEFAULT CURRENT_TIMESTAMP"
+                  } else if (defaultValue.includes("true")) {
+                    columnDef += " DEFAULT true"
+                  } else if (defaultValue.includes("false")) {
+                    columnDef += " DEFAULT false"
+                  } else if (!defaultValue.includes("nextval") && !defaultValue.includes("::")) {
+                    columnDef += ` DEFAULT ${defaultValue}`
+                  }
                 }
 
                 // Alter table to add column
@@ -207,7 +237,7 @@ export async function POST(request: NextRequest) {
     logs.push(`Columns added: ${columnsAdded}`)
     logs.push(`Errors encountered: ${errors}`)
     logs.push(`Duration: ${duration}s`)
-    logs.push(`\nYour local PostgreSQL database now has the same schema as Neon!`)
+    logs.push(`\nYour local PostgreSQL database now has all ${neonTables.length} tables with matching schemas!`)
 
     return NextResponse.json({
       success: true,

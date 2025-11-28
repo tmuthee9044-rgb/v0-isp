@@ -22,8 +22,15 @@ export async function POST(request: NextRequest) {
     logs.push(`Neon URL: ${neonUrl.substring(0, 30)}...`)
     logs.push(`Local URL: ${localUrl.substring(0, 30)}...`)
 
-    const { neon } = await import("@neondatabase/serverless")
-    const neonSql = neon(neonUrl)
+    const neonModule = await import("@neondatabase/serverless")
+    const neonFunction = neonModule.neon || neonModule.default
+
+    if (typeof neonFunction !== "function") {
+      logs.push(`✗ Failed to load neon function from module`)
+      return NextResponse.json({ error: "Failed to load Neon database driver", logs }, { status: 500 })
+    }
+
+    const neonSql = neonFunction(neonUrl)
     const localPool = new Pool({ connectionString: localUrl })
 
     // Test local connection first

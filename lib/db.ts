@@ -151,10 +151,24 @@ async function getNeonClient() {
 
   const connectionString = getConnectionString()
   console.log("☁️ [DB] Initializing Neon serverless connection for fallback...")
-  const { neon } = await import("@neondatabase/serverless")
-  neonSqlClient = neon(connectionString)
 
-  return neonSqlClient
+  try {
+    const neonModule = await import("@neondatabase/serverless")
+
+    // Try to get the neon function in multiple ways
+    const neonFunction = neonModule.neon || neonModule.default
+
+    if (typeof neonFunction !== "function") {
+      throw new Error("Failed to load neon function from @neondatabase/serverless")
+    }
+
+    neonSqlClient = neonFunction(connectionString)
+    console.log("✅ [DB] Neon fallback client created successfully")
+    return neonSqlClient
+  } catch (error: any) {
+    console.error("❌ [DB] Failed to create Neon client:", error.message)
+    throw error
+  }
 }
 
 /**

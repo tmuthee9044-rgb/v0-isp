@@ -106,15 +106,21 @@ export async function updateCompanySettings(formData: FormData) {
     }
 
     // Check if company profile exists
-    const existingProfile = await sql`
-      SELECT id FROM company_profiles 
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `
+    let existingProfile
+    try {
+      existingProfile = await sql`
+        SELECT id FROM company_profiles 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `
+    } catch (queryError) {
+      console.error("[v0] Error querying company_profiles:", queryError)
+      existingProfile = []
+    }
 
     console.log("[v0] Existing profile found:", existingProfile.length > 0)
 
-    if (existingProfile.length > 0) {
+    if (existingProfile && existingProfile.length > 0 && existingProfile[0]?.id) {
       console.log("[v0] Updating existing profile with company name:", companyName.trim())
 
       try {

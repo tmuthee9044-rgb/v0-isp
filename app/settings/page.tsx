@@ -1,18 +1,50 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Building2, Server, CreditCard, MessageSquare, Users, Globe, Zap, FileText, Settings, CheckCircle, AlertCircle, Clock, Database, RefreshCw, Upload, Download, FileSpreadsheet, UserPlus, Network, DollarSign, TableIcon, Search, Loader2 } from 'lucide-react'
+import {
+  Building2,
+  Server,
+  CreditCard,
+  MessageSquare,
+  Users,
+  Globe,
+  Zap,
+  FileText,
+  Settings,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Database,
+  RefreshCw,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  UserPlus,
+  Network,
+  DollarSign,
+  TableIcon,
+  Search,
+  Loader2,
+} from "lucide-react"
 import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 const settingsCategories = [
@@ -235,77 +267,56 @@ export default function SettingsPage() {
     }
   }
 
-  const addSyncLog = (msg: string) => setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
+  const addSyncLog = (msg: string) => setSyncLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
 
   const runSchemaSync = async () => {
     setIsSyncingSchema(true)
     setSyncProgress(0)
     setSyncLogs([])
     setSyncStats({ total: 0, processed: 0, updated: 0, created: 0, errors: 0 })
-    addSyncLog("Starting schema synchronization...")
+    addSyncLog("Starting comprehensive schema synchronization for all 146 tables...")
     setShowSyncDialog(true)
 
-    let offset = 0
-    const limit = 10
-    let keepGoing = true
-
     try {
-      while (keepGoing) {
-        addSyncLog(`Processing batch: offset ${offset}...`)
-        
-        const res = await fetch('/api/admin/sync-schema-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ offset, limit })
-        })
+      const res = await fetch("/api/admin/sync-all-146-tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
 
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Failed to fetch batch')
-        }
-
-        const data = await res.json()
-        const { total, results } = data
-
-        // Update stats
-        let newUpdated = 0
-        let newCreated = 0
-        let newErrors = 0
-
-        results.forEach((r: any) => {
-          if (r.status === 'updated') {
-            newUpdated++
-            addSyncLog(`✅ Updated table ${r.table}: Added columns [${r.columnsAdded.join(', ')}]`)
-          } else if (r.status === 'created') {
-            newCreated++
-            addSyncLog(`✨ Created table ${r.table}`)
-          } else if (r.status.startsWith('error')) {
-            newErrors++
-            addSyncLog(`❌ Error on table ${r.table}: ${r.error}`)
-          }
-        })
-
-        setSyncStats(prev => ({
-          total,
-          processed: prev.processed + results.length,
-          updated: prev.updated + newUpdated,
-          created: prev.created + newCreated,
-          errors: prev.errors + newErrors
-        }))
-
-        const currentProgress = Math.min(100, Math.round(((offset + results.length) / total) * 100))
-        setSyncProgress(currentProgress)
-
-        if (offset + results.length >= total || results.length === 0) {
-          keepGoing = false
-        } else {
-          offset += limit
-        }
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Failed to sync database schema")
       }
-      addSyncLog("Synchronization complete!")
+
+      const data = await res.json()
+
+      // Display logs from the sync operation
+      if (data.logs && Array.isArray(data.logs)) {
+        data.logs.forEach((log: string) => addSyncLog(log))
+      }
+
+      // Update stats from the response
+      setSyncStats({
+        total: data.totalTables || 0,
+        processed: data.totalTables || 0,
+        updated: data.columnsAdded || 0,
+        created: data.tablesCreated || 0,
+        errors: data.errors || 0,
+      })
+
+      setSyncProgress(100)
+      addSyncLog(`✅ Synchronization complete!`)
+      addSyncLog(
+        `📊 Summary: ${data.tablesCreated} tables created, ${data.columnsAdded} columns added, ${data.errors} errors`,
+      )
+
+      toast.success(`Schema sync complete! ${data.tablesCreated} tables created, ${data.columnsAdded} columns added`)
+
       await fetchDatabaseStatus() // Refresh status after sync
+      await fetchAllTables() // Refresh table list
     } catch (error: any) {
       addSyncLog(`❌ Critical Error: ${error.message}`)
+      toast.error(`Schema sync failed: ${error.message}`)
     } finally {
       setIsSyncingSchema(false)
     }
@@ -359,7 +370,7 @@ export default function SettingsPage() {
       services: "/templates/services-template.csv",
       billing: "/templates/billing-template.csv",
       users: "/templates/users-template.csv",
-      bulk: "/templates/bulk-import-template.xlsx"
+      bulk: "/templates/bulk-import-template.xlsx",
     }
 
     const link = document.createElement("a")
@@ -371,7 +382,7 @@ export default function SettingsPage() {
   }
 
   const filteredTables = allTables.filter((table) =>
-    table.table_name.toLowerCase().includes(tableSearchQuery.toLowerCase())
+    table.table_name.toLowerCase().includes(tableSearchQuery.toLowerCase()),
   )
 
   return (
@@ -539,7 +550,8 @@ export default function SettingsPage() {
                 </Button>
               </CardTitle>
               <CardDescription>
-                Manage all {allTables.length} database tables, sync schema, and monitor database health (Rule 4 compliant: PostgreSQL offline + Neon serverless)
+                Manage all {allTables.length} database tables, sync schema, and monitor database health (Rule 4
+                compliant: PostgreSQL offline + Neon serverless)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -577,10 +589,10 @@ export default function SettingsPage() {
                           </div>
                         )}
                       </div>
-                      
+
                       <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
                         <DialogTrigger asChild>
-                          <Button onClick={runSchemaSync} disabled={isSyncingSchema} className="w-full" size="sm">
+                          <Button onClick={handleDatabaseSync} disabled={isSyncingSchema} className="w-full" size="sm">
                             {isSyncingSchema ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -601,14 +613,16 @@ export default function SettingsPage() {
                               Syncing local PostgreSQL schema with Neon Serverless (Source of Truth).
                             </DialogDescription>
                           </DialogHeader>
-                          
+
                           <div className="grid gap-4 md:grid-cols-4 py-4">
                             <Card>
                               <CardHeader className="pb-2 p-4">
-                                <CardTitle className="text-xs font-medium text-muted-foreground">Total Tables</CardTitle>
+                                <CardTitle className="text-xs font-medium text-muted-foreground">
+                                  Total Tables
+                                </CardTitle>
                               </CardHeader>
                               <CardContent className="p-4 pt-0">
-                                <div className="text-2xl font-bold">{syncStats.total || '-'}</div>
+                                <div className="text-2xl font-bold">{syncStats.total || "-"}</div>
                               </CardContent>
                             </Card>
                             <Card>
@@ -658,15 +672,14 @@ export default function SettingsPage() {
                               )}
                             </ScrollArea>
                           </div>
-                          
+
                           <DialogFooter>
                             <Button onClick={() => setShowSyncDialog(false)} disabled={isSyncingSchema}>
-                              {isSyncingSchema ? 'Syncing...' : 'Close'}
+                              {isSyncingSchema ? "Syncing..." : "Close"}
                             </Button>
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
-
                     </div>
                   </CardContent>
                 </Card>
@@ -725,16 +738,13 @@ export default function SettingsPage() {
                     <div>
                       <CardTitle className="text-base flex items-center space-x-2">
                         <TableIcon className="h-4 w-4" />
-                        <span>All Database Tables ({filteredTables.length}/{allTables.length})</span>
+                        <span>
+                          All Database Tables ({filteredTables.length}/{allTables.length})
+                        </span>
                       </CardTitle>
                       <CardDescription>View and manage all database tables with real-time statistics</CardDescription>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={fetchAllTables}
-                      disabled={isLoadingTables}
-                    >
+                    <Button variant="outline" size="sm" onClick={fetchAllTables} disabled={isLoadingTables}>
                       {isLoadingTables ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
                       ) : (

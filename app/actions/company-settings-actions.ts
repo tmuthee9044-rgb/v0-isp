@@ -1,10 +1,11 @@
 "use server"
 import { revalidatePath } from "next/cache"
-import sql from "@/lib/db" // Declare the sql variable here
+import { getSql } from "@/lib/db"
 
 export async function getCompanySettings() {
   try {
     console.log("[v0] Fetching company settings from database")
+    const sql = await getSql()
 
     const companyProfile = await sql`
       SELECT * FROM company_profiles 
@@ -20,7 +21,7 @@ export async function getCompanySettings() {
       ORDER BY key
     `
 
-    console.log(`[v0] Found company profile and ${systemSettings.length} system settings`)
+    console.log(`[v0] Found ${companyProfile.length} company profiles and ${systemSettings.length} system settings`)
 
     // Convert system settings array to object
     const settingsObject: Record<string, any> = {}
@@ -105,6 +106,9 @@ export async function updateCompanySettings(formData: FormData) {
       return { success: false, message: "Company name is required and cannot be empty" }
     }
 
+    const sql = await getSql()
+    console.log("[v0] Got SQL client")
+
     // Check if company profile exists
     let existingProfile
     try {
@@ -113,6 +117,7 @@ export async function updateCompanySettings(formData: FormData) {
         ORDER BY created_at DESC 
         LIMIT 1
       `
+      console.log("[v0] Existing profile query result:", existingProfile)
     } catch (queryError) {
       console.error("[v0] Error querying company_profiles:", queryError)
       existingProfile = []
@@ -121,7 +126,7 @@ export async function updateCompanySettings(formData: FormData) {
     console.log("[v0] Existing profile found:", existingProfile.length > 0)
 
     if (existingProfile && existingProfile.length > 0 && existingProfile[0]?.id) {
-      console.log("[v0] Updating existing profile with company name:", companyName.trim())
+      console.log("[v0] Updating existing profile ID:", existingProfile[0].id, "with company name:", companyName.trim())
 
       try {
         const updateResult = await sql`
@@ -151,10 +156,13 @@ export async function updateCompanySettings(formData: FormData) {
           WHERE id = ${existingProfile[0].id}
           RETURNING id
         `
-        console.log("[v0] Profile updated successfully, ID:", updateResult[0]?.id)
+        console.log("[v0] Profile updated successfully, result:", updateResult)
       } catch (updateError) {
         console.error("[v0] Error updating profile:", updateError)
-        throw updateError
+        return {
+          success: false,
+          message: `Failed to update: ${updateError instanceof Error ? updateError.message : "Unknown error"}. Please run schema sync first.`,
+        }
       }
     } else {
       console.log("[v0] Creating new profile with company name:", companyName.trim())
@@ -178,10 +186,13 @@ export async function updateCompanySettings(formData: FormData) {
           )
           RETURNING id
         `
-        console.log("[v0] Profile created successfully, ID:", insertResult[0]?.id)
+        console.log("[v0] Profile created successfully, result:", insertResult)
       } catch (insertError) {
         console.error("[v0] Error creating profile:", insertError)
-        throw insertError
+        return {
+          success: false,
+          message: `Failed to create: ${insertError instanceof Error ? insertError.message : "Unknown error"}. Please run schema sync first.`,
+        }
       }
     }
 
@@ -240,6 +251,7 @@ export async function updateCompanySettings(formData: FormData) {
 
 export async function getContentData(type: "terms" | "privacy") {
   try {
+    const sql = await getSql()
     const result = await sql`
       SELECT value FROM system_config 
       WHERE key = ${`content_${type}`}
@@ -258,6 +270,7 @@ export async function getContentData(type: "terms" | "privacy") {
 
 export async function updateContentData(type: "terms" | "privacy", content: any) {
   try {
+    const sql = await getSql()
     const contentWithTimestamp = {
       ...content,
       lastUpdated: new Date().toLocaleDateString(),
@@ -295,6 +308,7 @@ export async function uploadFile(formData: FormData, type: "logo" | "favicon" | 
     const fileName = `${type}_${Date.now()}_${file.name}`
     const filePath = `/uploads/${fileName}`
 
+    const sql = await getSql()
     // Store file path in system_config
     await sql`
       INSERT INTO system_config (key, value, created_at) 

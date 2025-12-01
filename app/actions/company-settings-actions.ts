@@ -4,7 +4,6 @@ import { getSql } from "@/lib/db"
 
 export async function getCompanySettings() {
   try {
-    console.log("[v0] Fetching company settings from database")
     const sql = await getSql()
 
     const companyProfile = await sql`
@@ -20,8 +19,6 @@ export async function getCompanySettings() {
       WHERE key LIKE 'company_%' OR key LIKE 'branding_%' OR key LIKE 'contact_%' OR key LIKE 'localization_%'
       ORDER BY key
     `
-
-    console.log(`[v0] Found ${companyProfile.length} company profiles and ${systemSettings.length} system settings`)
 
     // Convert system settings array to object
     const settingsObject: Record<string, any> = {}
@@ -75,8 +72,6 @@ export async function getCompanySettings() {
 
 export async function updateCompanySettings(formData: FormData) {
   try {
-    console.log("[v0] Form data received:", Object.fromEntries(formData.entries()))
-
     const companyName = formData.get("company_name") as string
     const registrationNumber = formData.get("registration_number") as string
     const taxNumber = formData.get("tax_number") as string
@@ -99,15 +94,11 @@ export async function updateCompanySettings(formData: FormData) {
     const taxSystem = formData.get("tax_system") as string
     const taxRate = formData.get("tax_rate") as string
 
-    console.log("[v0] Company name value:", companyName, "Type:", typeof companyName)
-
     if (!companyName || companyName.trim() === "" || companyName === "null" || companyName === "undefined") {
-      console.log("[v0] Company name validation failed")
       return { success: false, message: "Company name is required and cannot be empty" }
     }
 
     const sql = await getSql()
-    console.log("[v0] Got SQL client")
 
     // Check if company profile exists
     let existingProfile
@@ -117,19 +108,20 @@ export async function updateCompanySettings(formData: FormData) {
         ORDER BY created_at DESC 
         LIMIT 1
       `
-      console.log("[v0] Existing profile query result:", existingProfile)
-    } catch (queryError) {
-      console.error("[v0] Error querying company_profiles:", queryError)
+    } catch (queryError: any) {
+      if (queryError.code === "42703" || queryError.code === "42P01") {
+        return {
+          success: false,
+          message:
+            "Database schema is missing columns. Please run 'Fix Company Schema' from Settings > Database Management.",
+        }
+      }
       existingProfile = []
     }
 
-    console.log("[v0] Existing profile found:", existingProfile.length > 0)
-
     if (existingProfile && existingProfile.length > 0 && existingProfile[0]?.id) {
-      console.log("[v0] Updating existing profile ID:", existingProfile[0].id, "with company name:", companyName.trim())
-
       try {
-        const updateResult = await sql`
+        await sql`
           UPDATE company_profiles 
           SET 
             company_name = ${companyName.trim()},
@@ -156,19 +148,22 @@ export async function updateCompanySettings(formData: FormData) {
           WHERE id = ${existingProfile[0].id}
           RETURNING id
         `
-        console.log("[v0] Profile updated successfully, result:", updateResult)
-      } catch (updateError) {
-        console.error("[v0] Error updating profile:", updateError)
+      } catch (updateError: any) {
+        if (updateError.code === "42703") {
+          return {
+            success: false,
+            message:
+              "Database schema is missing columns. Please run 'Fix Company Schema' from Settings > Database Management.",
+          }
+        }
         return {
           success: false,
-          message: `Failed to update: ${updateError instanceof Error ? updateError.message : "Unknown error"}. Please run schema sync first.`,
+          message: `Failed to update: ${updateError.message}`,
         }
       }
     } else {
-      console.log("[v0] Creating new profile with company name:", companyName.trim())
-
       try {
-        const insertResult = await sql`
+        await sql`
           INSERT INTO company_profiles (
             company_name, registration_number, tax_number, description, 
             industry, established_date, phone, email, website, address,
@@ -186,29 +181,27 @@ export async function updateCompanySettings(formData: FormData) {
           )
           RETURNING id
         `
-        console.log("[v0] Profile created successfully, result:", insertResult)
-      } catch (insertError) {
-        console.error("[v0] Error creating profile:", insertError)
+      } catch (insertError: any) {
+        if (insertError.code === "42703") {
+          return {
+            success: false,
+            message:
+              "Database schema is missing columns. Please run 'Fix Company Schema' from Settings > Database Management.",
+          }
+        }
         return {
           success: false,
-          message: `Failed to create: ${insertError instanceof Error ? insertError.message : "Unknown error"}. Please run schema sync first.`,
+          message: `Failed to create: ${insertError.message}`,
         }
       }
     }
 
-    console.log("[v0] Updating system_config settings...")
-
     const settings = [
-      // Basic Info (additional fields not in company_profiles)
       { key: "company_trading_name", value: formData.get("trading_name") as string },
       { key: "company_size", value: formData.get("company_size") as string },
-
-      // Branding
       { key: "branding_primary_color", value: formData.get("primary_color") as string },
       { key: "branding_secondary_color", value: formData.get("secondary_color") as string },
       { key: "branding_accent_color", value: formData.get("accent_color") as string },
-
-      // Contact Info (additional fields)
       { key: "contact_secondary_phone", value: formData.get("secondary_phone") as string },
       { key: "contact_support_email", value: formData.get("support_email") as string },
       { key: "contact_facebook", value: formData.get("social_facebook") as string },
@@ -220,7 +213,6 @@ export async function updateCompanySettings(formData: FormData) {
       { key: "contact_country", value: formData.get("country") as string },
     ]
 
-    // Update or insert each setting
     for (const setting of settings) {
       if (setting.value) {
         try {
@@ -231,15 +223,12 @@ export async function updateCompanySettings(formData: FormData) {
             DO UPDATE SET value = ${setting.value}, created_at = CURRENT_TIMESTAMP
           `
         } catch (settingError) {
-          console.error(`[v0] Error updating setting ${setting.key}:`, settingError)
           // Continue with other settings even if one fails
         }
       }
     }
 
-    console.log("[v0] All settings updated successfully, revalidating path...")
     revalidatePath("/settings/company")
-    console.log("[v0] Path revalidated, returning success response")
 
     return { success: true, message: "Company settings updated successfully" }
   } catch (error) {
@@ -296,20 +285,15 @@ export async function updateContentData(type: "terms" | "privacy", content: any)
 
 export async function uploadFile(formData: FormData, type: "logo" | "favicon" | "template") {
   try {
-    // This would integrate with your file storage solution (e.g., Vercel Blob, AWS S3)
-    // For now, we'll simulate the upload and store the file path in system_config
-
     const file = formData.get("file") as File
     if (!file) {
       return { success: false, message: "No file provided" }
     }
 
-    // Simulate file upload - in production, upload to your storage service
     const fileName = `${type}_${Date.now()}_${file.name}`
     const filePath = `/uploads/${fileName}`
 
     const sql = await getSql()
-    // Store file path in system_config
     await sql`
       INSERT INTO system_config (key, value, created_at) 
       VALUES (${`file_${type}`}, ${filePath}, CURRENT_TIMESTAMP)

@@ -28,16 +28,30 @@ export async function POST(request: NextRequest) {
     let neonSql: any
     try {
       const neonModule = await import("@neondatabase/serverless")
-      const neonFunction = neonModule.neon || neonModule.default || (neonModule as any).default?.neon
 
-      if (typeof neonFunction !== "function") {
-        throw new Error("Could not find neon function in module")
+      // Try to get the neon function from various possible export patterns
+      let neonFunction
+      if (typeof neonModule.neon === "function") {
+        neonFunction = neonModule.neon
+      } else if (typeof neonModule.default === "function") {
+        neonFunction = neonModule.default
+      } else if (neonModule.default && typeof neonModule.default.neon === "function") {
+        neonFunction = neonModule.default.neon
+      } else {
+        throw new Error("Could not find neon function in module exports")
       }
 
       neonSql = neonFunction(neonUrl)
+
+      // Verify neonSql is actually a function
+      if (typeof neonSql !== "function") {
+        throw new Error("neon function did not return a callable SQL function")
+      }
+
       logs.push(`✓ Connected to Neon database`)
     } catch (neonError: any) {
       logs.push(`✗ Failed to connect to Neon: ${neonError.message}`)
+      logs.push(`✗ Error stack: ${neonError.stack}`)
       return NextResponse.json({ error: "Failed to connect to Neon database", logs }, { status: 500 })
     }
 

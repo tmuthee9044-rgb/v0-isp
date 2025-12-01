@@ -8,7 +8,6 @@ export async function POST(request: NextRequest) {
   try {
     logs.push(`[${new Date().toISOString()}] Starting comprehensive database schema synchronization...`)
 
-    // Get database connection strings
     const neonUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL
     if (!neonUrl) {
       return NextResponse.json({ error: "Neon database URL not configured" }, { status: 500 })
@@ -19,30 +18,37 @@ export async function POST(request: NextRequest) {
         ? process.env.DATABASE_URL
         : `postgresql://postgres:postgres@127.0.0.1:5432/isp_system`
 
-    logs.push(`Neon URL: ${neonUrl.substring(0, 30)}...`)
-    logs.push(`Local URL: ${localUrl.substring(0, 30)}...`)
+    logs.push(`Connecting to databases...`)
 
-    const neonModule = await import("@neondatabase/serverless")
-    const neonFunction = neonModule.neon || neonModule.default
+    let neonSql: any
+    try {
+      const neonModule = await import("@neondatabase/serverless")
+      const neonFunction = neonModule.neon || neonModule.default || (neonModule as any).default?.neon
 
-    if (typeof neonFunction !== "function") {
-      logs.push(`✗ Failed to load neon function from module`)
-      return NextResponse.json({ error: "Failed to load Neon database driver", logs }, { status: 500 })
+      if (typeof neonFunction !== "function") {
+        throw new Error("Could not find neon function in module")
+      }
+
+      neonSql = neonFunction(neonUrl)
+      logs.push(`✓ Connected to Neon database`)
+    } catch (neonError: any) {
+      logs.push(`✗ Failed to connect to Neon: ${neonError.message}`)
+      return NextResponse.json({ error: "Failed to connect to Neon database", logs }, { status: 500 })
     }
 
-    const neonSql = neonFunction(neonUrl)
     const localPool = new Pool({ connectionString: localUrl })
 
-    // Test local connection first
+    // Test local connection
     try {
       await localPool.query("SELECT 1")
-      logs.push(`✓ Successfully connected to local PostgreSQL`)
+      logs.push(`✓ Connected to local PostgreSQL`)
     } catch (connError: any) {
       logs.push(`✗ Failed to connect to local PostgreSQL: ${connError.message}`)
+      await localPool.end()
       return NextResponse.json(
         {
           success: false,
-          error: "Cannot connect to local PostgreSQL database. Please ensure PostgreSQL is running on localhost:5432",
+          error: "Cannot connect to local PostgreSQL database",
           logs,
         },
         { status: 500 },

@@ -278,17 +278,26 @@ export default function SettingsPage() {
     setShowSyncDialog(true)
 
     try {
+      addSyncLog("Sending POST request to /api/admin/sync-all-146-tables...")
+
       const res = await fetch("/api/admin/sync-all-146-tables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
 
+      addSyncLog(`Response status: ${res.status} ${res.statusText}`)
+
       if (!res.ok) {
         const err = await res.json()
+        addSyncLog(`❌ API Error: ${JSON.stringify(err, null, 2)}`)
         throw new Error(err.error || "Failed to sync database schema")
       }
 
       const data = await res.json()
+
+      if (!data.success && data.error) {
+        throw new Error(data.error)
+      }
 
       // Display logs from the sync operation
       if (data.logs && Array.isArray(data.logs)) {
@@ -316,6 +325,9 @@ export default function SettingsPage() {
       await fetchAllTables() // Refresh table list
     } catch (error: any) {
       addSyncLog(`❌ Critical Error: ${error.message}`)
+      if (error.stack) {
+        addSyncLog(`Stack trace: ${error.stack}`)
+      }
       toast.error(`Schema sync failed: ${error.message}`)
     } finally {
       setIsSyncingSchema(false)

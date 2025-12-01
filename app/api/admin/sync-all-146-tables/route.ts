@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
 
     const neonUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL
     if (!neonUrl) {
-      return NextResponse.json({ error: "Neon database URL not configured" }, { status: 500 })
+      logs.push("❌ ERROR: Neon database URL not configured in environment variables")
+      return NextResponse.json({ error: "Neon database URL not configured", logs }, { status: 500 })
     }
 
     const localUrl =
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
         ? process.env.DATABASE_URL
         : `postgresql://postgres:postgres@127.0.0.1:5432/isp_system`
 
+    logs.push(`Neon URL configured: ${neonUrl.includes("neon.tech") ? "Yes (Neon)" : "Using DATABASE_URL"}`)
+    logs.push(
+      `Local URL configured: ${localUrl.includes("localhost") || localUrl.includes("127.0.0.1") ? "Yes" : "No"}`,
+    )
     logs.push(`Connecting to databases...`)
 
     let neonSql: any

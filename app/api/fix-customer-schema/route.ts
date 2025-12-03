@@ -78,7 +78,7 @@ export async function POST() {
 
     // Execute all ALTER TABLE queries
     for (const query of alterQueries) {
-      await sql(query)
+      await sql.unsafe(query)
       console.log("[v0] Executed:", query.substring(0, 80) + "...")
     }
 
@@ -93,7 +93,7 @@ export async function POST() {
     ]
 
     for (const query of indexQueries) {
-      await sql(query)
+      await sql.unsafe(query)
       console.log("[v0] Created index:", query.substring(0, 80) + "...")
     }
 

@@ -61,7 +61,7 @@ export async function POST() {
 
     for (const query of fixQueries) {
       try {
-        await sql(query)
+        await sql.unsafe(query)
         queriesExecuted++
         console.log(`[v0] Executed query ${queriesExecuted}/${fixQueries.length}`)
       } catch (error) {
@@ -99,7 +99,7 @@ export async function POST() {
 
         if (checkResult.length === 0) {
           // Column doesn't exist, add it
-          await sql(`ALTER TABLE ${addition.table} ADD COLUMN ${addition.column} ${addition.type}`)
+          await sql.unsafe(`ALTER TABLE ${addition.table} ADD COLUMN ${addition.column} ${addition.type}`)
           console.log(`[v0] Added ${addition.column} column to ${addition.table}`)
           results.push({
             action: "add_column",

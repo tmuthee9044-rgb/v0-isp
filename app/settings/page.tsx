@@ -30,6 +30,7 @@ import {
   TableIcon,
   Search,
   Loader2,
+  CheckCircle2,
 } from "lucide-react"
 import Link from "next/link"
 import { Input } from "@/components/ui/input"
@@ -289,7 +290,7 @@ export default function SettingsPage() {
 
       if (!res.ok) {
         const err = await res.json()
-        addSyncLog(`❌ API Error: ${JSON.stringify(err, null, 2)}`)
+        addSyncLog(`❌ API Error: ${JSON.JSON.stringify(err, null, 2)}`)
         throw new Error(err.error || "Failed to sync database schema")
       }
 
@@ -329,6 +330,62 @@ export default function SettingsPage() {
         addSyncLog(`Stack trace: ${error.stack}`)
       }
       toast.error(`Schema sync failed: ${error.message}`)
+    } finally {
+      setIsSyncingSchema(false)
+    }
+  }
+
+  const executeQuickSchemaFix = async () => {
+    setIsSyncingSchema(true)
+    setSyncProgress(0)
+    setSyncLogs([])
+    addSyncLog("Executing quick schema fix (adding 191 missing columns to 43 tables)...")
+    setShowSyncDialog(true)
+
+    try {
+      const res = await fetch("/api/admin/execute-schema-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      addSyncLog(`Response status: ${res.status} ${res.statusText}`)
+
+      if (!res.ok) {
+        const err = await res.json()
+        addSyncLog(`❌ API Error: ${JSON.JSON.stringify(err, null, 2)}`)
+        throw new Error(err.error || "Failed to execute schema fix")
+      }
+
+      const data = await res.json()
+
+      if (!data.success && data.error) {
+        throw new Error(data.error)
+      }
+
+      // Display results
+      addSyncLog(`✅ Schema fix completed!`)
+      addSyncLog(`📊 Summary: ${data.successCount} successful, ${data.errorCount} errors`)
+      addSyncLog(`Total statements executed: ${data.totalStatements}`)
+
+      // Show detailed results
+      if (data.results && Array.isArray(data.results)) {
+        const errors = data.results.filter((r: any) => !r.success)
+        if (errors.length > 0) {
+          addSyncLog(`\n❌ Errors encountered:`)
+          errors.forEach((r: any) => {
+            addSyncLog(`  - ${r.error}`)
+          })
+        }
+      }
+
+      setSyncProgress(100)
+      toast.success(`Schema fix complete! ${data.successCount} columns added/verified`)
+
+      await fetchDatabaseStatus()
+      await fetchAllTables()
+    } catch (error: any) {
+      addSyncLog(`❌ Critical Error: ${error.message}`)
+      toast.error(`Schema fix failed: ${error.message}`)
     } finally {
       setIsSyncingSchema(false)
     }
@@ -692,6 +749,26 @@ export default function SettingsPage() {
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
+
+                      <Button
+                        onClick={executeQuickSchemaFix}
+                        disabled={isSyncingSchema}
+                        className="w-full bg-transparent"
+                        size="sm"
+                        variant="outline"
+                      >
+                        {isSyncingSchema ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Fixing Schema...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                            Quick Fix (Add Missing Columns)
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

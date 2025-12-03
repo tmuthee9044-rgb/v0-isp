@@ -27,7 +27,7 @@ export async function GET() {
 
     for (const table of mainTables) {
       try {
-        const result = await sql`SELECT COUNT(*) as count FROM ${sql(table)}`
+        const result = await sql.unsafe(`SELECT COUNT(*) as count FROM ${table}`)
         recordCounts[table] = Number.parseInt(result[0].count)
       } catch (error) {
         recordCounts[table] = 0

@@ -1053,19 +1053,73 @@ apply_database_fixes() {
     print_success "Database migrations completed successfully"
 }
 
-print_header "Step 8.5: Fixing Database Schema Issues"
-
-# Initialize variables to be used in this block
-MISSING_TABLES=()
-TABLES_WITH_MISSING_COLUMNS=()
-
-if [ ${#MISSING_TABLES[@]} -gt 0 ] || [ ${#TABLES_WITH_MISSING_COLUMNS[@]} -gt 0 ]; then
-    print_info "Applying automatic schema fixes..."
+verify_database_schema() {
+    print_header "Step 8: Verifying Database Schema"
     
-    # Create missing routers table if it doesn't exist
-    if [[ " ${MISSING_TABLES[*]} " =~ " routers " ]]; then
-        print_info "Creating missing 'routers' table..."
-        sudo -u postgres psql -d "$DB_NAME" <<'EOF'
+    DB_NAME="${DB_NAME:-isp_system}"
+    
+    print_info "Checking expected table and column counts..."
+    
+    # Expected tables and their column counts
+    declare -A EXPECTED_TABLE_COLUMNS=(
+        ["account_balances"]="20" ["admin_logs"]="10" ["automation_workflows"]="10" ["backup_access_logs"]="13" ["backup_file_inventory"]="12" ["backup_jobs"]="24" ["backup_restore_logs"]="11" ["backup_schedules"]="18" ["backup_settings"]="42" ["backup_storage_locations"]="19" ["balance_sheet_view"]="6" ["bandwidth_configs"]="7" ["bandwidth_patterns"]="6" ["bank_transactions"]="9" ["billing_cycles"]="7" ["bonus_campaigns"]="15" ["budget_line_items"]="12" ["budget_versions"]="7" ["budgets"]="9" ["bus_fare_records"]="12" ["capacity_alerts"]="7" ["capacity_predictions"]="6" ["card_transactions"]="9" ["cash_flow_categories"]="5" ["cash_flow_transactions"]="8" ["cash_transactions"]="8" ["chart_of_accounts"]="9" ["communication_settings"]="7" ["company_content"]="5" ["company_profiles"]="24" ["connection_methods"]="7" ["credit_applications"]="6" ["credit_notes"]="15" ["customer_addresses"]="11" ["customer_billing_configurations"]="30" ["customer_categories"]="6" ["customer_contacts"]="7" ["customer_document_access_logs"]="6" ["customer_document_shares"]="9" ["customer_documents"]="24" ["customer_emergency_contacts"]="7" ["customer_equipment"]="22" ["customer_notes"]="7" ["customer_notifications"]="7" ["customer_payment_accounts"]="8" ["customer_phone_numbers"]="6" ["customer_services"]="14" ["customer_statements"]="17" ["customers"]="32" ["email_logs"]="15" ["employees"]="13" ["equipment_returns"]="19" ["expense_approvals"]="5" ["expense_categories"]="7" ["expense_subcategories"]="6" ["expenses"]="21" ["finance_audit_trail"]="10" ["finance_documents"]="18" ["financial_adjustments"]="15" ["financial_periods"]="6" ["financial_reports"]="7" ["fuel_logs"]="10" ["hotspot_sessions"]="7" ["hotspot_users"]="10" ["hotspot_vouchers"]="8" ["hotspots"]="15" ["infrastructure_investments"]="7" ["inventory"]="11" ["inventory_items"]="15" ["inventory_serial_numbers"]="19" ["invoice_items"]="8" ["invoices"]="10" ["ip_addresses"]="11" ["ip_pools"]="8" ["ip_subnets"]="8" ["journal_entries"]="10" ["journal_entry_lines"]="8" ["knowledge_base"]="9" ["locations"]="9" ["loyalty_redemptions"]="14" ["loyalty_transactions"]="11" ["maintenance_logs"]="12" ["message_campaigns"]="13" ["message_templates"]="7" ["messages"]="14" ["mpesa_logs"]="18" ["network_configurations"]="11" ["network_devices"]="12" ["network_forecasts"]="6" ["notification_logs"]="13" ["notification_templates"]="7" ["openvpn_configs"]="9" ["openvpn_logs"]="12" ["payment_applications"]="6" ["payment_gateway_configs"]="11" ["payment_methods"]="6" ["payment_reminders"]="7" ["payments"]="9" ["payroll_records"]="19" ["performance_reviews"]="12" ["permissions"]="6" ["portal_sessions"]="9" ["portal_settings"]="7" ["purchase_order_items"]="7" ["purchase_orders"]="11" ["radius_logs"]="20" ["refunds"]="12" ["revenue_categories"]="6" ["revenue_streams"]="6" ["role_permissions"]="4" ["roles"]="7" ["router_logs"]="10" ["router_performance_history"]="12" ["router_services"]="6" ["router_sync_status"]="13" ["routers"]="29" ["server_configurations"]="7" ["service_activation_logs"]="8" ["service_inventory"]="6" ["service_plans"]="12" ["service_requests"]="11" ["sms_logs"]="15" ["subnets"]="7" ["supplier_invoice_items"]="7" ["supplier_invoices"]="17" ["suppliers"]="11" ["support_tickets"]="12" ["sync_jobs"]="11" ["system_config"]="4" ["system_logs"]="17" ["task_attachments"]="7" ["task_categories"]="5" ["task_comments"]="5" ["tasks"]="13" ["tax_configurations"]="7" ["tax_periods"]="6" ["tax_returns"]="17" ["trial_balance_view"]="7" ["user_activity_logs"]="9" ["users"]="7" ["vehicles"]="25" ["wallet_balances"]="11" ["wallet_bonus_rules"]="17" ["wallet_transactions"]="12" ["warehouses"]="7"
+    )
+    
+    TOTAL_TABLES_EXPECTED=${#EXPECTED_TABLE_COLUMNS[@]}
+    MISSING_TABLES=()
+    TABLES_WITH_WRONG_COLUMN_COUNT=()
+    TOTAL_TABLES_OK=0
+    
+    for table in "${!EXPECTED_TABLE_COLUMNS[@]}"; do
+        # Check if table exists
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = '$table');" | grep -q "t"; then
+            
+            # Table exists, check column count
+            EXPECTED_COUNT=${EXPECTED_TABLE_COLUMNS[$table]}
+            ACTUAL_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table';")
+            
+            if [ "$EXPECTED_COUNT" -eq "$ACTUAL_COUNT" ]; then
+                print_success "✓ $table (Correct column count: $ACTUAL_COUNT)"
+                TOTAL_TABLES_OK=$((TOTAL_TABLES_OK + 1))
+            else
+                print_warning "⚠ $table (Expected $EXPECTED_COUNT columns, found $ACTUAL_COUNT)"
+                TABLES_WITH_WRONG_COLUMN_COUNT+=("$table")
+            fi
+        else
+            print_error "✗ $table (Table does not exist)"
+            MISSING_TABLES+=("$table")
+        fi
+    done
+    
+    echo ""
+    print_info "Schema Verification Summary:"
+    print_info "  Total tables expected: $TOTAL_TABLES_EXPECTED"
+    print_info "  Tables fully verified: $TOTAL_TABLES_OK"
+    
+    if [ ${#MISSING_TABLES[@]} -gt 0 ]; then
+        print_error "  Missing tables: ${#MISSING_TABLES[@]} (${MISSING_TABLES[*]})"
+    fi
+    
+    if [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -gt 0 ]; then
+        print_warning "  Tables with incorrect column counts: ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} (${TABLES_WITH_WRONG_COLUMN_COUNT[*]})"
+    fi
+    
+    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -eq 0 ]; then
+        print_success "  ✓ All expected tables and columns verified successfully!"
+    else
+        print_warning "  Schema verification found issues that need to be fixed"
+        print_info "  These will be addressed in the next step (Apply Database Fixes)"
+    fi
+}
+
+fix_database_schema() {
+    print_header "Step 8.5: Applying Database Fixes"
+    
+    print_info "Creating missing tables and adding missing columns..."
+    
+    # Create routers table if missing
+    sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
+-- Create routers table
 CREATE TABLE IF NOT EXISTS routers (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(255),
@@ -1078,7 +1132,7 @@ CREATE TABLE IF NOT EXISTS routers (
     password VARCHAR(255),
     ssh_port INTEGER DEFAULT 22,
     api_port INTEGER,
-    status VARCHAR(50) DEFAULT 'offline',
+    status VARCHAR(50) DEFAULT 'active',
     location VARCHAR(255),
     location_id INTEGER,
     firmware_version VARCHAR(100),
@@ -1095,24 +1149,19 @@ CREATE TABLE IF NOT EXISTS routers (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-EOF
-        if [ $? -eq 0 ]; then
-            print_success "✓ Created routers table"
-        else
-            print_error "✗ Failed to create routers table"
-        fi
-    fi
-    
-    # Add missing columns to existing tables
-    print_info "Adding missing columns to tables..."
-    
-    # Add columns to company_profiles
-    sudo -u postgres psql -d "$DB_NAME" <<'EOF'
+
+-- Add missing columns to existing tables
 DO $$ 
 BEGIN
-    -- company_profiles missing columns
+    -- company_profiles
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='company_name') THEN
         ALTER TABLE company_profiles ADD COLUMN company_name VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='registration_number') THEN
+        ALTER TABLE company_profiles ADD COLUMN registration_number VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='tax_number') THEN
+        ALTER TABLE company_profiles ADD COLUMN tax_number VARCHAR(255);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='default_language') THEN
         ALTER TABLE company_profiles ADD COLUMN default_language VARCHAR(10) DEFAULT 'en';
@@ -1121,60 +1170,411 @@ BEGIN
         ALTER TABLE company_profiles ADD COLUMN currency VARCHAR(10) DEFAULT 'USD';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='timezone') THEN
-        ALTER TABLE company_profiles ADD COLUMN timezone VARCHAR(50) DEFAULT 'UTC';
+        ALTER TABLE company_profiles ADD COLUMN timezone VARCHAR(100) DEFAULT 'UTC';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='date_format') THEN
         ALTER TABLE company_profiles ADD COLUMN date_format VARCHAR(50) DEFAULT 'YYYY-MM-DD';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='time_format') THEN
-        ALTER TABLE company_profiles ADD COLUMN time_format VARCHAR(50) DEFAULT '24h';
+        ALTER TABLE company_profiles ADD COLUMN time_format VARCHAR(50) DEFAULT 'HH:mm:ss';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='number_format') THEN
-        ALTER TABLE company_profiles ADD COLUMN number_format VARCHAR(50) DEFAULT '1,000.00';
+        ALTER TABLE company_profiles ADD COLUMN number_format VARCHAR(50) DEFAULT '1,234.56';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='week_start') THEN
-        ALTER TABLE company_profiles ADD COLUMN week_start VARCHAR(10) DEFAULT 'monday';
+        ALTER TABLE company_profiles ADD COLUMN week_start VARCHAR(10) DEFAULT 'Monday';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='tax_system') THEN
         ALTER TABLE company_profiles ADD COLUMN tax_system VARCHAR(50);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='tax_rate') THEN
-        ALTER TABLE company_profiles ADD COLUMN tax_rate NUMERIC(5,2) DEFAULT 0;
+        ALTER TABLE company_profiles ADD COLUMN tax_rate NUMERIC(5,2);
     END IF;
     
-    -- customers missing columns
+    -- customers
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='business_name') THEN
         ALTER TABLE customers ADD COLUMN business_name VARCHAR(255);
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='business_type') THEN
+        ALTER TABLE customers ADD COLUMN business_type VARCHAR(100);
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='city') THEN
-        ALTER TABLE customers ADD COLUMN city VARCHAR(255);
+        ALTER TABLE customers ADD COLUMN city VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='state') THEN
+        ALTER TABLE customers ADD COLUMN state VARCHAR(100);
     END IF;
     
-    -- locations missing columns
+    -- locations
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='city') THEN
-        ALTER TABLE locations ADD COLUMN city VARCHAR(255);
+        ALTER TABLE locations ADD COLUMN city VARCHAR(100);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='region') THEN
-        ALTER TABLE locations ADD COLUMN region VARCHAR(255);
+        ALTER TABLE locations ADD COLUMN region VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='address') THEN
+        ALTER TABLE locations ADD COLUMN address TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='description') THEN
+        ALTER TABLE locations ADD COLUMN description TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='status') THEN
+        ALTER TABLE locations ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='updated_at') THEN
+        ALTER TABLE locations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    END IF;
+    
+    -- routers (add missing columns if table existed before)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='routers' AND column_name='ip_address') THEN
+        ALTER TABLE routers ADD COLUMN ip_address INET;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='routers' AND column_name='location') THEN
+        ALTER TABLE routers ADD COLUMN location VARCHAR(255);
     END IF;
     
 END $$;
-EOF
-    
+
+FIXSQL
+
     if [ $? -eq 0 ]; then
-        print_success "✓ Successfully added missing columns"
+        print_success "Database schema fixes applied successfully"
     else
-        print_warning "⚠ Some columns may not have been added"
+        print_error "Failed to apply some database fixes"
+        print_warning "You may need to manually fix remaining schema issues"
+    fi
+}
+
+verify_database_connection() {
+    print_header "Verifying Database Connection (Comprehensive Test)"
+    
+    DB_NAME="${DB_NAME:-isp_system}"
+    DB_USER="${DB_USER:-isp_admin}"
+    
+    print_info "Step 1: Checking PostgreSQL service status..."
+    
+    # Check if PostgreSQL is running
+    if [[ "$OS" == "linux" ]]; then
+        if ! sudo systemctl is-active --quiet postgresql; then
+            print_warning "PostgreSQL service is not running"
+            print_info "Starting PostgreSQL service..."
+            sudo systemctl start postgresql
+            sleep 3
+            
+            if sudo systemctl is-active --quiet postgresql; then
+                print_success "PostgreSQL service started"
+            else
+                print_error "Failed to start PostgreSQL service"
+                print_info "Checking PostgreSQL logs..."
+                sudo journalctl -u postgresql -n 20 --no-pager
+                exit 1
+            fi
+        else
+            print_success "PostgreSQL service is running"
+        fi
+    elif [[ "$OS" == "macos" ]]; then
+        if ! brew services list | grep postgresql | grep started > /dev/null; then
+            print_info "Starting PostgreSQL service..."
+            brew services start postgresql@15
+            sleep 3
+        fi
+        print_success "PostgreSQL service is running"
     fi
     
-    # Run comprehensive fix for all remaining tables
-    print_info "Running comprehensive schema sync for all 146 tables..."
-    curl -X POST http://localhost:3000/api/admin/sync-all-146-tables 2>/dev/null || print_warning "⚠ API endpoint not available yet, will sync on first app start"
+    print_info "Step 2: Testing PostgreSQL server connectivity..."
     
-    print_success "Schema fixes applied successfully!"
-else
-    print_success "No schema issues found - all tables and columns verified!"
-fi
+    if sudo -u postgres psql -c "SELECT version();" > /dev/null 2>&1; then
+        PG_VERSION=$(sudo -u postgres psql -tAc "SELECT version();")
+        print_success "PostgreSQL server is accessible"
+        print_info "Version: $(echo $PG_VERSION | cut -d',' -f1)"
+    else
+        print_error "Cannot connect to PostgreSQL server"
+        print_info "Please check PostgreSQL status: sudo systemctl status postgresql"
+        exit 1
+    fi
+    
+    print_info "Step 3: Checking if database exists..."
+    
+    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        print_warning "Database '$DB_NAME' does not exist"
+        print_info "Creating database..."
+        setup_database
+    else
+        print_success "Database '$DB_NAME' exists"
+    fi
+    
+    print_info "Step 4: Testing database connection..."
+    
+    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+        print_success "Database connection successful"
+    else
+        print_error "Cannot connect to database '$DB_NAME'"
+        print_info "Attempting to fix connection..."
+        
+        # Try to recreate the database
+        setup_database
+        
+        # Test again
+        if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+            print_success "Database connection successful after fix"
+        else
+            print_error "Still cannot connect to database"
+            exit 1
+        fi
+    fi
+    
+    print_info "Step 5: Verifying database user permissions..."
+    
+    # Grant all necessary permissions
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
+    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
+    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
+    
+    print_success "Database user permissions configured"
+    
+    print_info "Step 6: Testing connection with credentials from .env.local..."
+    
+    if [ -f ".env.local" ]; then
+        source .env.local
+        
+        if [ -n "$DATABASE_URL" ]; then
+            MASKED_URL=$(echo "$DATABASE_URL" | awk -F'[@:/]' '{print $1"://"$4":***@"$6":"$7"/"$8}')
+            print_info "Testing connection string: $MASKED_URL"
+            
+            DB_TEST_USER=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $4}')
+            DB_TEST_PASS=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $5}')
+            DB_TEST_HOST=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $6}')
+            DB_TEST_PORT=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $7}')
+            DB_TEST_NAME=$(echo "$DATABASE_URL" | awk -F'[/:@?]' '{print $8}')
+            
+            if PGPASSWORD="$DB_TEST_PASS" psql -h "$DB_TEST_HOST" -p "$DB_TEST_PORT" -U "$DB_TEST_USER" -d "$DB_TEST_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+                print_success "Connection with .env.local credentials successful"
+            else
+                print_warning "Cannot connect with .env.local credentials"
+                print_info "This may cause issues when running the application"
+            fi
+        else
+            print_warning "DATABASE_URL not found in .env.local"
+        fi
+    else
+        print_warning ".env.local file not found"
+    fi
+    
+    print_info "Step 7: Checking database size and statistics..."
+    
+    DB_SIZE=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT pg_size_pretty(pg_database_size('$DB_NAME'));")
+    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+    
+    print_info "Database size: $DB_SIZE"
+    print_info "Number of tables: $TABLE_COUNT"
+    
+    print_info "Step 8: Verifying all required tables and columns..."
+    
+    declare -A TABLE_COLUMNS=(
+        ["account_balances"]="id,customer_id,balance,credit_limit,last_payment_date,last_invoice_date,status,last_updated,updated_at"
+        ["admin_logs"]="id,admin_id,action,resource_type,resource_id,old_values,new_values,ip_address,user_agent,created_at"
+        ["automation_workflows"]="id,name,description,trigger_type,trigger_conditions,actions,is_active,created_at,updated_at"
+        ["backup_access_logs"]="id,backup_job_id,user_id,user_email,action,ip_address,user_agent,success,error_message,additional_details,created_at"
+        ["backup_file_inventory"]="id,backup_job_id,file_path,file_size,file_type,file_hash,last_modified,is_encrypted,compression_ratio,created_at"
+        ["backup_jobs"]="id,backup_type,status,started_at,completed_at,file_size,backup_path,local_path,remote_path,cloud_path,storage_location,checksum,error_message,description,encryption_used,compression_ratio,includes_database,includes_files,includes_config,includes_logs,created_at,updated_at"
+        ["backup_restore_logs"]="id,backup_job_id,restore_type,status,started_at,completed_at,restored_by,restore_location,restored_components,error_message,created_at"
+        ["backup_schedules"]="id,name,backup_type,cron_expression,timezone,storage_locations,backup_components,retention_policy,is_active,next_run,last_run,total_runs,successful_runs,failed_runs,average_duration_minutes,created_at,updated_at"
+        ["backup_settings"]="id,enable_database_backup,database_retention_days,database_compression,enable_file_backup,backup_paths,file_retention_days,exclude_patterns,enable_scheduled_backups,full_backup_frequency,full_backup_day,full_backup_time,incremental_frequency,incremental_interval,incremental_time,maintenance_start,maintenance_end,enable_local_storage,local_storage_path,local_storage_quota,local_cleanup_policy,enable_remote_storage,remote_protocol,remote_host,remote_port,remote_username,remote_password,remote_path,enable_cloud_storage,cloud_provider,cloud_bucket,cloud_region,cloud_access_key,cloud_secret_key,enable_encryption,encryption_key,enable_integrity_check,enable_notifications,enable_secure_delete,enable_access_logging,backup_customers,backup_billing,backup_network,backup_settings,backup_logs,created_at,updated_at"
+        ["backup_storage_locations"]="id,storage_type,name,connection_string,access_credentials,configuration,is_primary,is_active,total_capacity_gb,used_space_gb,available_space_gb,last_tested,test_status,test_message,created_at,updated_at"
+        ["balance_sheet_view"]="assets_total,liabilities_total,equity_total,revenue_total,expense_total"
+        ["bandwidth_configs"]="id,device_id,download_limit,upload_limit,burst_limit,qos_policy,priority,created_at"
+        ["bandwidth_patterns"]="id,pattern_date,hour_of_day,day_of_week,average_usage,peak_usage,created_at"
+        ["bank_transactions"]="id,payment_id,bank_name,account_number,transaction_id,bank_reference,amount,currency,status,processor_response,created_at,updated_at"
+        ["billing_cycles"]="id,customer_id,cycle_start,cycle_end,amount,status,created_at"
+        ["bonus_campaigns"]="id,campaign_name,campaign_type,description,bonus_rules,target_audience,start_date,end_date,max_participants,current_participants,total_bonus_awarded,is_active,created_by,created_at"
+        ["budget_line_items"]="id,version_id,category_id,subcategory_id,line_item_name,budgeted_amount,quarter_1,quarter_2,quarter_3,quarter_4,notes,created_at"
+        ["budget_versions"]="id,budget_year,version_name,status,approved_by,approved_at,created_at"
+        ["budgets"]="id,category,budget_period,budget_year,budgeted_amount,actual_amount,notes,created_at,updated_at"
+        ["bus_fare_records"]="id,employee_id,employee_name,from_location,to_location,travel_date,amount,purpose,receipt_number,approved_by,status,created_at"
+        ["capacity_alerts"]="id,alert_type,severity,threshold_value,current_value,status,created_at,resolved_at"
+        ["capacity_predictions"]="id,prediction_date,predicted_capacity,confidence_level,model_version,created_at"
+        ["card_transactions"]="id,payment_id,processor,card_last_four,transaction_id,amount,currency,status,processor_response,created_at,updated_at"
+        ["cash_flow_categories"]="id,name,category_type,is_inflow,created_at"
+        ["cash_flow_transactions"]="id,category_id,transaction_date,amount,description,reference_type,reference_id,bank_account,created_at"
+        ["cash_transactions"]="id,payment_id,transaction_id,amount,received_by,notes,status,created_at,updated_at"
+        ["chart_of_accounts"]="id,account_code,account_name,account_type,parent_account_id,description,is_active,created_at"
+        ["communication_settings"]="id,setting_type,provider,sender_id,api_key,configuration,is_active,created_at,updated_at"
+        ["company_content"]="id,content_type,content,created_at,updated_at"
+        ["company_profiles"]="id,company_name,registration_number,tax_number,email,phone,address,website,logo_url,established_date,industry,description,company_prefix,default_language,currency,timezone,date_format,time_format,number_format,week_start,tax_system,tax_rate,created_at,updated_at"
+        ["connection_methods"]="id,name,type,description,config,is_active,created_at,updated_at"
+        ["credit_applications"]="id,customer_id,invoice_id,amount_applied,adjustment_id,created_at"
+        ["credit_notes"]="id,credit_note_number,customer_id,invoice_id,amount,reason,notes,status,created_by,approved_by,approved_at,created_at,updated_at"
+        ["customer_addresses"]="id,customer_id,address_type,address_line1,address_line2,city,state,postal_code,country,gps_coordinates,is_primary,created_at"
+        ["customer_billing_configurations"]="id,customer_id,billing_cycle,billing_day,payment_terms,custom_payment_terms,auto_generate_invoices,auto_send_invoices,auto_send_reminders,reminder_days_before,reminder_days_after,grace_period_days,overdue_threshold_days,auto_suspend_on_overdue,late_fee_type,late_fee_amount,credit_limit,pro_rata_enabled,tax_exempt,tax_inclusive,tax_rate,custom_invoice_template,billing_notes,notification_methods,notification_email,notification_phone,created_by,created_at,updated_at"
+        ["customer_categories"]="id,name,description,discount_percentage,priority_level,created_at"
+        ["customer_contacts"]="id,customer_id,contact_type,name,email,phone,relationship,is_primary,created_at"
+        ["customer_document_access_logs"]="id,document_id,user_id,action,ip_address,user_agent,created_at"
+        ["customer_document_shares"]="id,document_id,shared_by,shared_with_email,access_level,share_token,expires_at,is_active,created_at"
+        ["customer_documents"]="id,customer_id,document_type,document_name,file_name,file_path,file_size,mime_type,description,status,tags,version,is_confidential,parent_document_id,uploaded_by,expires_at,created_at,updated_at"
+        ["customer_emergency_contacts"]="id,customer_id,name,relationship,phone,email,created_at"
+        ["customer_equipment"]="id,customer_id,inventory_item_id,inventory_serial_number_id,equipment_type,equipment_name,serial_number,mac_address,ip_address,status,assigned_date,issued_date,returned_date,monthly_cost,return_condition,return_reason,notes,verified_serial_match,created_at,updated_at"
+        ["customer_notes"]="id,customer_id,note_type,subject,content,is_important,created_by,created_at"
+        ["customer_notifications"]="id,customer_id,type,title,message,is_read,expires_at,created_at"
+        ["customer_payment_accounts"]="id,customer_id,type,title,field_1,account_details,is_active,created_at,updated_at"
+        ["customer_phone_numbers"]="id,customer_id,phone_number,type,is_primary,created_at"
+        ["customer_services"]="id,customer_id,service_plan_id,connection_type,device_id,ip_address,config_id,status,start_date,end_date,monthly_fee,activated_at,created_at,updated_at"
+        ["customer_statements"]="id,customer_id,statement_number,statement_date,period_start,period_end,opening_balance,closing_balance,transaction_count,status,sent_at,viewed_at,created_at,updated_at"
+        ["customers"]="id,account_number,customer_type,first_name,last_name,business_name,business_type,phone,email,address,city,state,postal_code,country,billing_address,installation_address,gps_coordinates,id_number,tax_number,status,location_id,assigned_staff_id,referral_source,preferred_contact_method,service_preferences,portal_username,portal_password,created_at,updated_at"
+        ["email_logs"]="id,customer_id,invoice_id,email_type,recipient_email,subject,content,status,sent_at,opened_at,clicked_at,bounced_at,error_message,created_at"
+        ["employees"]="id,employee_id,first_name,last_name,email,phone,department,position,salary,hire_date,status,created_at"
+        ["equipment_returns"]="id,customer_equipment_id,customer_id,inventory_item_id,inventory_serial_number_id,supplier_id,serial_number,return_date,return_reason,return_condition,issued_date,days_in_use,notes,processed_by,verified_serial_match,created_at"
+        ["expense_approvals"]="id,expense_id,approver_id,status,comments,created_at"
+        ["expense_categories"]="id,name,description,color,budget_amount,is_active,created_at,updated_at"
+        ["expense_subcategories"]="id,category_id,name,description,budget_allocation,created_at"
+        ["expenses"]="id,category_id,expense_date,amount,tax_amount,description,vendor,receipt_url,payment_method,status,notes,approved_by,approved_at,is_recurring,recurring_frequency,project_id,created_at,updated_at"
+        ["finance_audit_trail"]="id,table_name,record_id,action,old_values,new_values,user_id,ip_address,user_agent,created_at"
+        ["finance_documents"]="id,type,invoice_number,reference_number,customer_id,invoice_date,due_date,payment_date,amount,total_amount,status,description,notes,metadata,created_by,created_at,updated_at"
+        ["financial_adjustments"]="id,customer_id,adjustment_type,amount,reason,invoice_id,reference_number,status,metadata,created_by,approved_by,approved_at,created_at"
+        ["financial_periods"]="id,period_type,period_name,start_date,end_date,is_closed,created_at"
+        ["financial_reports"]="id,report_type,report_period,period_start,period_end,report_data,generated_by,created_at"
+        ["fuel_logs"]="id,vehicle_id,log_date,fuel_type,quantity,cost,odometer_reading,location,notes,created_at"
+        ["hotspot_sessions"]="id,hotspot_id,user_id,mac_address,ip_address,start_time,end_time,data_used,status"
+        ["hotspot_users"]="id,hotspot_id,username,password,email,phone,data_limit,time_limit,expiry_date,status,created_at,updated_at"
+        ["hotspot_vouchers"]="id,hotspot_id,code,data_limit,time_limit,max_users,used_count,expiry_date,status,created_at"
+        ["hotspots"]="id,name,location,address,latitude,longitude,ip_address,ssid,password,security_type,bandwidth_limit,user_limit,device_model,device_mac,status,created_at,updated_at"
+        ["infrastructure_investments"]="id,investment_type,investment_date,amount,description,expected_roi,status,created_at"
+        ["inventory"]="id,name,description,sku,category,stock_quantity,unit_cost,supplier,status,created_at,updated_at"
+        ["inventory_items"]="id,name,sku,description,category,specifications,supplier_id,unit_cost,stock_quantity,location,status,created_at,updated_at"
+        ["inventory_serial_numbers"]="id,inventory_item_id,serial_number,status,purchase_order_id,supplier_id,customer_equipment_id,received_date,assigned_date,returned_date,return_condition,notes,created_at,updated_at"
+        ["invoice_items"]="id,invoice_id,description,quantity,unit_price,total_price,created_at,updated_at"
+        ["invoices"]="id,customer_id,invoice_number,amount,due_date,status,description,paid_amount,created_at"
+        ["ip_addresses"]="id,ip_address,subnet_id,customer_id,status,assigned_at,released_at,notes,created_at,updated_at"
+        ["ip_pools"]="id,router_id,ip_address,subnet_mask,gateway,customer_id,status,allocated_at,created_at"
+        ["ip_subnets"]="id,name,cidr,type,version,allocation_mode,router_id,total_ips,used_ips,description,status,created_at,updated_at"
+        ["journal_entries"]="id,entry_number,entry_date,reference_type,reference_id,description,total_debit,total_credit,status,created_by,created_at"
+        ["journal_entry_lines"]="id,journal_entry_id,line_number,account_id,description,debit_amount,credit_amount,created_at"
+        ["knowledge_base"]="id,title,category,content,tags,author_id,views,is_published,created_at,updated_at"
+        ["locations"]="id,name,address,city,region,description,status,created_at,updated_at"
+        ["loyalty_redemptions"]="id,customer_id,points_redeemed,redemption_type,redemption_value,description,wallet_credit_amount,applied_to_invoice,applied_to_service,status,processed_by,processed_at,created_at"
+        ["loyalty_transactions"]="id,customer_id,transaction_type,points,description,source_type,source_id,metadata,expires_at,created_by,created_at"
+        ["maintenance_logs"]="id,vehicle_id,service_type,service_date,next_service_date,odometer_reading,cost,service_provider,description,parts_replaced,created_at"
+        ["message_campaigns"]="id,name,description,template_id,target_audience,status,scheduled_at,total_recipients,sent_count,delivered_count,failed_count,created_by,created_at"
+        ["message_templates"]="id,name,template_type,subject,content,variables,is_active,created_at,updated_at"
+        ["messages"]="id,message_type,sender_id,recipient_type,recipient_id,subject,content,template_id,metadata,status,scheduled_at,sent_at,delivered_at,created_at"
+        ["mpesa_logs"]="id,transaction_type,phone_number,amount,transaction_id,merchant_request_id,checkout_request_id,result_code,result_desc,customer_id,invoice_id,raw_response,processed_at,created_at"
+        ["network_configurations"]="id,device_id,ip_address,gateway,dns1,dns2,pppoe_enabled,pppoe_username,pppoe_password,bandwidth_config,status,deployed_at,created_at"
+        ["network_devices"]="id,name,type,ip_address,mac_address,location,location_id,status,configuration,last_seen,created_at,updated_at"
+        ["network_forecasts"]="id,forecast_period,predicted_users,predicted_bandwidth,growth_rate,created_at"
+        ["notification_logs"]="id,customer_id,invoice_id,notification_type,channel,recipient_email,recipient_phone,status,error_message,created_at,updated_at"
+        ["notification_templates"]="id,template_name,template_type,subject,content,variables,is_active,created_at,updated_at"
+        ["openvpn_configs"]="id,customer_id,router_id,config_content,status,expires_at,revoked_at,created_at"
+        ["openvpn_logs"]="id,username,client_ip,server_ip,action,bytes_sent,bytes_received,session_duration,log_timestamp,created_at"
+        ["payment_applications"]="id,payment_id,invoice_id,amount_applied,created_at,updated_at"
+        ["payment_gateway_configs"]="id,gateway_name,api_key,secret_key,webhook_url,configuration,is_sandbox,is_active,created_at,updated_at"
+        ["payment_methods"]="id,name,type,configuration,is_active,created_at"
+        ["payment_reminders"]="id,customer_id,due_date,amount,reminder_type,status,sent_at"
+        ["payments"]="id,customer_id,amount,payment_method,transaction_id,currency,payment_date,status,created_at"
+        ["payroll_records"]="id,employee_id,pay_period_start,pay_period_end,basic_salary,allowances,deductions,overtime_hours,overtime_rate,gross_pay,tax_deduction,net_pay,status,payment_date,created_at"
+        ["performance_reviews"]="id,employee_id,reviewer_id,review_period_start,review_period_end,overall_rating,strengths,areas_for_improvement,goals_achievement,development_plan,status,created_at"
+        ["permissions"]="id,permission_name,permission_key,description,module,created_at"
+        ["portal_sessions"]="id,customer_id,session_token,ip_address,user_agent,expires_at,last_activity,created_at"
+        ["portal_settings"]="id,setting_key,setting_value,setting_type,description,is_public,created_at,updated_at"
+        ["purchase_order_items"]="id,purchase_order_id,inventory_item_id,quantity,unit_cost,total_cost,created_at"
+        ["purchase_orders"]="id,order_number,supplier_id,total_amount,status,notes,created_by,created_at,updated_at"
+        ["radius_logs"]="id,username,nas_ip,nas_port,framed_ip,calling_station_id,called_station_id,acct_session_id,acct_session_time,acct_input_octets,acct_output_octets,acct_status_type,acct_terminate_cause,service_type,log_timestamp,created_at"
+        ["refunds"]="id,customer_id,adjustment_id,amount,refund_method,transaction_reference,status,processed_at,created_at,updated_at"
+        ["revenue_categories"]="id,name,description,is_active,created_at,updated_at"
+        ["revenue_streams"]="id,category_id,name,description,is_recurring,created_at"
+        ["role_permissions"]="id,role_id,permission_id,created_at"
+        ["roles"]="id,name,description,is_system_role,created_at,updated_at"
+        ["router_logs"]="id,router_id,log_level,event_type,source_module,message,raw_log,log_timestamp,created_at"
+        ["router_performance_history"]="id,router_id,timestamp,cpu_usage,memory_usage,bandwidth_in,bandwidth_out,uptime,temperature,latency,packet_loss,created_at"
+        ["router_services"]="id,router_id,service_type,is_enabled,configuration,created_at,updated_at"
+        ["router_sync_status"]="id,router_id,customer_service_id,ip_address_id,sync_status,sync_message,last_synced,last_checked,retry_count,created_at,updated_at"
+        ["routers"]="id,name,hostname,type,model,serial_number,ip_address,username,password,ssh_port,api_port,status,location,location_id,firmware_version,configuration,connection_type,cpu_usage,memory_usage,uptime,temperature,sync_status,last_sync,sync_error,last_seen,created_at,updated_at"
+        ["server_configurations"]="id,server_name,server_type,ip_address,port,configuration,status,last_updated,created_at"
+        ["service_activation_logs"]="id,service_id,customer_id,action,status,details,error_message,created_at"
+        ["service_inventory"]="id,service_id,inventory_id,status,assigned_at,returned_at,notes"
+        ["service_plans"]="id,name,description,price,download_speed,upload_speed,data_limit,features,qos_settings,priority_level,billing_cycle,currency,status,fair_usage_policy,created_at"
+        ["service_requests"]="id,customer_id,request_type,current_service_id,requested_service_plan_id,description,notes,status,requested_at,processed_at,processed_by"
+        ["sms_logs"]="id,customer_id,invoice_id,sms_type,recipient_phone,message,provider,message_id,status,cost,sent_at,delivered_at,failed_at,error_message,created_at"
+        ["subnets"]="id,name,network,gateway,dns_servers,description,status,router_id,created_at"
+        ["supplier_invoice_items"]="id,invoice_id,inventory_item_id,description,quantity,unit_cost,total_amount,created_at"
+        ["supplier_invoices"]="id,supplier_id,invoice_number,invoice_date,due_date,payment_terms,subtotal,tax_amount,total_amount,paid_amount,status,purchase_order_id,notes,created_by,created_at,updated_at"
+        ["suppliers"]="id,name,company_name,contact_name,email,phone,address,website,tax_id,payment_terms,is_active,created_at,updated_at"
+        ["support_tickets"]="id,customer_id,ticket_number,title,subject,description,priority,status,assigned_to,resolved_at,created_at,updated_at"
+        ["sync_jobs"]="id,router_id,job_type,status,progress,started_at,completed_at,error_message,details,created_at"
+        ["system_config"]="id,key,value,created_at"
+        ["system_logs"]="id,level,category,message,source,details,user_id,customer_id,ip_address,user_agent,session_id,timestamp,created_at,updated_at"
+        ["task_attachments"]="id,task_id,filename,file_path,file_size,mime_type,uploaded_by,created_at"
+        ["task_categories"]="id,name,description,color,created_at"
+        ["task_comments"]="id,task_id,user_id,comment,created_at"
+        ["tasks"]="id,title,description,status,priority,due_date,assigned_to,created_by,completed_at,created_at,updated_at"
+        ["tax_configurations"]="id,tax_name,tax_type,tax_rate,applies_to,is_active,created_at,updated_at"
+        ["tax_periods"]="id,period_name,start_date,end_date,status,created_at"
+        ["tax_returns"]="id,period_id,return_type,tax_authority,due_date,filed_date,reference_number,total_revenue,total_expenses,taxable_income,tax_due,penalty_amount,status,notes,created_at"
+        ["trial_balance_view"]="account_id,account_code,account_name,account_type,debit_total,credit_total,balance"
+        ["user_activity_logs"]="id,user_id,user_type,activity,description,ip_address,user_agent,session_id,created_at"
+        ["users"]="id,username,email,password_hash,role,status,created_at"
+        ["vehicles"]="id,name,type,registration,model,year,fuel_type,mileage,fuel_consumption,assigned_to,location,status,purchase_date,purchase_cost,last_service,next_service,insurance_expiry,license_expiry,created_at,updated_at"
+        ["wallet_balances"]="id,customer_id,current_balance,total_topups,total_spent,total_bonuses,last_topup_date,last_transaction_date,created_at,updated_at"
+        ["wallet_bonus_rules"]="id,rule_name,description,bonus_fixed_amount,bonus_percentage,topup_min_amount,max_bonus_amount,points_awarded,points_per_amount,target_customer_type,valid_from,valid_until,max_uses_per_customer,is_active,created_by,created_at,updated_at"
+        ["wallet_transactions"]="id,customer_id,transaction_type,amount,description,reference_number,source_type,source_id,metadata,balance_before,balance_after,processed_by,created_at"
+        ["warehouses"]="id,code,name,location,contact_person,phone,email,created_at,updated_at"
+    )
+    
+    MISSING_TABLES=()
+    TABLES_WITH_WRONG_COLUMN_COUNT=()
+    TOTAL_TABLES_OK=0
+    
+    for table in "${!TABLE_COLUMNS[@]}"; do
+        # Check if table exists
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = '$table');" | grep -q "t"; then
+            
+            # Table exists, check column count
+            EXPECTED_COUNT=${EXPECTED_TABLE_COLUMNS[$table]}
+            ACTUAL_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table';")
+            
+            if [ "$EXPECTED_COUNT" -eq "$ACTUAL_COUNT" ]; then
+                print_success "✓ $table (Correct column count: $ACTUAL_COUNT)"
+                TOTAL_TABLES_OK=$((TOTAL_TABLES_OK + 1))
+            else
+                print_warning "⚠ $table (Expected $EXPECTED_COUNT columns, found $ACTUAL_COUNT)"
+                TABLES_WITH_WRONG_COLUMN_COUNT+=("$table")
+            fi
+        else
+            print_error "✗ $table (Table does not exist)"
+            MISSING_TABLES+=("$table")
+        fi
+    done
+    
+    echo ""
+    print_info "Schema Verification Summary:"
+    print_info "  Total tables expected: $TOTAL_TABLES_EXPECTED"
+    print_info "  Tables fully verified: $TOTAL_TABLES_OK"
+    
+    if [ ${#MISSING_TABLES[@]} -gt 0 ]; then
+        print_error "  Missing tables: ${#MISSING_TABLES[@]} (${MISSING_TABLES[*]})"
+    fi
+    
+    if [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -gt 0 ]; then
+        print_warning "  Tables with incorrect column counts: ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} (${TABLES_WITH_WRONG_COLUMN_COUNT[*]})"
+    fi
+    
+    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -eq 0 ]; then
+        print_success "  ✓ All expected tables and columns verified successfully!"
+    else
+        print_warning "  Schema verification found issues that need to be fixed"
+        print_info "  These will be addressed in the next step (Apply Database Fixes)"
+    fi
+}
+
+# Step 8: Verify database schema
+verify_database_schema
+
+# Step 8.5: Fix database schema issues
+fix_database_schema
+
+# Step 9: Install dependencies
+install_dependencies
 
 run_performance_optimizations() {
     print_header "Applying Performance Optimizations"
@@ -1507,59 +1907,45 @@ verify_database_connection() {
     )
     
     MISSING_TABLES=()
-    TABLES_WITH_MISSING_COLUMNS=()
+    TABLES_WITH_WRONG_COLUMN_COUNT=()
     TOTAL_TABLES_OK=0
-    TOTAL_COLUMNS_CHECKED=0
-    TOTAL_COLUMNS_MISSING=0
     
     for table in "${!TABLE_COLUMNS[@]}"; do
         # Check if table exists
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = '$table');" | grep -q "t"; then
             
-            # Table exists, now check columns
-            IFS=',' read -ra EXPECTED_COLUMNS <<< "${TABLE_COLUMNS[$table]}"
-            MISSING_COLUMNS=()
+            # Table exists, check column count
+            EXPECTED_COUNT=${EXPECTED_TABLE_COLUMNS[$table]}
+            ACTUAL_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table';")
             
-            for column in "${EXPECTED_COLUMNS[@]}"; do
-                TOTAL_COLUMNS_CHECKED=$((TOTAL_COLUMNS_CHECKED + 1))
-                
-                if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table' AND column_name = '$column');" | grep -q "t"; then
-                    MISSING_COLUMNS+=("$column")
-                    TOTAL_COLUMNS_MISSING=$((TOTAL_COLUMNS_MISSING + 1))
-                fi
-            done
-            
-            if [ ${#MISSING_COLUMNS[@]} -eq 0 ]; then
-                COLUMN_COUNT=${#EXPECTED_COLUMNS[@]}
-                print_success "✓ $table ($COLUMN_COUNT columns)"
+            if [ "$EXPECTED_COUNT" -eq "$ACTUAL_COUNT" ]; then
+                print_success "✓ $table (Correct column count: $ACTUAL_COUNT)"
                 TOTAL_TABLES_OK=$((TOTAL_TABLES_OK + 1))
             else
-                print_warning "⚠ $table (missing ${#MISSING_COLUMNS[@]} columns: ${MISSING_COLUMNS[*]})"
-                TABLES_WITH_MISSING_COLUMNS+=("$table")
+                print_warning "⚠ $table (Expected $EXPECTED_COUNT columns, found $ACTUAL_COUNT)"
+                TABLES_WITH_WRONG_COLUMN_COUNT+=("$table")
             fi
         else
-            print_error "✗ $table (table does not exist)"
+            print_error "✗ $table (Table does not exist)"
             MISSING_TABLES+=("$table")
         fi
     done
     
     echo ""
     print_info "Schema Verification Summary:"
-    print_info "  Total tables expected: ${#TABLE_COLUMNS[@]}"
+    print_info "  Total tables expected: $TOTAL_TABLES_EXPECTED"
     print_info "  Tables fully verified: $TOTAL_TABLES_OK"
-    print_info "  Total columns checked: $TOTAL_COLUMNS_CHECKED"
     
     if [ ${#MISSING_TABLES[@]} -gt 0 ]; then
         print_error "  Missing tables: ${#MISSING_TABLES[@]} (${MISSING_TABLES[*]})"
     fi
     
-    if [ ${#TABLES_WITH_MISSING_COLUMNS[@]} -gt 0 ]; then
-        print_warning "  Tables with missing columns: ${#TABLES_WITH_MISSING_COLUMNS[@]} (${TABLES_WITH_MISSING_COLUMNS[*]})"
-        print_warning "  Total missing columns: $TOTAL_COLUMNS_MISSING"
+    if [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -gt 0 ]; then
+        print_warning "  Tables with incorrect column counts: ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} (${TABLES_WITH_WRONG_COLUMN_COUNT[*]})"
     fi
     
-    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_MISSING_COLUMNS[@]} -eq 0 ]; then
-        print_success "  ✓ All 146 tables and columns verified successfully!"
+    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -eq 0 ]; then
+        print_success "  ✓ All expected tables and columns verified successfully!"
     else
         print_warning "  Schema verification found issues that need to be fixed"
         print_info "  These will be addressed in the next step (Apply Database Fixes)"

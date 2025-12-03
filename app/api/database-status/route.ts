@@ -92,8 +92,23 @@ async function checkCustomerSchema(sql: any) {
       WHERE table_name = 'customers'
     `
 
-    // Check for essential columns that should exist
-    const requiredColumns = ["id", "account_number", "customer_type", "email", "phone", "status", "created_at"]
+    const requiredColumns = [
+      "id",
+      "account_number",
+      "customer_type",
+      "email",
+      "phone",
+      "status",
+      "created_at",
+      "business_name", // Missing in local DB
+      "first_name",
+      "last_name",
+      "address",
+      "city",
+      "state",
+      "country",
+      "postal_code",
+    ]
     const existingColumns = columns.map((col: any) => col.column_name)
     const missingColumns = requiredColumns.filter((col) => !existingColumns.includes(col))
 
@@ -101,6 +116,7 @@ async function checkCustomerSchema(sql: any) {
       status: missingColumns.length === 0 ? "complete" : "missing_columns",
       missingColumns,
       totalColumns: existingColumns.length,
+      requiredColumns: requiredColumns.length,
     }
   } catch (error: any) {
     return { status: "error", error: error.message }

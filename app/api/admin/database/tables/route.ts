@@ -12,11 +12,18 @@ export async function GET() {
     const tables = await sql`
       SELECT 
         t.table_name,
-        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count,
+        (SELECT COUNT(*) 
+         FROM information_schema.columns 
+         WHERE table_schema = 'public' 
+         AND table_name = t.table_name) as column_count,
         COALESCE(
-          (SELECT reltuples::bigint 
-           FROM pg_class 
-           WHERE relname = t.table_name),
+          (SELECT c.reltuples::bigint 
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE c.relname = t.table_name
+           AND n.nspname = 'public'
+           AND c.relkind = 'r'
+           LIMIT 1),
           0
         ) as row_count
       FROM information_schema.tables t

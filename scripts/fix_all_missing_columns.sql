@@ -314,10 +314,5 @@ ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS relationship VARCHAR(100)
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS city VARCHAR(100);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS region VARCHAR(100);
 
--- Success notification
-DO $$
-BEGIN
-    RAISE NOTICE 'All missing columns have been added successfully!';
-    RAISE NOTICE 'Total columns added: 191 across 43 tables';
-    RAISE NOTICE 'Database schema is now fully synchronized with Neon';
-END $$;
+-- Schema synchronization complete
+-- All 191 missing columns across 43 tables have been addressed

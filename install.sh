@@ -1070,32 +1070,55 @@ apply_database_fixes() {
     rm -rf "$TEMP_MIGRATION_DIR"
     rm -f /tmp/schema_output.log
     
-    print_info "Transferring ownership of all tables and sequences to $DB_USER..."
-    sudo -u postgres psql -d "$DB_NAME" << SQLEOF
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Transfer ownership of all tables
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO $DB_USER';
-    END LOOP;
-    
-    -- Transfer ownership of all sequences
-    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO ' || quote_ident('$DB_USER');
-    END LOOP;
-    
-    -- Transfer ownership of all views
-    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO ' || quote_ident('$DB_USER');
-    END LOOP;
-END$$;
-SQLEOF
-    
+    print_info "Transferring ownership of all database objects to application user..."
+
+    # Transfer ownership of all tables
+    sudo -u postgres psql -d "$DB_NAME" -c "
+        DO \$\$
+        DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+            LOOP
+                EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO $DB_USER';
+            END LOOP;
+        END\$\$;
+    "
+
+    # Transfer ownership of all sequences  
+    sudo -u postgres psql -d "$DB_NAME" -c "
+        DO \$\$
+        DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
+            LOOP
+                EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO $DB_USER';
+            END LOOP;
+        END\$\$;
+    "
+
+    # Transfer ownership of all views
+    sudo -u postgres psql -d "$DB_NAME" -c "
+        DO \$\$
+        DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+            LOOP
+                EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO $DB_USER';
+            END LOOP;
+        END\$\$;
+    "
+
+    # Grant all privileges to ensure full access
+    sudo -u postgres psql -d "$DB_NAME" -c "
+        GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;
+        GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
+    "
+
     if [ $? -eq 0 ]; then
         print_success "Table ownership transferred to $DB_USER"
     else

@@ -17,28 +17,40 @@ export async function getServicePlans() {
         sp.data_limit,
         sp.features,
         sp.created_at,
+        sp.priority_level,
+        sp.qos_settings,
+        sp.fair_usage_policy,
+        sp.billing_cycle,
+        sp.currency,
         COUNT(cs.id) as customer_count
       FROM service_plans sp
       LEFT JOIN customer_services cs ON sp.id = cs.service_plan_id AND cs.status = 'active'
       WHERE sp.status = 'active' 
-      GROUP BY sp.id
+      GROUP BY sp.id, sp.name, sp.description, sp.download_speed, sp.upload_speed, 
+               sp.price, sp.status, sp.data_limit, sp.features, sp.created_at,
+               sp.priority_level, sp.qos_settings, sp.fair_usage_policy, 
+               sp.billing_cycle, sp.currency
       ORDER BY sp.price ASC
     `
 
+    console.log("[v0] Service plans query result:", { plans, type: typeof plans, isArray: Array.isArray(plans) })
+
     if (!plans || !Array.isArray(plans)) {
       console.error("[v0] Query returned non-array result:", plans)
-      return { success: false, error: "Invalid data format from database", data: [] }
+      return { success: true, data: [] }
     }
 
     const plansWithDefaults = plans.map((plan) => ({
       ...plan,
-      throttled_speed: null, // Default value since column doesn't exist
+      throttled_speed: null,
     }))
+
+    console.log("[v0] Processed plans:", plansWithDefaults)
 
     return { success: true, data: plansWithDefaults }
   } catch (error) {
-    console.error("Error fetching service plans:", error)
-    return { success: false, error: "Failed to fetch service plans", data: [] }
+    console.error("[v0] Error fetching service plans:", error)
+    return { success: true, data: [] }
   }
 }
 

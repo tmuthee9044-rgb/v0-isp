@@ -14,7 +14,6 @@ export async function getServicePlans() {
         sp.upload_speed,
         sp.price,
         sp.status,
-        sp.category,
         sp.data_limit,
         sp.features,
         sp.created_at,
@@ -42,7 +41,6 @@ export async function createServicePlan(formData: FormData) {
   try {
     const name = formData.get("name") as string
     const description = formData.get("description") as string
-    const category = formData.get("category") as string
     const downloadSpeed = Number.parseInt(formData.get("download_speed") as string)
     const uploadSpeed = Number.parseInt(formData.get("upload_speed") as string)
     const price = Number.parseFloat(formData.get("price") as string)
@@ -51,10 +49,10 @@ export async function createServicePlan(formData: FormData) {
 
     const result = await sql`
       INSERT INTO service_plans (
-        name, description, download_speed, upload_speed, price, status, category, 
+        name, description, download_speed, upload_speed, price, status, 
         data_limit, features, created_at
       ) VALUES (
-        ${name}, ${description}, ${downloadSpeed}, ${uploadSpeed}, ${price}, 'active', ${category},
+        ${name}, ${description}, ${downloadSpeed}, ${uploadSpeed}, ${price}, 'active',
         ${dataLimit}, ${features}, NOW()
       ) RETURNING id
     `

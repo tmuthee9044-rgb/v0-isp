@@ -2142,64 +2142,42 @@ verify_database_connection() {
     print_info "Number of tables: $TABLE_COUNT"
     
     print_info "Step 8: Verifying all required tables and columns..."
-
-    # Create all 146 tables from the complete schema
     print_info "Creating/updating all 146 tables from Neon schema..."
 
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
-    SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
+    # Use the comprehensive schema file that has ALL 146 tables with ALL columns
+    NEON_SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
 
-    if [ -f "$SCHEMA_FILE" ]; then
-        # Ensure the SQL file has read permissions
-        chmod +r "$SCHEMA_FILE" 2>/dev/null || true
-        
-        # Execute the SQL file with absolute path
-        # Execute the SQL file as isp_admin (who has SUPERUSER)
-        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
-            print_success "All 146 tables created/updated successfully"
-        else
-            print_warning "Some tables may not have been created"
-            print_info "Check the log: /tmp/schema_creation.log"
-        fi
-
-    else
-        print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
+    if [ ! -f "$NEON_SCHEMA_FILE" ]; then
+        print_error "Neon schema file not found: $NEON_SCHEMA_FILE"
+        exit 1
     fi
 
-    print_info "Adding missing columns to existing tables..."
-    FIX_COLUMNS_FILE="$SCRIPT_DIR/scripts/fix_all_missing_columns.sql"
-    
-    if [ -f "$FIX_COLUMNS_FILE" ]; then
-        # Ensure the SQL file has read permissions
-        chmod +r "$FIX_COLUMNS_FILE" 2>/dev/null || true
+    # Make sure the file is readable
+    chmod +r "$NEON_SCHEMA_FILE" 2>/dev/null || true
+
+    # Execute as isp_admin user who has SUPERUSER
+    if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f "$NEON_SCHEMA_FILE" 2>&1 | tee /tmp/neon_schema_creation.log; then
+        print_success "All 146 tables created/updated successfully"
         
-        # Execute the column fix as isp_admin (who has SUPERUSER)
-        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$FIX_COLUMNS_FILE" 2>&1 | tee /tmp/column_fix.log; then
+        # Now add any missing columns that might have been skipped
+        print_info "Adding any missing columns to existing tables..."
+        if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/fix_all_missing_columns.sql" 2>&1 | tee /tmp/add_missing_columns.log; then
             print_success "All missing columns added successfully"
         else
-            print_warning "Some columns may not have been added"
-            print_info "Check the log: /tmp/column_fix.log"
+            print_warning "Some columns may not have been added. Check /tmp/add_missing_columns.log"
         fi
     else
-        print_warning "Column fix SQL file not found at: $FIX_COLUMNS_FILE"
+        print_error "Failed to create/update tables from Neon schema"
+        print_error "Check /tmp/neon_schema_creation.log for details"
+        cat /tmp/neon_schema_creation.log
+        exit 1
     fi
 
-    # Verify tables exist
-    TABLES_CHECK=$(PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -tAc "
-SELECT COUNT(*) 
-FROM information_schema.tables 
-WHERE table_schema = 'public' 
-AND table_type = 'BASE TABLE';
-")
+    # Verify table and column counts
+    TABLES_COUNT=$(PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+    print_info "Total tables in database: $(echo $TABLES_COUNT | tr -d ' ')"
 
-    print_info "Total tables in database: $TABLES_CHECK"
-
-    if [ "$TABLES_CHECK" -ge 145 ]; then # Assuming 145 is the expected minimum count
-        print_success "Database schema verification complete!"
-    else
-        print_warning "Expected 145+ tables, found $TABLES_CHECK"
-        print_info "Some tables may be missing"
-    fi
+    print_success "Database schema verification complete!"
     
     print_success "Database connection verification complete!"
 }

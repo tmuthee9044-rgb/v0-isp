@@ -1790,16 +1790,22 @@ verify_database_connection() {
     # Create all 146 tables from the complete schema
     print_info "Creating/updating all 146 tables from Neon schema..."
 
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
-    if [ -f "$SCRIPT_DIR/scripts/create_complete_schema.sql" ]; then
-        if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/create_complete_schema.sql") 2>&1 | tee /tmp/schema_creation.log; then
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
+
+    if [ -f "$SCHEMA_FILE" ]; then
+        # Ensure the SQL file has read permissions
+        chmod +r "$SCHEMA_FILE" 2>/dev/null || true
+        
+        # Execute the SQL file with absolute path
+        if sudo -u postgres psql -d "$DB_NAME" -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
             print_success "All 146 tables created/updated successfully"
         else
             print_warning "Some tables may not have been created"
             print_info "Check the log: /tmp/schema_creation.log"
         fi
     else
-        print_warning "Complete schema SQL file not found, using alternative method"
+        print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
     fi
 
     # Verify tables exist
@@ -2118,15 +2124,21 @@ verify_database_connection() {
     print_info "Creating/updating all 146 tables from Neon schema..."
 
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
-    if [ -f "$SCRIPT_DIR/scripts/create_complete_schema.sql" ]; then
-        if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/create_complete_schema.sql") 2>&1 | tee /tmp/schema_creation.log; then
+    SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
+
+    if [ -f "$SCHEMA_FILE" ]; then
+        # Ensure the SQL file has read permissions
+        chmod +r "$SCHEMA_FILE" 2>/dev/null || true
+        
+        # Execute the SQL file with absolute path
+        if sudo -u postgres psql -d "$DB_NAME" -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
             print_success "All 146 tables created/updated successfully"
         else
             print_warning "Some tables may not have been created"
             print_info "Check the log: /tmp/schema_creation.log"
         fi
     else
-        print_warning "Complete schema SQL file not found, using alternative method"
+        print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
     fi
 
     # Verify tables exist
@@ -2457,6 +2469,17 @@ main() {
             full_installation
             ;;
         *)
+            print_error "Unknown option: $1"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"
+*)
             print_error "Unknown option: $1"
             echo ""
             show_usage

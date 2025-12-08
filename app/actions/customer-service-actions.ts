@@ -115,157 +115,149 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     const initialStatus = adminOverride ? "active" : "pending"
 
-    await sql.begin(async (tx) => {
-      const result = await tx`
-        INSERT INTO customer_services (
-          customer_id, 
-          service_plan_id, 
-          status, 
-          monthly_fee, 
-          start_date,
-          connection_type,
-          created_at
-        ) VALUES (
-          ${customerId},
-          ${servicePlanId},
-          ${initialStatus},
-          ${servicePlan[0].price},
-          NOW(),
-          ${connectionType},
-          NOW()
-        ) RETURNING *
-      `
+    // Execute queries sequentially instead
+    const result = await sql`
+      INSERT INTO customer_services (
+        customer_id, 
+        service_plan_id, 
+        status, 
+        monthly_fee, 
+        start_date,
+        connection_type,
+        created_at
+      ) VALUES (
+        ${customerId},
+        ${servicePlanId},
+        ${initialStatus},
+        ${servicePlan[0].price},
+        NOW(),
+        ${connectionType},
+        NOW()
+      ) RETURNING *
+    `
 
-      const serviceId = result[0].id
-      let allocatedIpAddress = null
+    const serviceId = result[0].id
+    let allocatedIpAddress = null
 
-      if (ipAddress === "auto" || !ipAddress) {
-        await tx`
-          INSERT INTO pending_tasks (
-            task_type, 
-            resource_type, 
-            resource_id, 
-            data,
-            status,
-            created_at
-          ) VALUES (
-            'allocate_ip',
-            'customer_service',
-            ${serviceId},
-            ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
-            'pending',
-            NOW()
-          )
-          ON CONFLICT DO NOTHING
-        `
-      } else if (ipAddress && subnetId) {
-        await tx`
-          UPDATE ip_addresses
-          SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-          WHERE ip_address = ${ipAddress}::inet
-        `
-        allocatedIpAddress = ipAddress
-
-        await tx`
-          UPDATE customer_services
-          SET ip_address = ${allocatedIpAddress}::text
-          WHERE id = ${serviceId}
-        `
-      }
-
-      const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
-      const dueDate = new Date()
-      dueDate.setDate(dueDate.getDate() + 30)
-
-      const invoice = await tx`
-        INSERT INTO invoices (
-          customer_id,
-          invoice_number,
-          amount,
-          total_amount,
-          due_date,
+    if (ipAddress === "auto" || !ipAddress) {
+      await sql`
+        INSERT INTO pending_tasks (
+          task_type, 
+          resource_type, 
+          resource_id, 
+          data,
           status,
-          description,
           created_at
         ) VALUES (
-          ${customerId},
-          ${invoiceNumber},
-          ${servicePlan[0].price},
-          ${servicePlan[0].price},
-          ${dueDate.toISOString().split("T")[0]},
-          ${adminOverride ? "paid" : "pending"},
-          ${`Initial invoice for ${servicePlan[0].name}`},
+          'allocate_ip',
+          'customer_service',
+          ${serviceId},
+          ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
+          'pending',
           NOW()
-        ) RETURNING id
+        )
+        ON CONFLICT DO NOTHING
+      `
+    } else if (ipAddress && subnetId) {
+      await sql`
+        UPDATE ip_addresses
+        SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
+        WHERE ip_address = ${ipAddress}::inet
+      `
+      allocatedIpAddress = ipAddress
+
+      await sql`
+        UPDATE customer_services
+        SET ip_address = ${allocatedIpAddress}::text
+        WHERE id = ${serviceId}
+      `
+    }
+
+    const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 30)
+
+    const invoice = await sql`
+      INSERT INTO invoices (
+        customer_id,
+        invoice_number,
+        amount,
+        total_amount,
+        due_date,
+        status,
+        description,
+        created_at
+      ) VALUES (
+        ${customerId},
+        ${invoiceNumber},
+        ${servicePlan[0].price},
+        ${servicePlan[0].price},
+        ${dueDate.toISOString().split("T")[0]},
+        ${adminOverride ? "paid" : "pending"},
+        ${`Initial invoice for ${servicePlan[0].name}`},
+        NOW()
+      ) RETURNING id
+    `
+
+    if (adminOverride) {
+      await sql`
+        UPDATE invoices 
+        SET paid_amount = ${servicePlan[0].price}
+        WHERE id = ${invoice[0].id}
       `
 
-      if (adminOverride) {
-        await tx`
-          UPDATE invoices 
-          SET paid_amount = ${servicePlan[0].price}
-          WHERE id = ${invoice[0].id}
-        `
+      await sql`
+        INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
+        VALUES (
+          1,
+          'service_activation',
+          'customer_service',
+          ${serviceId},
+          ${JSON.stringify({
+            customer_id: customerId,
+            service_id: serviceId,
+            invoice_id: invoice[0].id,
+            reason: "admin_override",
+          })}::jsonb,
+          NOW()
+        )
+      `
+    }
 
-        await tx`
-          INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
-          VALUES (
-            1,
-            'service_activation',
-            'customer_service',
-            ${serviceId},
-            ${JSON.stringify({
-              customer_id: customerId,
-              service_id: serviceId,
-              invoice_id: invoice[0].id,
-              reason: "admin_override",
-            })}::jsonb,
-            NOW()
-          )
-        `
-      }
-
-      if (inventoryItems) {
-        try {
-          const itemIds = JSON.parse(inventoryItems)
-          if (itemIds.length > 0) {
-            const inventoryValues = itemIds
-              .map((itemId: string) => `(${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')`)
-              .join(",")
-
-            await tx.unsafe(`
+    if (inventoryItems) {
+      try {
+        const itemIds = JSON.parse(inventoryItems)
+        if (itemIds.length > 0) {
+          for (const itemId of itemIds) {
+            await sql`
               INSERT INTO service_inventory (service_id, inventory_id, assigned_at, status)
-              VALUES ${inventoryValues}
+              VALUES (${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')
               ON CONFLICT DO NOTHING
-            `)
-
-            await tx`
-              UPDATE inventory 
-              SET stock_quantity = stock_quantity - 1
-              WHERE id = ANY(${itemIds.map((id: string) => Number.parseInt(id))})
-              AND stock_quantity > 0
             `
           }
-        } catch (inventoryError) {
-          console.error("Inventory assignment error:", inventoryError)
-        }
-      }
 
-      return {
-        success: true,
-        service: result[0],
-        invoice: { id: invoice[0].id },
-        ip_address: allocatedIpAddress,
-        message: adminOverride
-          ? "Service activated immediately with admin override."
-          : "Service created with pending payment status. IP will be assigned upon activation.",
+          await sql`
+            UPDATE inventory 
+            SET stock_quantity = stock_quantity - 1
+            WHERE id = ANY(${itemIds.map((id: string) => Number.parseInt(id))})
+            AND stock_quantity > 0
+          `
+        }
+      } catch (inventoryError) {
+        console.error("Inventory assignment error:", inventoryError)
       }
-    })
+    }
 
     revalidatePath(`/customers/${customerId}`, "page")
 
     return {
       success: true,
-      message: adminOverride ? "Service activated successfully" : "Service created successfully",
+      service: result[0],
+      invoice: { id: invoice[0].id },
+      ip_address: allocatedIpAddress,
+      message: adminOverride
+        ? "Service activated immediately with admin override."
+        : "Service created with pending payment status. IP will be assigned upon activation.",
     }
   } catch (error) {
     console.error("Error adding customer service:", error)

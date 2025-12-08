@@ -14,7 +14,16 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const offset = (page - 1) * limit
 
+    console.log("[v0] IP addresses query params:", { subnetId, status, search, page, limit })
+
     const sql = await getSql()
+
+    if (subnetId) {
+      const ipCount = await sql`
+        SELECT COUNT(*) as count FROM ip_addresses WHERE subnet_id = ${Number.parseInt(subnetId)}
+      `
+      console.log("[v0] Total IPs in subnet", subnetId, ":", ipCount[0]?.count)
+    }
 
     let query = `
       SELECT 
@@ -32,7 +41,7 @@ export async function GET(request: NextRequest) {
         cs.activated_at as assigned_date
       FROM ip_addresses ia
       LEFT JOIN customer_services cs ON 
-        ia.ip_address = cs.ip_address
+        ia.ip_address::text = cs.ip_address::text
         AND cs.status != 'terminated'
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1
@@ -86,6 +95,8 @@ export async function GET(request: NextRequest) {
     const countResult = await sql.unsafe(countQuery, params)
     const total = Number(countResult[0]?.total || 0)
 
+    console.log("[v0] Query returned total count:", total)
+
     query += ` ORDER BY 
       CASE 
         WHEN ia.ip_address ~ '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$' 
@@ -102,6 +113,8 @@ export async function GET(request: NextRequest) {
     params.push(limit, offset)
 
     const addresses = await sql.unsafe(query, params)
+
+    console.log("[v0] Query returned", addresses.length, "addresses")
 
     return NextResponse.json({
       success: true,

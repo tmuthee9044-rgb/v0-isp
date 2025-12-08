@@ -328,9 +328,52 @@ CREATE INDEX IF NOT EXISTS idx_routers_sync_status ON routers(sync_status);
 CREATE INDEX IF NOT EXISTS idx_customer_services_updated_at ON customer_services(updated_at);
 
 -- ================================================
+-- Add inventory_categories table for category management
+-- ================================================
+CREATE TABLE IF NOT EXISTS inventory_categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    icon VARCHAR(100) DEFAULT 'Package',
+    color VARCHAR(100) DEFAULT 'bg-gray-500',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+);
+
+-- Insert default categories if table is empty
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Network Equipment', 'Router', 'bg-blue-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Network Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Fiber Optic Equipment', 'Zap', 'bg-green-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Fiber Optic Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Wireless Equipment', 'Wifi', 'bg-purple-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Wireless Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Server Equipment', 'Server', 'bg-orange-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Server Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Testing Equipment', 'BarChart3', 'bg-red-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Testing Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Power Equipment', 'Zap', 'bg-yellow-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Power Equipment');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Installation Tools', 'Package', 'bg-gray-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Installation Tools');
+
+INSERT INTO inventory_categories (name, icon, color) 
+SELECT 'Cables & Accessories', 'Cable', 'bg-indigo-500'
+WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Cables & Accessories');
+
+-- ================================================
 -- Success message
 -- ================================================
-DO $$
-BEGIN
-    RAISE NOTICE 'All missing columns have been added successfully!';
-END $$;
+-- Removed problematic DO block that was causing syntax errors

@@ -94,6 +94,8 @@ export default function InventoryPage() {
   const [selectedTab, setSelectedTab] = useState("overview")
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<any>(null)
   const { toast } = useToast()
 
   const fetchInventoryData = async () => {
@@ -173,6 +175,41 @@ export default function InventoryPage() {
       }
     } catch (error) {
       console.error("Error fetching warehouses:", error)
+    }
+  }
+
+  const handleAddCategory = async (formData: FormData) => {
+    try {
+      const categoryData = {
+        name: formData.get("name"),
+        icon: formData.get("icon"),
+        color: formData.get("color"),
+      }
+
+      const response = await fetch("/api/inventory/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(categoryData),
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Category added successfully",
+        })
+        setShowCategoryModal(false)
+        fetchInventoryData()
+      } else {
+        throw new Error("Failed to add category")
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add category",
+        variant: "destructive",
+      })
     }
   }
 
@@ -532,6 +569,12 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
+          <div className="flex justify-end mb-4">
+            <Button onClick={() => setShowCategoryModal(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Category
+            </Button>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {inventoryData.categories.map((category) => {
               const IconComponent = getIconComponent(category.icon)
@@ -564,6 +607,147 @@ export default function InventoryPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Category Management Modal */}
+      <Dialog open={showCategoryModal} onOpenChange={setShowCategoryModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Category</DialogTitle>
+            <DialogDescription>Create a new inventory category with custom icon and color</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const formData = new FormData(e.currentTarget)
+              handleAddCategory(formData)
+            }}
+          >
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="category-name">Category Name</Label>
+                <Input id="category-name" name="name" placeholder="e.g., Network Equipment" required />
+              </div>
+              <div>
+                <Label htmlFor="category-icon">Icon</Label>
+                <Select name="icon" required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select icon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Router">
+                      <div className="flex items-center gap-2">
+                        <Router className="h-4 w-4" />
+                        Router
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Zap">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Zap
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Wifi">
+                      <div className="flex items-center gap-2">
+                        <Wifi className="h-4 w-4" />
+                        Wifi
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Server">
+                      <div className="flex items-center gap-2">
+                        <Server className="h-4 w-4" />
+                        Server
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Cable">
+                      <div className="flex items-center gap-2">
+                        <Cable className="h-4 w-4" />
+                        Cable
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="HardDrive">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="h-4 w-4" />
+                        Hard Drive
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Package">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Package
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="category-color">Color</Label>
+                <Select name="color" required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select color" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bg-blue-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-blue-500"></div>
+                        Blue
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-green-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-green-500"></div>
+                        Green
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-purple-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-purple-500"></div>
+                        Purple
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-orange-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-orange-500"></div>
+                        Orange
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-red-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-red-500"></div>
+                        Red
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-yellow-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-yellow-500"></div>
+                        Yellow
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-gray-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-gray-500"></div>
+                        Gray
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bg-indigo-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-indigo-500"></div>
+                        Indigo
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="outline" onClick={() => setShowCategoryModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Category</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Item Management Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent>
           <DialogHeader>
@@ -647,6 +831,7 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Item Modal */}
       <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
         <DialogContent>
           <DialogHeader>

@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
       INSERT INTO invoices (
         invoice_number,
         customer_id, 
-        amount, 
+        amount,
+        total_amount,
         description, 
         due_date, 
         status,
@@ -57,7 +58,8 @@ export async function POST(request: NextRequest) {
       VALUES (
         ${invoiceNumber},
         ${customer_id}, 
-        ${amount}, 
+        ${amount},
+        ${amount},
         ${description}, 
         ${due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}, 
         'pending',

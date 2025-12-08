@@ -324,6 +324,13 @@ setup_database() {
         print_success "User created"
     fi
     
+    print_info "Granting superuser privileges to $DB_USER for full CRUD and schema operations..."
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE REPLICATION;" 2>/dev/null || {
+        print_error "Failed to grant superuser privileges"
+        exit 1
+    }
+    print_success "Superuser privileges granted - user can now perform all database operations"
+    
     DB_EXISTS=$(sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME" && echo "1" || echo "0")
     
     if [ "$DB_EXISTS" = "0" ]; then
@@ -345,11 +352,7 @@ setup_database() {
     sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
-
-    print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
-    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true
-    print_success "Superuser privileges granted"
-
+    
     print_info "Transferring table ownership to $DB_USER..."
     sudo -u postgres psql -d "$DB_NAME" <<SQLEOF
 DO $$
@@ -1790,7 +1793,7 @@ verify_database_connection() {
     # Create all 146 tables from the complete schema
     print_info "Creating/updating all 146 tables from Neon schema..."
 
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
     SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
 
     if [ -f "$SCHEMA_FILE" ]; then
@@ -2469,17 +2472,6 @@ main() {
             full_installation
             ;;
         *)
-            print_error "Unknown option: $1"
-            echo ""
-            show_usage
-            exit 1
-            ;;
-    esac
-}
-
-# Run main function with all arguments
-main "$@"
-*)
             print_error "Unknown option: $1"
             echo ""
             show_usage

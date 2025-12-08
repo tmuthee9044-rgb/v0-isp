@@ -354,31 +354,46 @@ setup_database() {
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
     
     print_info "Transferring table ownership to $DB_USER..."
-    sudo -u postgres psql -d "$DB_NAME" <<SQLEOF
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Transfer ownership of all tables
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO ${DB_USER}';
-    END LOOP;
     
-    -- Transfer ownership of all sequences
-    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO ${DB_USER}';
-    END LOOP;
+    sudo -u postgres psql -d "$DB_NAME" -c "
+    DO \$\$
+    DECLARE
+        r RECORD;
+    BEGIN
+        -- Transfer ownership of all tables
+        FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO $DB_USER';
+        END LOOP;
+        
+        -- Transfer ownership of all sequences
+        FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO $DB_USER';
+        END LOOP;
+        
+        -- Transfer ownership of all views
+        FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO $DB_USER';
+        END LOOP;
+    END \$\$;
+    "
     
-    -- Transfer ownership of all views
-    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO ${DB_USER}';
-    END LOOP;
-END$$;
-SQLEOF
+    # Grant all privileges
+    sudo -u postgres psql -d "$DB_NAME" -c "
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
+    "
 
+    if [ $? -eq 0 ]; then
+        print_success "Table ownership transferred to $DB_USER"
+    else
+        print_warning "Failed to transfer some table ownership (this may not be critical)"
+    fi
+    
     print_success "Database permissions configured with full CRUD access"
     
     # Create environment file
@@ -1090,36 +1105,37 @@ apply_database_fixes() {
     print_success "Superuser privileges granted"
 
     print_info "Transferring table ownership to $DB_USER..."
-    sudo -u postgres psql -d "$DB_NAME" <<EOSQL
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Transfer ownership of all tables
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO ${DB_USER}';
-    END LOOP;
     
-    -- Transfer ownership of all sequences
-    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO ${DB_USER}';
-    END LOOP;
+    # Transfer ownership of all tables
+    sudo -u postgres psql -d "$DB_NAME" -c "
+    DO $$
+    DECLARE
+        r RECORD;
+    BEGIN
+        FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO $DB_USER';
+        END LOOP;
+        
+        FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO $DB_USER';
+        END LOOP;
+        
+        FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO $DB_USER';
+        END LOOP;
+    END $$;
+    "
     
-    -- Transfer ownership of all views
-    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO ${DB_USER}';
-    END LOOP;
-END\$\$;
-
--- Grant all privileges to ensure full access
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
-EOSQL
+    # Grant all privileges
+    sudo -u postgres psql -d "$DB_NAME" -c "
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
+    "
 
     if [ $? -eq 0 ]; then
         print_success "Table ownership transferred to $DB_USER"
@@ -1790,391 +1806,56 @@ verify_database_connection() {
     
     print_info "Step 8: Verifying all required tables and columns..."
 
-    # Create all 146 tables from the complete schema
-    print_info "Creating/updating all 146 tables from Neon schema..."
-
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
-    SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
-
-    if [ -f "$SCHEMA_FILE" ]; then
-        # Ensure the SQL file has read permissions
-        chmod +r "$SCHEMA_FILE" 2>/dev/null || true
-        
-        # Execute the SQL file with absolute path
-        # Execute the SQL file as isp_admin (who has SUPERUSER)
-        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
-            print_success "All 146 tables created/updated successfully"
-        else
-            print_warning "Some tables may not have been created"
-            print_info "Check the log: /tmp/schema_creation.log"
-        fi
-
-    else
-        print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
-    fi
-
-    print_info "Adding missing columns to existing tables..."
-    FIX_COLUMNS_FILE="$SCRIPT_DIR/scripts/fix_all_missing_columns.sql"
-    
-    if [ -f "$FIX_COLUMNS_FILE" ]; then
-        # Ensure the SQL file has read permissions
-        chmod +r "$FIX_COLUMNS_FILE" 2>/dev/null || true
-        
-        # Execute the column fix as isp_admin (who has SUPERUSER)
-        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$FIX_COLUMNS_FILE" 2>&1 | tee /tmp/column_fix.log; then
-            print_success "All missing columns added successfully"
-        else
-            print_warning "Some columns may not have been added"
-            print_info "Check the log: /tmp/column_fix.log"
-        fi
-    else
-        print_warning "Column fix SQL file not found at: $FIX_COLUMNS_FILE"
-    fi
-
-    # Verify tables exist
-    TABLES_CHECK=$(PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -tAc "
-SELECT COUNT(*) 
-FROM information_schema.tables 
-WHERE table_schema = 'public' 
-AND table_type = 'BASE TABLE';
-")
-
-    print_info "Total tables in database: $TABLES_CHECK"
-
-    if [ "$TABLES_CHECK" -ge 145 ]; then # Assuming 145 is the expected minimum count
-        print_success "Database schema verification complete!"
-    else
-        print_warning "Expected 145+ tables, found $TABLES_CHECK"
-        print_info "Some tables may be missing"
-    fi
-    
-    print_success "Database connection verification complete!"
-}
-
-verify_database_tables() {
-    print_header "Verifying Database Tables"
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    
-    print_info "Checking if required tables exist..."
-    
-    # List of required tables
-    REQUIRED_TABLES=(
-        "customers"
-        "service_plans"
-        "customer_services"
-        "payments"
-        "invoices"
-        "network_devices"
-        "ip_addresses"
-        "employees"
-        "payroll"
-        "leave_requests"
-        "activity_logs"
-        "schema_migrations"
-    )
-    
-    MISSING_TABLES=()
-    
-    for table in "${REQUIRED_TABLES[@]}"; do
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
-            print_success "Table exists: $table"
-        else
-            print_warning "Table missing: $table"
-            MISSING_TABLES+=("$table")
-        fi
-    done
-    
-    if [ ${#MISSING_TABLES[@]} -eq 0 ]; then
-        print_success "All required tables exist"
-        
-        # Count total tables
-        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-        print_info "Total tables in database: $TABLE_COUNT"
-        
-    else
-        print_error "Missing ${#MISSING_TABLES[@]} required tables"
-        print_info "Missing tables: ${MISSING_TABLES[*]}"
-        print_info "Attempting to create missing tables..."
-        
-        # Run migrations to create tables
-        apply_database_fixes
-        
-        # Verify again
-        print_info "Re-checking tables after migration..."
-        STILL_MISSING=()
-        
-        for table in "${MISSING_TABLES[@]}"; do
-            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
-                STILL_MISSING+=("$table")
-            fi
-        done
-        
-        if [ ${#STILL_MISSING[@]} -eq 0 ]; then
-            print_success "All tables created successfully"
-        else
-            print_error "Failed to create tables: ${STILL_MISSING[*]}"
-            print_info "Please check the migration files in scripts/ directory"
-            print_info "You can manually run: sudo -u postgres psql -d $DB_NAME -f scripts/001_initial_schema.sql"
-            exit 1
-        fi
-    fi
-}
-
-test_database_operations() {
-    print_header "Testing Database Operations"
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    
-    print_info "Testing INSERT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO activity_logs (action, entity_type, details) VALUES ('test_install', 'system', '{\"test\": true}') RETURNING id;" > /dev/null 2>&1; then
-        print_success "INSERT operation successful"
-    else
-        print_error "INSERT operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing SELECT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT COUNT(*) FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "SELECT operation successful"
-    else
-        print_error "SELECT operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing UPDATE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "UPDATE activity_logs SET details = '{\"test\": true, \"verified\": true}' WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "UPDATE operation successful"
-    else
-        print_error "UPDATE operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing DELETE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "DELETE FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "DELETE operation successful"
-    else
-        print_error "DELETE operation failed"
-        exit 1
-    fi
-    
-    print_success "All database operations working correctly"
-}
-
-run_performance_optimizations() {
-    print_header "Applying Performance Optimizations"
-    
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    
-    if [ ! -d "$SCRIPT_DIR/scripts" ]; then
-        print_warning "scripts/ directory not found, skipping performance optimizations..."
-        return 0
-    fi
-    
-    if [ ! -f "$SCRIPT_DIR/scripts/performance_indexes.sql" ]; then
-        print_warning "Performance optimization script not found at: $SCRIPT_DIR/scripts/performance_indexes.sql"
-        print_info "Skipping performance optimizations..."
-        return 0
-    fi
-    
-    print_info "Creating performance indexes..."
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_error "Database '$DB_NAME' does not exist"
-        print_info "Please run full installation first: ./install.sh"
-        exit 1
-    fi
-    
-    print_info "Preparing performance optimization file..."
-    TEMP_PERF_DIR="/tmp/isp_performance_$$"
-    mkdir -p "$TEMP_PERF_DIR"
-    chmod 755 "$TEMP_PERF_DIR"
-    
-    cp "$SCRIPT_DIR/scripts/performance_indexes.sql" "$TEMP_PERF_DIR/performance_indexes.sql"
-    chmod 644 "$TEMP_PERF_DIR/performance_indexes.sql"
-    
-    if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_PERF_DIR/performance_indexes.sql") 2>&1 | tee /tmp/performance_output.log; then
-        print_success "Performance optimizations applied"
-        
-        # Show summary
-        INDEX_COUNT=$(grep -c "CREATE INDEX" /tmp/performance_output.log || echo "0")
-        if [ "$INDEX_COUNT" -gt 0 ]; then
-            print_info "Created/verified $INDEX_COUNT performance indexes"
-        fi
-    else
-        print_warning "Some performance optimizations may have failed"
-        print_info "This is usually not critical and the system will still work"
-        print_info "Check the log: /tmp/performance_output.log"
-    fi
-    
-    print_info "Cleaning up temporary files..."
-    rm -rf "$TEMP_PERF_DIR"
-    rm -f /tmp/performance_output.log
-    
-    print_success "Performance optimization process complete"
-}
-
-verify_database_connection() {
-    print_header "Verifying Database Connection (Comprehensive Test)"
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    DB_USER="${DB_USER:-isp_admin}"
-    
-    print_info "Step 1: Checking PostgreSQL service status..."
-    
-    # Check if PostgreSQL is running
-    if [[ "$OS" == "linux" ]]; then
-        if ! sudo systemctl is-active --quiet postgresql; then
-            print_warning "PostgreSQL service is not running"
-            print_info "Starting PostgreSQL service..."
-            sudo systemctl start postgresql
-            sleep 3
-            
-            if sudo systemctl is-active --quiet postgresql; then
-                print_success "PostgreSQL service started"
-            else
-                print_error "Failed to start PostgreSQL service"
-                print_info "Checking PostgreSQL logs..."
-                sudo journalctl -u postgresql -n 20 --no-pager
-                exit 1
-            fi
-        else
-            print_success "PostgreSQL service is running"
-        fi
-    elif [[ "$OS" == "macos" ]]; then
-        if ! brew services list | grep postgresql | grep started > /dev/null; then
-            print_info "Starting PostgreSQL service..."
-            brew services start postgresql@15
-            sleep 3
-        fi
-        print_success "PostgreSQL service is running"
-    fi
-    
-    print_info "Step 2: Testing PostgreSQL server connectivity..."
-    
-    if sudo -u postgres psql -c "SELECT version();" > /dev/null 2>&1; then
-        PG_VERSION=$(sudo -u postgres psql -tAc "SELECT version();")
-        print_success "PostgreSQL server is accessible"
-        print_info "Version: $(echo $PG_VERSION | cut -d',' -f1)"
-    else
-        print_error "Cannot connect to PostgreSQL server"
-        print_info "Please check PostgreSQL status: sudo systemctl status postgresql"
-        exit 1
-    fi
-    
-    print_info "Step 3: Checking if database exists..."
-    
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_warning "Database '$DB_NAME' does not exist"
-        print_info "Creating database..."
-        setup_database
-    else
-        print_success "Database '$DB_NAME' exists"
-    fi
-    
-    print_info "Step 4: Testing database connection..."
-    
-    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-        print_success "Database connection successful"
-    else
-        print_error "Cannot connect to database '$DB_NAME'"
-        print_info "Attempting to fix connection..."
-        
-        # Try to recreate the database
-        setup_database
-        
-        # Test again
-        if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-            print_success "Database connection successful after fix"
-        else
-            print_error "Still cannot connect to database"
-            exit 1
-        fi
-    fi
-    
-    print_info "Step 5: Verifying database user permissions..."
-    
-    # Grant all necessary permissions
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
-    
-    print_success "Database user permissions configured"
-    
-    print_info "Step 6: Testing connection with credentials from .env.local..."
-    
-    if [ -f ".env.local" ]; then
-        source .env.local
-        
-        if [ -n "$DATABASE_URL" ]; then
-            MASKED_URL=$(echo "$DATABASE_URL" | awk -F'[@:/]' '{print $1"://"$4":***@"$6":"$7"/"$8}')
-            print_info "Testing connection string: $MASKED_URL"
-            
-            DB_TEST_USER=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $4}')
-            DB_TEST_PASS=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $5}')
-            DB_TEST_HOST=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $6}')
-            DB_TEST_PORT=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $7}')
-            DB_TEST_NAME=$(echo "$DATABASE_URL" | awk -F'[/:@?]' '{print $8}')
-            
-            if PGPASSWORD="$DB_TEST_PASS" psql -h "$DB_TEST_HOST" -p "$DB_TEST_PORT" -U "$DB_TEST_USER" -d "$DB_TEST_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-                print_success "Connection with .env.local credentials successful"
-            else
-                print_warning "Cannot connect with .env.local credentials"
-                print_info "This may cause issues when running the application"
-            fi
-        else
-            print_warning "DATABASE_URL not found in .env.local"
-        fi
-    else
-        print_warning ".env.local file not found"
-    fi
-    
-    print_info "Step 7: Checking database size and statistics..."
-    
-    DB_SIZE=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT pg_size_pretty(pg_database_size('$DB_NAME'));")
-    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-    
-    print_info "Database size: $DB_SIZE"
-    print_info "Number of tables: $TABLE_COUNT"
-    
-    print_info "Step 8: Verifying all required tables and columns..."
-    print_info "Creating/updating all 146 tables from Neon schema..."
-
     # Use the comprehensive schema file that has ALL 146 tables with ALL columns
-    NEON_SCHEMA_FILE="$SCRIPT_DIR/scripts/create_complete_schema.sql"
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # Ensure SCRIPT_DIR is defined
+    NEON_SCHEMA_FILE="${SCRIPT_DIR}/scripts/create_complete_schema.sql"
 
     if [ ! -f "$NEON_SCHEMA_FILE" ]; then
         print_error "Neon schema file not found: $NEON_SCHEMA_FILE"
-        exit 1
+        print_info "Looking in: $(pwd)/scripts/create_complete_schema.sql"
+        # Try alternate path
+        NEON_SCHEMA_FILE="$(pwd)/scripts/create_complete_schema.sql"
+        if [ ! -f "$NEON_SCHEMA_FILE" ]; then
+            print_error "Schema file not found in alternate location either"
+            exit 1
+        fi
     fi
 
     # Make sure the file is readable
     chmod +r "$NEON_SCHEMA_FILE" 2>/dev/null || true
 
-    # Execute as isp_admin user who has SUPERUSER
-    if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f "$NEON_SCHEMA_FILE" 2>&1 | tee /tmp/neon_schema_creation.log; then
+    print_info "Using schema file: $NEON_SCHEMA_FILE"
+
+    # Execute the SQL file as isp_admin (who has SUPERUSER)
+    if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$NEON_SCHEMA_FILE" 2>&1 | tee /tmp/neon_schema_creation.log; then
         print_success "All 146 tables created/updated successfully"
         
         # Now add any missing columns that might have been skipped
         print_info "Adding any missing columns to existing tables..."
-        if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/fix_all_missing_columns.sql" 2>&1 | tee /tmp/add_missing_columns.log; then
+        FIX_COLUMNS_FILE="${SCRIPT_DIR}/scripts/fix_all_missing_columns.sql"
+        if [ ! -f "$FIX_COLUMNS_FILE" ]; then
+            FIX_COLUMNS_FILE="$(pwd)/scripts/fix_all_missing_columns.sql"
+        fi
+        
+        if [ -f "$FIX_COLUMNS_FILE" ] && PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$FIX_COLUMNS_FILE" 2>&1 | tee /tmp/add_missing_columns.log; then
             print_success "All missing columns added successfully"
         else
             print_warning "Some columns may not have been added. Check /tmp/add_missing_columns.log"
         fi
     else
         print_error "Failed to create/update tables from Neon schema"
-        print_error "Check /tmp/neon_schema_creation.log for details"
+        print_info "Check /tmp/neon_schema_creation.log for details"
         cat /tmp/neon_schema_creation.log
         exit 1
     fi
 
     # Verify table and column counts
-    TABLES_COUNT=$(PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+    TABLES_COUNT=$(PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -t -c "
+SELECT COUNT(*) 
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_type = 'BASE TABLE';
+")
     print_info "Total tables in database: $(echo $TABLES_COUNT | tr -d ' ')"
 
     print_success "Database schema verification complete!"
@@ -2473,6 +2154,8 @@ EOF
 # ============================================
 
 main() {
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
     case "${1:-}" in
         --fix-npm)
             quick_fix_npm

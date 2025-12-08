@@ -25,6 +25,11 @@ export async function getServicePlans() {
       ORDER BY sp.price ASC
     `
 
+    if (!plans || !Array.isArray(plans)) {
+      console.error("[v0] Query returned non-array result:", plans)
+      return { success: false, error: "Invalid data format from database", data: [] }
+    }
+
     const plansWithDefaults = plans.map((plan) => ({
       ...plan,
       throttled_speed: null, // Default value since column doesn't exist

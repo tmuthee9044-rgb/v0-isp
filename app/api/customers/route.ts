@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         COALESCE(COUNT(DISTINCT CASE WHEN st.status IN ('open', 'in_progress', 'pending') THEN st.id END), 0)::integer as open_tickets
       FROM customers c
       LEFT JOIN customer_services cs ON c.id = cs.customer_id 
-        AND cs.status NOT IN ('terminated', 'cancelled')
+        AND cs.status NOT IN ('terminated')
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       LEFT JOIN invoices i ON c.id = i.customer_id
       LEFT JOIN payments p ON c.id = p.customer_id

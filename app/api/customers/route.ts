@@ -186,16 +186,21 @@ export async function POST(request: NextRequest) {
     const customerType = data.customer_type || "individual"
     console.log("[v0] Customer type:", customerType)
 
+    const customerName =
+      customerType === "individual"
+        ? `${firstName} ${lastName}`.trim()
+        : businessName || `${firstName} ${lastName}`.trim()
+
     const customerResult = await sql`
       INSERT INTO customers (
-        account_number, first_name, last_name, business_name, customer_type, email, phone,
+        account_number, name, first_name, last_name, business_name, customer_type, email, phone,
         address, city, state, country, postal_code, gps_coordinates,
         billing_address, installation_address,
         id_number, tax_number, business_type,
         preferred_contact_method, referral_source, service_preferences,
         status, created_at, updated_at
       ) VALUES (
-        ${accountNumber}, ${firstName}, ${lastName},
+        ${accountNumber}, ${customerName}, ${firstName}, ${lastName},
         ${businessName}, ${customerType}, ${normalizedEmail}, ${data.phone_primary || data.phone},
         ${data.physical_address || data.address}, ${data.physical_city || data.city}, 
         ${data.physical_county || data.state}, ${data.country || "Kenya"}, 

@@ -327,6 +327,14 @@ CREATE INDEX IF NOT EXISTS idx_company_profiles_company_prefix ON company_profil
 CREATE INDEX IF NOT EXISTS idx_routers_sync_status ON routers(sync_status);
 CREATE INDEX IF NOT EXISTS idx_customer_services_updated_at ON customer_services(updated_at);
 
+-- Adding indexes for IP address performance optimization
+CREATE INDEX IF NOT EXISTS idx_ip_addresses_subnet_id ON ip_addresses(subnet_id);
+CREATE INDEX IF NOT EXISTS idx_ip_addresses_status ON ip_addresses(status);
+CREATE INDEX IF NOT EXISTS idx_ip_addresses_ip_address ON ip_addresses(ip_address);
+CREATE INDEX IF NOT EXISTS idx_customer_services_ip_address ON customer_services(ip_address);
+CREATE INDEX IF NOT EXISTS idx_customer_services_status ON customer_services(status);
+CREATE INDEX IF NOT EXISTS idx_ip_subnets_router_id ON ip_subnets(router_id);
+
 -- ================================================
 -- Add inventory_categories table for category management
 -- ================================================

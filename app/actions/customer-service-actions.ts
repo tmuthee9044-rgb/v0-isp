@@ -3,7 +3,7 @@
 import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
-import { allocateIPAddress, releaseIPAddress } from "@/lib/ip-management"
+import { releaseIPAddress } from "@/lib/ip-management"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -55,10 +55,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
 
-    console.log("[v0] Service plan ID from form:", servicePlanIdStr, "parsed:", servicePlanId)
-
     if (!servicePlanIdStr || isNaN(servicePlanId)) {
-      console.error("[v0] Invalid service plan ID:", servicePlanIdStr)
       return {
         success: false,
         error: "Invalid service plan selected. Please select a valid service plan.",
@@ -68,7 +65,6 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const connectionType = formData.get("connection_type") as string
 
     if (!connectionType) {
-      console.error("[v0] Missing connection type")
       return {
         success: false,
         error: "Connection type is required. Please select a connection type.",
@@ -86,28 +82,16 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const inventoryItems = formData.get("inventory_items") as string
     const adminOverride = formData.get("admin_override") === "on"
 
-    console.log("[v0] Adding service with data:", {
-      customerId,
-      servicePlanId,
-      connectionType,
-      ipAddress,
-      subnetId,
-      locationId,
-      pppoeEnabled,
-      inventoryItems,
-      adminOverride,
-    })
-
     if (ipAddress && ipAddress !== "auto") {
       const existingIP = await sql`
         SELECT id, customer_id 
         FROM ip_addresses 
         WHERE ip_address = ${ipAddress}::inet 
         AND status = 'assigned'
+        LIMIT 1
       `
 
       if (existingIP.length > 0) {
-        console.error("[v0] IP address already assigned:", ipAddress)
         return {
           success: false,
           error: `IP address ${ipAddress} is already assigned to customer ${existingIP[0].customer_id}`,
@@ -115,15 +99,14 @@ export async function addCustomerService(customerId: number, formData: FormData)
       }
     }
 
-    console.log("[v0] Fetching service plan with ID:", servicePlanId)
     const servicePlan = await sql`
-      SELECT * FROM service_plans WHERE id = ${servicePlanId}
+      SELECT id, name, price, download_speed, upload_speed 
+      FROM service_plans 
+      WHERE id = ${servicePlanId} AND status = 'active'
+      LIMIT 1
     `
 
-    console.log("[v0] Service plan query result:", servicePlan.length > 0 ? servicePlan[0] : "Not found")
-
     if (servicePlan.length === 0) {
-      console.error("[v0] Service plan not found for ID:", servicePlanId)
       return {
         success: false,
         error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
@@ -132,202 +115,163 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     const initialStatus = adminOverride ? "active" : "pending"
 
-    console.log("[v0] Inserting customer service with:", {
-      customerId,
-      servicePlanId,
-      initialStatus,
-      monthlyFee: servicePlan[0].price,
-      connectionType,
-    })
-
-    const result = await sql`
-      INSERT INTO customer_services (
-        customer_id, 
-        service_plan_id, 
-        status, 
-        monthly_fee, 
-        start_date,
-        connection_type,
-        created_at
-      ) VALUES (
-        ${customerId},
-        ${servicePlanId},
-        ${initialStatus},
-        ${servicePlan[0].price},
-        NOW(),
-        ${connectionType},
-        NOW()
-      ) RETURNING *
-    `
-
-    console.log("[v0] Service inserted successfully:", result[0])
-
-    const serviceId = result[0].id
-    let allocatedIpAddress = null
-
-    if (ipAddress === "auto" || !ipAddress) {
-      console.log("[v0] Starting automatic IP allocation...")
-
-      const allocationResult = await allocateIPAddress(
-        customerId,
-        serviceId,
-        undefined, // Let the system select the router
-        locationId ? Number.parseInt(locationId) : undefined,
-        connectionType,
-      )
-
-      if (allocationResult.success) {
-        allocatedIpAddress = allocationResult.ipAddress
-        console.log("[v0] Automatically allocated IP:", allocatedIpAddress)
-      } else {
-        console.error("[v0] Automatic IP allocation failed:", allocationResult.error)
-        // Don't fail service creation if IP allocation fails
-      }
-    } else if (ipAddress && subnetId) {
-      // Manual IP assignment
-      try {
-        const assignResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/network/ip-addresses/assign`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              service_id: serviceId,
-              ip_address: ipAddress,
-              subnet_id: Number.parseInt(subnetId),
-            }),
-          },
-        )
-
-        if (assignResponse.ok) {
-          const assignData = await assignResponse.json()
-          allocatedIpAddress = assignData.address.ip_address
-          console.log("[v0] Manually assigned IP address:", allocatedIpAddress)
-        } else {
-          console.error("[v0] Failed to assign manual IP address")
-        }
-      } catch (error) {
-        console.error("[v0] Error assigning manual IP:", error)
-      }
-    }
-
-    if (allocatedIpAddress) {
-      await sql`
-        UPDATE customer_services
-        SET ip_address = ${allocatedIpAddress}::text
-        WHERE id = ${serviceId}
-      `
-    }
-
-    const invoiceNumber = `INV-${customerId}-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${serviceId}`
-    const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 30)
-
-    console.log("[v0] Creating invoice with:", {
-      customerId,
-      amount: servicePlan[0].price,
-      invoiceNumber,
-      dueDate: dueDate.toISOString().split("T")[0],
-    })
-
-    const invoice = await sql`
-      INSERT INTO invoices (
-        customer_id,
-        invoice_number,
-        amount,
-        total_amount,
-        due_date,
-        status,
-        description,
-        created_at
-      ) VALUES (
-        ${customerId},
-        ${invoiceNumber},
-        ${servicePlan[0].price},
-        ${servicePlan[0].price},
-        ${dueDate.toISOString().split("T")[0]},
-        'pending',
-        ${`Initial invoice for ${servicePlan[0].name}`},
-        NOW()
-      ) RETURNING *
-    `
-
-    console.log("[v0] Invoice created successfully:", invoice[0])
-
-    if (adminOverride) {
-      await sql`
-        UPDATE invoices 
-        SET status = 'paid', paid_amount = ${servicePlan[0].price}
-        WHERE id = ${invoice[0].id}
-      `
-
-      await sql`
-        INSERT INTO system_logs (category, message, details, created_at)
-        VALUES (
-          'admin_override',
-          'Service manually activated without payment by admin for customer ' || ${customerId},
-          '{"customer_id": ' || ${customerId} || ', "service_id": ' || ${serviceId} || ', "invoice_id": ' || ${invoice[0].id} || ', "reason": "admin_override"}',
+    await sql.begin(async (tx) => {
+      const result = await tx`
+        INSERT INTO customer_services (
+          customer_id, 
+          service_plan_id, 
+          status, 
+          monthly_fee, 
+          start_date,
+          connection_type,
+          created_at
+        ) VALUES (
+          ${customerId},
+          ${servicePlanId},
+          ${initialStatus},
+          ${servicePlan[0].price},
+          NOW(),
+          ${connectionType},
           NOW()
-        )
+        ) RETURNING *
       `
 
-      // The scheduled tasks functionality can be added later when the table is created
+      const serviceId = result[0].id
+      let allocatedIpAddress = null
 
-      console.log("[v0] Scheduled tasks table may not exist, skipping")
-    }
+      if (ipAddress === "auto" || !ipAddress) {
+        await tx`
+          INSERT INTO pending_tasks (
+            task_type, 
+            resource_type, 
+            resource_id, 
+            data,
+            status,
+            created_at
+          ) VALUES (
+            'allocate_ip',
+            'customer_service',
+            ${serviceId},
+            ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
+            'pending',
+            NOW()
+          )
+          ON CONFLICT DO NOTHING
+        `
+      } else if (ipAddress && subnetId) {
+        await tx`
+          UPDATE ip_addresses
+          SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
+          WHERE ip_address = ${ipAddress}::inet
+        `
+        allocatedIpAddress = ipAddress
 
-    if (inventoryItems) {
-      try {
-        const itemIds = JSON.parse(inventoryItems)
-        for (const itemId of itemIds) {
-          await sql`
-            INSERT INTO service_inventory (service_id, inventory_id, assigned_at, status)
-            VALUES (${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')
-          `
-
-          await sql`
-            UPDATE inventory SET stock_quantity = stock_quantity - 1
-            WHERE id = ${Number.parseInt(itemId)} AND stock_quantity > 0
-          `
-        }
-        console.log("[v0] Inventory items assigned successfully")
-      } catch (inventoryError) {
-        console.log(
-          "[v0] Service inventory table may not exist, skipping:",
-          inventoryError instanceof Error ? inventoryError.message : "Unknown error",
-        )
+        await tx`
+          UPDATE customer_services
+          SET ip_address = ${allocatedIpAddress}::text
+          WHERE id = ${serviceId}
+        `
       }
-    }
 
-    console.log("[v0] Service created successfully with automatic invoice generation:", {
-      serviceId,
-      ipAddress: allocatedIpAddress,
-      invoiceId: invoice[0].id,
-      adminOverride,
-      status: initialStatus,
+      const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
+      const dueDate = new Date()
+      dueDate.setDate(dueDate.getDate() + 30)
+
+      const invoice = await tx`
+        INSERT INTO invoices (
+          customer_id,
+          invoice_number,
+          amount,
+          total_amount,
+          due_date,
+          status,
+          description,
+          created_at
+        ) VALUES (
+          ${customerId},
+          ${invoiceNumber},
+          ${servicePlan[0].price},
+          ${servicePlan[0].price},
+          ${dueDate.toISOString().split("T")[0]},
+          ${adminOverride ? "paid" : "pending"},
+          ${`Initial invoice for ${servicePlan[0].name}`},
+          NOW()
+        ) RETURNING id
+      `
+
+      if (adminOverride) {
+        await tx`
+          UPDATE invoices 
+          SET paid_amount = ${servicePlan[0].price}
+          WHERE id = ${invoice[0].id}
+        `
+
+        await tx`
+          INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
+          VALUES (
+            1,
+            'service_activation',
+            'customer_service',
+            ${serviceId},
+            ${JSON.stringify({
+              customer_id: customerId,
+              service_id: serviceId,
+              invoice_id: invoice[0].id,
+              reason: "admin_override",
+            })}::jsonb,
+            NOW()
+          )
+        `
+      }
+
+      if (inventoryItems) {
+        try {
+          const itemIds = JSON.parse(inventoryItems)
+          if (itemIds.length > 0) {
+            const inventoryValues = itemIds
+              .map((itemId: string) => `(${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')`)
+              .join(",")
+
+            await tx.unsafe(`
+              INSERT INTO service_inventory (service_id, inventory_id, assigned_at, status)
+              VALUES ${inventoryValues}
+              ON CONFLICT DO NOTHING
+            `)
+
+            await tx`
+              UPDATE inventory 
+              SET stock_quantity = stock_quantity - 1
+              WHERE id = ANY(${itemIds.map((id: string) => Number.parseInt(id))})
+              AND stock_quantity > 0
+            `
+          }
+        } catch (inventoryError) {
+          console.error("Inventory assignment error:", inventoryError)
+        }
+      }
+
+      return {
+        success: true,
+        service: result[0],
+        invoice: { id: invoice[0].id },
+        ip_address: allocatedIpAddress,
+        message: adminOverride
+          ? "Service activated immediately with admin override."
+          : "Service created with pending payment status. IP will be assigned upon activation.",
+      }
     })
 
-    revalidatePath(`/customers/${customerId}`)
+    revalidatePath(`/customers/${customerId}`, "page")
+
     return {
       success: true,
-      service: result[0],
-      invoice: invoice[0],
-      ip_address: allocatedIpAddress,
-      message: adminOverride
-        ? "Service activated immediately with admin override. IP address assigned automatically."
-        : "Service created with pending payment status. IP address will be assigned upon activation.",
+      message: adminOverride ? "Service activated successfully" : "Service created successfully",
     }
   } catch (error) {
-    console.error("[v0] Error adding customer service:", error)
-    console.error("[v0] Error details:", {
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : undefined,
-    })
-
+    console.error("Error adding customer service:", error)
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to add service. Please check the server logs for details.",
+      error: error instanceof Error ? error.message : "Failed to add service. Please try again.",
     }
   }
 }

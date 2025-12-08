@@ -83,6 +83,19 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
       fetchCustomer()
       fetchServices()
     }
+
+    const handleServiceAdded = (event: CustomEvent) => {
+      if (event.detail.customerId === customerId) {
+        fetchServices()
+        fetchCustomer()
+      }
+    }
+
+    window.addEventListener("serviceAdded", handleServiceAdded as EventListener)
+
+    return () => {
+      window.removeEventListener("serviceAdded", handleServiceAdded as EventListener)
+    }
   }, [customerId])
 
   const fetchCustomer = async () => {

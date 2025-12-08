@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -168,159 +170,66 @@ function AddServiceModal({
     }
   }
 
-  const handleSubmit = async () => {
-    if (!selectedPlan || !connectionType) {
-      const missing = []
-      if (!selectedPlan) missing.push("service plan")
-      if (!connectionType) missing.push("connection type")
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
 
-      setValidationError(`Please select: ${missing.join(", ")}`)
+    if (!selectedPlan) {
+      setValidationError("Please select a service plan")
       return
     }
 
-    if (pppoeEnabled && (!pppoeUsername || !pppoePassword)) {
-      setValidationError("PPPoE username and password are required when PPPoE is enabled")
+    if (!connectionType) {
+      setValidationError("Please select a connection type")
       return
-    }
-
-    if (lockToMac && !macAddress) {
-      setValidationError("MAC address is required when MAC locking is enabled")
-      return
-    }
-
-    if (selectedIpAddress && selectedIpAddress !== "auto") {
-      try {
-        const response = await fetch(`/api/network/ip-addresses?status=available`)
-        const data = await response.json()
-
-        if (Array.isArray(data)) {
-          const ipStillAvailable = data.some(
-            (ip: IPPool) => ip.ip_address === selectedIpAddress && ip.status === "available" && !ip.customer_id,
-          )
-
-          if (!ipStillAvailable) {
-            setValidationError(
-              `IP address ${selectedIpAddress} is no longer available. Please select a different IP address.`,
-            )
-            fetchIpPools()
-            return
-          }
-        } else if (data.success && Array.isArray(data.addresses)) {
-          const ipStillAvailable = data.addresses.some(
-            (ip: IPPool) => ip.ip_address === selectedIpAddress && ip.status === "available" && !ip.customer_id,
-          )
-
-          if (!ipStillAvailable) {
-            setValidationError(
-              `IP address ${selectedIpAddress} is no longer available. Please select a different IP address.`,
-            )
-            fetchIpPools()
-            return
-          }
-        }
-      } catch (error) {
-        console.warn("Could not validate IP address, proceeding with server-side validation")
-      }
     }
 
     setIsLoading(true)
     setValidationError("")
 
     try {
-      if (editMode && editingService) {
-        const updateData = {
-          serviceId: editingService.id,
-          service_plan_id: Number.parseInt(selectedPlan),
-          connection_type: connectionType,
-          monthly_fee: selectedPlanData?.price || editingService.monthly_fee,
-          ip_address: selectedIpAddress === "auto" ? null : selectedIpAddress,
-          device_id: macAddress || null,
-        }
+      const formData = new FormData()
+      formData.append("customer_id", customerId.toString())
+      formData.append("service_plan_id", selectedPlan)
+      formData.append("connection_type", connectionType)
+      if (selectedLocation) {
+        formData.append("location_id", selectedLocation)
+      }
+      formData.append("auto_renew", autoRenew ? "on" : "off")
+      formData.append("admin_override", adminOverride ? "on" : "off")
 
-        console.log("[v0] Updating service:", updateData)
+      if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
+      if (macAddress) formData.append("mac_address", macAddress)
+      formData.append("lock_to_mac", lockToMac ? "on" : "off")
+      formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")
+      if (pppoeEnabled) {
+        formData.append("pppoe_username", pppoeUsername)
+        formData.append("pppoe_password", pppoePassword)
+      }
 
-        const response = await fetch(`/api/customers/${customerId}/services`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(updateData),
-        })
+      const result = await addCustomerService(customerId, formData)
 
-        const result = await response.json()
+      if (result.success) {
+        onOpenChange(false)
+        setSelectedPlan("")
+        setConnectionType("")
+        setSelectedIpAddress("")
+        setMacAddress("")
+        setLockToMac(false)
+        setPppoeEnabled(false)
+        setPppoeUsername("")
+        setPppoePassword("")
+        setCurrentTab("plans")
+        setAdminOverride(false)
 
-        if (result.success) {
-          onOpenChange(false)
-          setSelectedPlan("")
-          setConnectionType("")
-          setSelectedIpAddress("")
-          setMacAddress("")
-          setLockToMac(false)
-          setPppoeEnabled(false)
-          setPppoeUsername("")
-          setPppoePassword("")
-          setCurrentTab("plans")
-          setAdminOverride(false)
-
-          window.location.reload()
-        } else {
-          console.error("[v0] Failed to update service:", result.error)
-          setValidationError(result.error || "Failed to update service")
+        if (typeof window !== "undefined") {
+          // Dispatch custom event for parent to catch
+          window.dispatchEvent(new CustomEvent("serviceAdded", { detail: { customerId } }))
         }
       } else {
-        const formData = new FormData()
-        formData.append("customer_id", customerId.toString())
-        formData.append("service_plan_id", selectedPlan)
-        formData.append("connection_type", connectionType)
-        if (selectedLocation) {
-          formData.append("location_id", selectedLocation)
-        }
-        formData.append("auto_renew", autoRenew ? "on" : "off")
-        formData.append("admin_override", adminOverride ? "on" : "off")
-
-        if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
-        if (macAddress) formData.append("mac_address", macAddress)
-        formData.append("lock_to_mac", lockToMac ? "on" : "off")
-        formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")
-        if (pppoeEnabled) {
-          formData.append("pppoe_username", pppoeUsername)
-          formData.append("pppoe_password", pppoePassword)
-        }
-
-        console.log("[v0] Submitting enhanced service:", {
-          customerId,
-          location: selectedLocation,
-          plan: selectedPlan,
-          connectionType,
-          ipAddress: selectedIpAddress,
-          macAddress,
-          pppoeEnabled,
-        })
-
-        const result = await addCustomerService(customerId, formData)
-        console.log("[v0] Service addition result:", result)
-
-        if (result.success) {
-          onOpenChange(false)
-          setSelectedPlan("")
-          setConnectionType("")
-          setSelectedIpAddress("")
-          setMacAddress("")
-          setLockToMac(false)
-          setPppoeEnabled(false)
-          setPppoeUsername("")
-          setPppoePassword("")
-          setCurrentTab("plans")
-          setAdminOverride(false)
-
-          window.location.reload()
-        } else {
-          console.error("[v0] Failed to add service:", result.error)
-          setValidationError(result.error || "Failed to add service")
-        }
+        setValidationError(result.error || "Failed to add service")
       }
     } catch (error) {
-      console.error("[v0] Error processing service:", error)
+      console.error("Error processing service:", error)
       setValidationError(error instanceof Error ? error.message : "Unknown error occurred")
     } finally {
       setIsLoading(false)

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export const dynamic = "force-dynamic"
 
@@ -10,11 +11,10 @@ export async function GET() {
     // Check database connection
     const connectionTest = await sql`SELECT 1 as test`
 
-    // Get table information
     const tables = await sql`
       SELECT 
         table_name,
-        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
+        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name AND table_schema = 'public') as column_count
       FROM information_schema.tables t
       WHERE table_schema = 'public' 
       AND table_type = 'BASE TABLE'
@@ -34,6 +34,25 @@ export async function GET() {
       }
     }
 
+    let schemaDifferences: any = null
+    try {
+      const neonSql = neon(process.env.DATABASE_URL!)
+      const neonTableCount = await neonSql`
+        SELECT COUNT(*) as count 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      `
+
+      schemaDifferences = {
+        neon_tables: Number(neonTableCount[0].count),
+        local_tables: tables.length,
+        difference: Number(neonTableCount[0].count) - tables.length,
+        status: Number(neonTableCount[0].count) === tables.length ? "synced" : "out_of_sync",
+      }
+    } catch (error) {
+      console.error("Error comparing with Neon:", error)
+    }
+
     // Check specific module schemas
     const moduleStatus = {
       customers: await checkCustomerSchema(sql),
@@ -51,6 +70,7 @@ export async function GET() {
       totalRecords,
       recordCounts,
       moduleStatus,
+      schemaDifferences,
       tableList: tables,
       lastChecked: new Date().toISOString(),
     })

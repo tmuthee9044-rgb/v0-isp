@@ -230,31 +230,35 @@ export async function addCustomerService(customerId: number, formData: FormData)
       dueDate: dueDate.toISOString().split("T")[0],
     })
 
-    const invoiceResult = await sql`
+    const invoice = await sql`
       INSERT INTO invoices (
         customer_id,
+        invoice_number,
         amount,
+        total_amount,
         due_date,
         status,
-        invoice_number,
+        description,
         created_at
       ) VALUES (
         ${customerId},
+        ${invoiceNumber},
+        ${servicePlan[0].price},
         ${servicePlan[0].price},
         ${dueDate.toISOString().split("T")[0]},
         'pending',
-        ${invoiceNumber},
+        ${`Initial invoice for ${servicePlan[0].name}`},
         NOW()
       ) RETURNING *
     `
 
-    console.log("[v0] Invoice created successfully:", invoiceResult[0])
+    console.log("[v0] Invoice created successfully:", invoice[0])
 
     if (adminOverride) {
       await sql`
         UPDATE invoices 
         SET status = 'paid', paid_amount = ${servicePlan[0].price}
-        WHERE id = ${invoiceResult[0].id}
+        WHERE id = ${invoice[0].id}
       `
 
       await sql`
@@ -262,7 +266,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         VALUES (
           'admin_override',
           'Service manually activated without payment by admin for customer ' || ${customerId},
-          '{"customer_id": ' || ${customerId} || ', "service_id": ' || ${serviceId} || ', "invoice_id": ' || ${invoiceResult[0].id} || ', "reason": "admin_override"}',
+          '{"customer_id": ' || ${customerId} || ', "service_id": ' || ${serviceId} || ', "invoice_id": ' || ${invoice[0].id} || ', "reason": "admin_override"}',
           NOW()
         )
       `
@@ -298,7 +302,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     console.log("[v0] Service created successfully with automatic invoice generation:", {
       serviceId,
       ipAddress: allocatedIpAddress,
-      invoiceId: invoiceResult[0].id,
+      invoiceId: invoice[0].id,
       adminOverride,
       status: initialStatus,
     })
@@ -307,7 +311,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     return {
       success: true,
       service: result[0],
-      invoice: invoiceResult[0],
+      invoice: invoice[0],
       ip_address: allocatedIpAddress,
       message: adminOverride
         ? "Service activated immediately with admin override. IP address assigned automatically."

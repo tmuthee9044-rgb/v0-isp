@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO ip_subnets (
-        router_id, cidr, name, description, type, version, total_ips, used_ips, available_ips
+        router_id, cidr, name, description, type, version, total_ips, used_ips
       ) VALUES (
         ${router_id}, 
         ${cidr}, 
@@ -162,8 +162,7 @@ export async function POST(request: NextRequest) {
         ${type || "private"},
         ${ipVersion},
         ${totalIPs},
-        0,
-        ${totalIPs}
+        0
       )
       RETURNING *
     `
@@ -224,7 +223,6 @@ export async function POST(request: NextRequest) {
           UPDATE ip_subnets 
           SET 
             total_ips = ${insertedCount},
-            available_ips = ${insertedCount},
             used_ips = 0
           WHERE id = ${createdSubnet.id}
         `

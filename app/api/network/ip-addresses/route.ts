@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       SELECT id, customer_id, ip_address, status, pg_typeof(ip_address) as ip_type
       FROM customer_services
       WHERE ip_address IS NOT NULL
-      AND status NOT IN ('terminated', 'cancelled')
+      AND status != 'terminated'
       LIMIT 5
     `
     console.log("[v0] Services with IP addresses assigned:", servicesWithIps.length)
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN network_devices nd ON s.router_id = nd.id
       LEFT JOIN customer_services cs ON 
         host(ia.ip_address) = host(cs.ip_address) 
-        AND cs.status NOT IN ('terminated', 'cancelled')
+        AND cs.status != 'terminated'
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1
     `

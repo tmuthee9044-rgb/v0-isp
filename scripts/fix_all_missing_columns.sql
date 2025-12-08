@@ -232,6 +232,13 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS total_amount NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0;
+
+-- Update total_amount from amount column for existing invoices where total_amount is NULL
+UPDATE invoices SET total_amount = amount WHERE total_amount IS NULL OR total_amount = 0;
 
 -- TABLE: ip_subnets (complete missing columns)
 ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS name VARCHAR(255);
@@ -242,6 +249,11 @@ ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS router_id BIGINT;
 ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS allocation_mode VARCHAR(50);
 ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS used_ips INTEGER DEFAULT 0;
 ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS total_ips INTEGER;
+-- Added available_ips column for local PostgreSQL compatibility
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS available_ips INTEGER DEFAULT 0;
+
+-- Update available_ips to match total_ips - used_ips for existing records
+UPDATE ip_subnets SET available_ips = total_ips - used_ips WHERE available_ips IS NULL OR available_ips = 0;
 
 -- TABLE: roles  
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS name VARCHAR(255);

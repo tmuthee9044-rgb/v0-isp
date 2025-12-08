@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN ip_subnets s ON ia.subnet_id = s.id
       LEFT JOIN network_devices nd ON s.router_id = nd.id
       LEFT JOIN customer_services cs ON 
-        host(ia.ip_address) = host(cs.ip_address) 
+        host(ia.ip_address::inet) = host(cs.ip_address::inet)
         AND cs.status != 'terminated'
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1

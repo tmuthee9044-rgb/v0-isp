@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       LEFT JOIN network_devices r ON s.router_id = r.id
       LEFT JOIN locations l ON r.location_id = l.id
       LEFT JOIN ip_addresses ip ON s.id = ip.subnet_id
-      LEFT JOIN customer_services cs ON cs.ip_address = ip.ip_address AND cs.status != 'terminated'
+      LEFT JOIN customer_services cs ON cs.ip_address::text = ip.ip_address::text AND cs.status != 'terminated'
       WHERE s.id = ${subnetId}
       GROUP BY s.id, r.name, r.ip_address, l.name, l.city, l.address
     `

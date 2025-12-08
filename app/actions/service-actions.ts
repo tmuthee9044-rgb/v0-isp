@@ -1,10 +1,12 @@
 "use server"
 
-import { sql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 
 export async function getServicePlans() {
   try {
+    const sql = await getSql()
+
     const plans = await sql`
       SELECT 
         sp.id,
@@ -33,10 +35,7 @@ export async function getServicePlans() {
       ORDER BY sp.price ASC
     `
 
-    console.log("[v0] Service plans query result:", { plans, type: typeof plans, isArray: Array.isArray(plans) })
-
     if (!plans || !Array.isArray(plans)) {
-      console.error("[v0] Query returned non-array result:", plans)
       return { success: true, data: [] }
     }
 
@@ -45,17 +44,17 @@ export async function getServicePlans() {
       throttled_speed: null,
     }))
 
-    console.log("[v0] Processed plans:", plansWithDefaults)
-
     return { success: true, data: plansWithDefaults }
   } catch (error) {
-    console.error("[v0] Error fetching service plans:", error)
+    console.error("Error fetching service plans:", error)
     return { success: true, data: [] }
   }
 }
 
 export async function createServicePlan(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const name = formData.get("name") as string
     const description = formData.get("description") as string
     const downloadSpeed = Number.parseInt(formData.get("download_speed") as string)
@@ -84,6 +83,8 @@ export async function createServicePlan(formData: FormData) {
 
 export async function updateServicePlan(formData: FormData) {
   try {
+    const sql = await getSql()
+
     const id = Number.parseInt(formData.get("id") as string)
     const name = formData.get("name") as string
     const description = formData.get("description") as string
@@ -114,6 +115,8 @@ export async function updateServicePlan(formData: FormData) {
 
 export async function deleteServicePlan(id: number) {
   try {
+    const sql = await getSql()
+
     await sql`
       UPDATE service_plans 
       SET status = 'inactive', updated_at = NOW()

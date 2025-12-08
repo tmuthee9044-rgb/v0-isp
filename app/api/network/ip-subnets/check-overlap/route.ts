@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     let query = `
       SELECT id, cidr, name, router_id
       FROM ip_subnets
-      WHERE cidr && $1::inet
+      WHERE cidr::inet && $1::inet
     `
 
     const params: any[] = [cidr]

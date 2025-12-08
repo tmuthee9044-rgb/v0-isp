@@ -3,10 +3,53 @@ import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
+// Helper function to ensure table exists
+async function ensureTableExists(sql: any) {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS inventory_categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        icon VARCHAR(50) DEFAULT 'Package',
+        color VARCHAR(50) DEFAULT 'bg-gray-500',
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `
+
+    // Check if table has any records
+    const count = await sql`SELECT COUNT(*) as count FROM inventory_categories`
+
+    // If empty, insert default categories
+    if (count[0].count === 0) {
+      await sql`
+        INSERT INTO inventory_categories (name, icon, color) VALUES
+        ('Network Equipment', 'Router', 'bg-blue-500'),
+        ('Fiber Optic Equipment', 'Zap', 'bg-green-500'),
+        ('Wireless Equipment', 'Wifi', 'bg-purple-500'),
+        ('Server Equipment', 'Server', 'bg-orange-500'),
+        ('Testing Equipment', 'BarChart3', 'bg-red-500'),
+        ('Power Equipment', 'Zap', 'bg-yellow-500'),
+        ('Installation Tools', 'Package', 'bg-gray-500'),
+        ('Cables & Accessories', 'Cable', 'bg-indigo-500')
+        ON CONFLICT (name) DO NOTHING
+      `
+    }
+    return true
+  } catch (error) {
+    console.error("[v0] Error ensuring table exists:", error)
+    return false
+  }
+}
+
 // GET all categories
 export async function GET(request: NextRequest) {
   try {
     const sql = await getSql()
+
+    // Ensure table exists
+    await ensureTableExists(sql)
 
     const categories = await sql`
       SELECT 
@@ -21,7 +64,7 @@ export async function GET(request: NextRequest) {
       categories: categories || [],
     })
   } catch (error) {
-    console.error("Error fetching categories:", error)
+    console.error("[v0] Error fetching categories:", error)
     return NextResponse.json({ error: "Failed to fetch categories" }, { status: 500 })
   }
 }
@@ -32,10 +75,26 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
     const sql = await getSql()
 
+    // Ensure table exists
+    const tableReady = await ensureTableExists(sql)
+    if (!tableReady) {
+      return NextResponse.json(
+        {
+          error: "Database table not ready. Please run schema synchronization first.",
+        },
+        { status: 500 },
+      )
+    }
+
+    // Validate input
+    if (!data.name || data.name.trim() === "") {
+      return NextResponse.json({ error: "Category name is required" }, { status: 400 })
+    }
+
     // Check if category name already exists
     const existing = await sql`
       SELECT id FROM inventory_categories 
-      WHERE LOWER(name) = LOWER(${data.name})
+      WHERE LOWER(name) = LOWER(${data.name.trim()})
     `
 
     if (existing && existing.length > 0) {
@@ -46,7 +105,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO inventory_categories (
         name, icon, color, is_active
       ) VALUES (
-        ${data.name}, 
+        ${data.name.trim()}, 
         ${data.icon || "Package"}, 
         ${data.color || "bg-gray-500"}, 
         true
@@ -60,8 +119,14 @@ export async function POST(request: NextRequest) {
       category: category[0],
     })
   } catch (error) {
-    console.error("Error creating category:", error)
-    return NextResponse.json({ error: "Failed to create category" }, { status: 500 })
+    console.error("[v0] Error creating category:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to create category",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
 

@@ -346,8 +346,12 @@ setup_database() {
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
 
+    print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true
+    print_success "Superuser privileges granted"
+
     print_info "Transferring table ownership to $DB_USER..."
-    sudo -u postgres psql -d "$DB_NAME" << 'SQLEOF'
+    sudo -u postgres psql -d "$DB_NAME" <<SQLEOF
 DO $$
 DECLARE
     r RECORD;
@@ -355,18 +359,24 @@ BEGIN
     -- Transfer ownership of all tables
     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
     LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO ' || quote_ident('${DB_USER}');
+        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO ${DB_USER}';
     END LOOP;
     
     -- Transfer ownership of all sequences
     FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
     LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO ' || quote_ident('${DB_USER}');
+        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO ${DB_USER}';
+    END LOOP;
+    
+    -- Transfer ownership of all views
+    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+    LOOP
+        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO ${DB_USER}';
     END LOOP;
 END$$;
 SQLEOF
 
-    print_success "Database permissions configured"
+    print_success "Database permissions configured with full CRUD access"
     
     # Create environment file
     print_info "Creating .env.local file..."
@@ -1072,7 +1082,11 @@ apply_database_fixes() {
     
     print_info "Transferring ownership of all database objects to application user..."
 
-    # Transfer ownership of all tables
+    print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true
+    print_success "Superuser privileges granted"
+
+    print_info "Transferring table ownership to $DB_USER..."
     sudo -u postgres psql -d "$DB_NAME" <<EOSQL
 DO $$
 DECLARE
@@ -2452,6 +2466,4 @@ main() {
 }
 
 # Run main function with all arguments
-main "$@"
- with all arguments
 main "$@"

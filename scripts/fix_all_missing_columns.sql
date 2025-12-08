@@ -130,6 +130,8 @@ ALTER TABLE customer_addresses ADD COLUMN IF NOT EXISTS gps_coordinates VARCHAR(
 -- TABLE: customer_categories
 ALTER TABLE customer_categories ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5,2);
 ALTER TABLE customer_categories ADD COLUMN IF NOT EXISTS priority_level INTEGER DEFAULT 5;
+ALTER TABLE customer_categories ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE customer_categories ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- TABLE: router_performance_history
 ALTER TABLE router_performance_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP WITHOUT TIME ZONE;
@@ -200,119 +202,123 @@ ALTER TABLE user_activity_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
 
 -- TABLE: infrastructure_investments
 ALTER TABLE infrastructure_investments ADD COLUMN IF NOT EXISTS investment_type VARCHAR(100);
+ALTER TABLE infrastructure_investments ADD COLUMN IF NOT EXISTS investment_date DATE;
+ALTER TABLE infrastructure_investments ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE infrastructure_investments ADD COLUMN IF NOT EXISTS expected_roi NUMERIC(10,2);
 
--- TABLE: customer_services
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+-- TABLE: customer_services (critical column)
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
 
--- TABLE: message_campaigns
+-- TABLE: message_campaigns (complete missing columns)
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS target_audience JSONB;
 ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS total_recipients INTEGER DEFAULT 0;
 ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS sent_count INTEGER DEFAULT 0;
 ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS delivered_count INTEGER DEFAULT 0;
 ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS failed_count INTEGER DEFAULT 0;
-
--- TABLE: radius_logs
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS username VARCHAR(255);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS nas_ip INET;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS nas_port INTEGER;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS service_type VARCHAR(100);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS framed_ip INET;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS calling_station_id VARCHAR(50);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS called_station_id VARCHAR(50);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_session_id VARCHAR(255);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_status_type VARCHAR(50);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_session_time INTEGER;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_input_octets BIGINT;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_output_octets BIGINT;
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS acct_terminate_cause VARCHAR(100);
-ALTER TABLE radius_logs ADD COLUMN IF NOT EXISTS log_timestamp TIMESTAMP WITHOUT TIME ZONE;
-
--- TABLE: automation_workflows (additional)
-ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS trigger_type VARCHAR(100);
-ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS trigger_conditions JSONB;
-ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS actions JSONB;
-
--- TABLE: task_comments
-ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS user_id INTEGER;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS created_by INTEGER;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITHOUT TIME ZONE;
 
 -- TABLE: portal_settings
+ALTER TABLE portal_settings ADD COLUMN IF NOT EXISTS setting_key VARCHAR(255);
+ALTER TABLE portal_settings ADD COLUMN IF NOT EXISTS setting_value TEXT;
 ALTER TABLE portal_settings ADD COLUMN IF NOT EXISTS setting_type VARCHAR(100);
 ALTER TABLE portal_settings ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE portal_settings ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT false;
 
--- TABLE: invoices
+-- TABLE: invoices (additional critical columns)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) DEFAULT 0;
 
--- TABLE: ip_subnets
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS allocation_mode VARCHAR(50) DEFAULT 'auto';
+-- TABLE: ip_subnets (complete missing columns)
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS cidr VARCHAR(50);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS type VARCHAR(50);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS version VARCHAR(10) DEFAULT 'IPv4';
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS router_id BIGINT;
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS allocation_mode VARCHAR(50);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS used_ips INTEGER DEFAULT 0;
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS total_ips INTEGER;
 
--- TABLE: roles
+-- TABLE: roles  
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system_role BOOLEAN DEFAULT false;
 
--- TABLE: customers (critical business_name column)
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_name VARCHAR(255);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_type VARCHAR(100);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(100);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya';
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS gps_coordinates VARCHAR(255);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_contact_method VARCHAR(50) DEFAULT 'email';
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(100);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS assigned_staff_id INTEGER;
+-- TABLE: customers (ensure name column exists and is set properly)
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(500);
 
--- TABLE: chart_of_accounts
-ALTER TABLE chart_of_accounts ADD COLUMN IF NOT EXISTS parent_account_id INTEGER;
+-- Update name column for existing customers if it's NULL
+UPDATE customers 
+SET name = CASE 
+    WHEN customer_type = 'business' THEN COALESCE(business_name, first_name || ' ' || last_name)
+    ELSE COALESCE(first_name || ' ' || last_name, business_name)
+END
+WHERE name IS NULL;
 
--- TABLE: system_logs
-ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW();
-ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS category VARCHAR(100);
-ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
+-- TABLE: customer_contacts
+ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS contact_type VARCHAR(50);
+ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS relationship VARCHAR(100);
 
--- TABLE: network_devices
-ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS location VARCHAR(255);
-ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS configuration JSONB;
+-- TABLE: locations (ensure city column exists)
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS region VARCHAR(100);
 
--- TABLE: message_templates
-ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS subject VARCHAR(500);
+-- TABLE: automation_workflows (missing columns)
+ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS description TEXT;
 
--- TABLE: ip_addresses
+-- TABLE: ip_addresses (complete all missing columns)
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS ip_address INET;
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet_id INTEGER;
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS customer_id INTEGER;
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'available';
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP WITHOUT TIME ZONE;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS released_at TIMESTAMP WITHOUT TIME ZONE;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS notes TEXT;
 
--- TABLE: performance_reviews
+-- TABLE: performance_reviews (complete all missing columns)
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS employee_id INTEGER;
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS reviewer_id INTEGER;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_period_start DATE;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_period_end DATE;
-ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS reviewer_id INTEGER;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS overall_rating INTEGER;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS strengths TEXT;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS areas_for_improvement TEXT;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS goals_achievement TEXT;
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS development_plan TEXT;
 
--- TABLE: service_plans
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS features JSONB;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS qos_settings JSONB;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS data_limit INTEGER;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS fair_usage_policy TEXT;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_level INTEGER DEFAULT 5;
+-- TABLE: service_plans (ensure no category column exists since it's not in Neon schema)
+-- No changes needed - column doesn't exist in Neon
 
--- TABLE: router_logs
-ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS event_type VARCHAR(100);
+-- TABLE: router_logs (complete all missing columns)
+ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS router_id INTEGER;
 ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS log_level VARCHAR(50);
+ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS event_type VARCHAR(100);
+ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS message TEXT;
 ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS source_module VARCHAR(100);
-ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS log_timestamp TIMESTAMP WITHOUT TIME ZONE;
 ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS raw_log TEXT;
+ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS log_timestamp TIMESTAMP WITHOUT TIME ZONE;
 
--- TABLE: customer_contacts
-ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS contact_type VARCHAR(50);
-ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS relationship VARCHAR(100);
+-- ================================================
+-- Add indexes for better performance
+-- ================================================
+CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+CREATE INDEX IF NOT EXISTS idx_customers_business_name ON customers(business_name);
+CREATE INDEX IF NOT EXISTS idx_customers_city ON customers(city);
+CREATE INDEX IF NOT EXISTS idx_locations_city ON locations(city);
+CREATE INDEX IF NOT EXISTS idx_company_profiles_company_prefix ON company_profiles(company_prefix);
+CREATE INDEX IF NOT EXISTS idx_routers_sync_status ON routers(sync_status);
+CREATE INDEX IF NOT EXISTS idx_customer_services_updated_at ON customer_services(updated_at);
 
--- TABLE: locations (critical city column)
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS city VARCHAR(100);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS region VARCHAR(100);
-
--- Schema synchronization complete
--- All 191 missing columns across 43 tables have been addressed
+-- ================================================
+-- Success message
+-- ================================================
+DO $$
+BEGIN
+    RAISE NOTICE 'All missing columns have been added successfully!';
+END $$;

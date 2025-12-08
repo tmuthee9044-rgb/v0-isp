@@ -33,13 +33,13 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO service_plans (
-        name, description, category, status,
+        name, description, status,
         download_speed, upload_speed, priority_level,
         price, billing_cycle, currency,
         data_limit, features, qos_settings, fair_usage_policy,
         created_at
       ) VALUES (
-        ${basic.planName}, ${basic.description}, ${basic.category}, ${basic.status},
+        ${basic.planName}, ${basic.description}, ${basic.status},
         ${parseIntOrNull(speed.downloadSpeed?.[0]) || 0}, ${parseIntOrNull(speed.uploadSpeed?.[0]) || 0}, ${priorityLevelInt},
         ${parseFloatOrNull(pricing.monthlyPrice) || 0}, ${pricing.billingCycle || "monthly"}, ${pricing.currency || "KES"},
         ${parseIntOrNull(fup.dataLimit)}, ${JSON.stringify(advanced || {})}, 
@@ -74,7 +74,7 @@ export async function GET() {
     const sql = await getSql()
     const servicePlans = await sql`
       SELECT 
-        id, name, description, category, status,
+        id, name, description, status,
         download_speed, upload_speed, price,
         billing_cycle, data_limit, features, 
         qos_settings, fair_usage_policy, priority_level,

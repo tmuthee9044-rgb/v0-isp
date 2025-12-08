@@ -1801,12 +1801,14 @@ verify_database_connection() {
         chmod +r "$SCHEMA_FILE" 2>/dev/null || true
         
         # Execute the SQL file with absolute path
-        if sudo -u postgres psql -d "$DB_NAME" -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
+        # Execute the SQL file as isp_admin (who has SUPERUSER)
+        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
             print_success "All 146 tables created/updated successfully"
         else
             print_warning "Some tables may not have been created"
             print_info "Check the log: /tmp/schema_creation.log"
         fi
+
     else
         print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
     fi
@@ -2134,12 +2136,14 @@ verify_database_connection() {
         chmod +r "$SCHEMA_FILE" 2>/dev/null || true
         
         # Execute the SQL file with absolute path
-        if sudo -u postgres psql -d "$DB_NAME" -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
+        # Execute the SQL file as isp_admin (who has SUPERUSER)
+        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME" -h localhost -f "$SCHEMA_FILE" 2>&1 | tee /tmp/schema_creation.log; then
             print_success "All 146 tables created/updated successfully"
         else
             print_warning "Some tables may not have been created"
             print_info "Check the log: /tmp/schema_creation.log"
         fi
+
     else
         print_warning "Complete schema SQL file not found at: $SCHEMA_FILE"
     fi
@@ -2481,4 +2485,6 @@ main() {
 }
 
 # Run main function with all arguments
+main "$@"
+ main function with all arguments
 main "$@"

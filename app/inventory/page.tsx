@@ -95,7 +95,11 @@ export default function InventoryPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<any>(null)
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: "",
+    icon: "Package",
+    color: "bg-gray-500",
+  })
   const { toast } = useToast()
 
   const fetchInventoryData = async () => {
@@ -178,21 +182,20 @@ export default function InventoryPage() {
     }
   }
 
-  const handleAddCategory = async (formData: FormData) => {
+  const handleAddCategory = async () => {
     try {
-      const categoryData = {
-        name: formData.get("name"),
-        icon: formData.get("icon"),
-        color: formData.get("color"),
-      }
+      console.log("[v0] Adding category:", categoryFormData)
 
       const response = await fetch("/api/inventory/categories", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(categoryData),
+        body: JSON.stringify(categoryFormData),
       })
+
+      const result = await response.json()
+      console.log("[v0] Category creation response:", result)
 
       if (response.ok) {
         toast({
@@ -200,23 +203,24 @@ export default function InventoryPage() {
           description: "Category added successfully",
         })
         setShowCategoryModal(false)
+        setCategoryFormData({
+          name: "",
+          icon: "Package",
+          color: "bg-gray-500",
+        })
         fetchInventoryData()
       } else {
-        throw new Error("Failed to add category")
+        throw new Error(result.error || "Failed to add category")
       }
     } catch (error) {
+      console.error("[v0] Error adding category:", error)
       toast({
         title: "Error",
-        description: "Failed to add category",
+        description: error instanceof Error ? error.message : "Failed to add category",
         variant: "destructive",
       })
     }
   }
-
-  useEffect(() => {
-    fetchInventoryData()
-    fetchWarehouses() // Fetch warehouses on component mount
-  }, [])
 
   const handleAddItem = async (formData: FormData) => {
     try {
@@ -340,6 +344,11 @@ export default function InventoryPage() {
     return iconMap[iconName] || Package
   }
 
+  useEffect(() => {
+    fetchInventoryData()
+    fetchWarehouses() // Fetch warehouses on component mount
+  }, [])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -366,7 +375,7 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 pt-6">
+    <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Inventory Management</h2>
         <div className="flex items-center space-x-2">
@@ -614,136 +623,168 @@ export default function InventoryPage() {
             <DialogTitle>Add New Category</DialogTitle>
             <DialogDescription>Create a new inventory category with custom icon and color</DialogDescription>
           </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              const formData = new FormData(e.currentTarget)
-              handleAddCategory(formData)
-            }}
-          >
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="category-name">Category Name</Label>
-                <Input id="category-name" name="name" placeholder="e.g., Network Equipment" required />
-              </div>
-              <div>
-                <Label htmlFor="category-icon">Icon</Label>
-                <Select name="icon" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select icon" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Router">
-                      <div className="flex items-center gap-2">
-                        <Router className="h-4 w-4" />
-                        Router
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Zap">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4" />
-                        Zap
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Wifi">
-                      <div className="flex items-center gap-2">
-                        <Wifi className="h-4 w-4" />
-                        Wifi
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Server">
-                      <div className="flex items-center gap-2">
-                        <Server className="h-4 w-4" />
-                        Server
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Cable">
-                      <div className="flex items-center gap-2">
-                        <Cable className="h-4 w-4" />
-                        Cable
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="HardDrive">
-                      <div className="flex items-center gap-2">
-                        <HardDrive className="h-4 w-4" />
-                        Hard Drive
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Package">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Package
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="category-color">Color</Label>
-                <Select name="color" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select color" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bg-blue-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-blue-500"></div>
-                        Blue
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-green-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-green-500"></div>
-                        Green
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-purple-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-purple-500"></div>
-                        Purple
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-orange-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-orange-500"></div>
-                        Orange
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-red-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-red-500"></div>
-                        Red
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-yellow-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-yellow-500"></div>
-                        Yellow
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-gray-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-gray-500"></div>
-                        Gray
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bg-indigo-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded bg-indigo-500"></div>
-                        Indigo
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="category-name">Category Name</Label>
+              <Input
+                id="category-name"
+                value={categoryFormData.name}
+                onChange={(e) =>
+                  setCategoryFormData((prev) => ({
+                    ...prev,
+                    name: e.target.value,
+                  }))
+                }
+                placeholder="e.g., Network Equipment"
+                required
+              />
             </div>
-            <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => setShowCategoryModal(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">Add Category</Button>
-            </DialogFooter>
-          </form>
+            <div>
+              <Label htmlFor="category-icon">Icon</Label>
+              <Select
+                value={categoryFormData.icon}
+                onValueChange={(value) =>
+                  setCategoryFormData((prev) => ({
+                    ...prev,
+                    icon: value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select icon" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Router">
+                    <div className="flex items-center gap-2">
+                      <Router className="h-4 w-4" />
+                      Router
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Zap">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Zap
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Wifi">
+                    <div className="flex items-center gap-2">
+                      <Wifi className="h-4 w-4" />
+                      Wifi
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Server">
+                    <div className="flex items-center gap-2">
+                      <Server className="h-4 w-4" />
+                      Server
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Cable">
+                    <div className="flex items-center gap-2">
+                      <Cable className="h-4 w-4" />
+                      Cable
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="HardDrive">
+                    <div className="flex items-center gap-2">
+                      <HardDrive className="h-4 w-4" />
+                      Hard Drive
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Package">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Package
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="category-color">Color</Label>
+              <Select
+                value={categoryFormData.color}
+                onValueChange={(value) =>
+                  setCategoryFormData((prev) => ({
+                    ...prev,
+                    color: value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select color" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bg-blue-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-blue-500"></div>
+                      Blue
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-green-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-green-500"></div>
+                      Green
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-purple-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-purple-500"></div>
+                      Purple
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-orange-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-orange-500"></div>
+                      Orange
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-red-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-red-500"></div>
+                      Red
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-yellow-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-yellow-500"></div>
+                      Yellow
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-gray-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-gray-500"></div>
+                      Gray
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="bg-indigo-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-indigo-500"></div>
+                      Indigo
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowCategoryModal(false)
+                setCategoryFormData({
+                  name: "",
+                  icon: "Package",
+                  color: "bg-gray-500",
+                })
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleAddCategory}>
+              Add Category
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

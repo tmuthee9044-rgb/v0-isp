@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     let query = `
       SELECT 
         ia.id,
-        ia.ip_address,
+        ia.ip_address::text as ip_address,
         ia.subnet_id,
         ia.status,
         ia.created_at,
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         cs.activated_at as assigned_date
       FROM ip_addresses ia
       LEFT JOIN customer_services cs ON 
-        ia.ip_address::text = cs.ip_address::text
+        host(ia.ip_address) = host(cs.ip_address)
         AND cs.status != 'terminated'
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1

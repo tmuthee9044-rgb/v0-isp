@@ -23,12 +23,18 @@ export async function GET(request: NextRequest) {
         SELECT COUNT(*) as count FROM ip_addresses WHERE subnet_id = ${Number.parseInt(subnetId)}
       `
       console.log("[v0] Total IPs in subnet", subnetId, ":", ipCount[0]?.count)
+
+      // Show sample IPs for debugging
+      const sampleIPs = await sql`
+        SELECT ip_address, status FROM ip_addresses WHERE subnet_id = ${Number.parseInt(subnetId)} LIMIT 5
+      `
+      console.log("[v0] Sample IPs:", sampleIPs)
     }
 
     let query = `
       SELECT 
         ia.id,
-        ia.ip_address::text as ip_address,
+        ia.ip_address as ip_address,
         ia.subnet_id,
         ia.status,
         ia.created_at,
@@ -41,7 +47,7 @@ export async function GET(request: NextRequest) {
         cs.activated_at as assigned_date
       FROM ip_addresses ia
       LEFT JOIN customer_services cs ON 
-        host(ia.ip_address) = host(cs.ip_address)
+        ia.ip_address = cs.ip_address::text
         AND cs.status != 'terminated'
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE 1=1
@@ -97,17 +103,7 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Query returned total count:", total)
 
-    query += ` ORDER BY 
-      CASE 
-        WHEN ia.ip_address ~ '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$' 
-        THEN ARRAY[
-          CAST(split_part(ia.ip_address, '.', 1) AS INTEGER),
-          CAST(split_part(ia.ip_address, '.', 2) AS INTEGER),
-          CAST(split_part(ia.ip_address, '.', 3) AS INTEGER),
-          CAST(split_part(ia.ip_address, '.', 4) AS INTEGER)
-        ]
-        ELSE ARRAY[0,0,0,0]
-      END
+    query += ` ORDER BY ia.id
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `
     params.push(limit, offset)
@@ -125,7 +121,7 @@ export async function GET(request: NextRequest) {
       totalPages: Math.ceil(total / limit),
     })
   } catch (error) {
-    console.error("Error fetching IP addresses:", error)
+    console.error("[v0] Error fetching IP addresses:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch IP addresses" }, { status: 500 })
   }
 }

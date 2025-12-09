@@ -88,7 +88,7 @@ interface WarehouseOption {
 }
 
 export default function InventoryPage() {
-  const [inventoryData, setInventoryData] = useState<InventoryData | null>(null)
+  const [inventoryData, setInventoryData] = useState<any | null>(null)
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState("overview")
@@ -100,62 +100,32 @@ export default function InventoryPage() {
     icon: "Package",
     color: "bg-gray-500",
   })
+  const [categories, setCategories] = useState<any[]>([])
   const { toast } = useToast()
 
   const fetchInventoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/inventory")
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success && result.data) {
-          // Transform API data to match frontend expectations
-          const transformedData = {
-            totalItems: result.data.totalItems,
-            lowStockItems: result.data.lowStockItems,
-            outOfStock: result.data.outOfStock,
-            totalValue: result.data.totalValue,
-            categories: result.data.categories.map((cat: any) => ({
-              name: cat.name,
-              count: cat.item_count,
-              value: cat.total_value,
-              icon: cat.icon,
-              color: cat.color,
-            })),
-            items: result.data.items.map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              category: item.category,
-              sku: item.sku,
-              stock_quantity: item.total_stock,
-              unit_cost: item.unit_cost,
-              location: item.warehouse_names || "No Location",
-              warehouse_id: item.warehouse_id,
-              status: item.status,
-              description: item.description,
-            })),
-            recentMovements: result.data.recentMovements.map((movement: any) => ({
-              id: movement.id,
-              item: movement.item_name,
-              type: movement.movement_type,
-              quantity: movement.quantity,
-              date: movement.created_at,
-              reason: movement.reason,
-            })),
-          }
-          setInventoryData(transformedData)
-        } else {
-          throw new Error("Invalid API response format")
-        }
-      } else {
-        throw new Error("Failed to fetch inventory data")
+      const [inventoryResponse, categoriesResponse] = await Promise.all([
+        fetch("/api/inventory"),
+        fetch("/api/inventory/categories"),
+      ])
+
+      if (inventoryResponse.ok) {
+        const result = await inventoryResponse.json()
+        setInventoryData(result.data)
+      }
+
+      if (categoriesResponse.ok) {
+        const categoriesResult = await categoriesResponse.json()
+        setCategories(categoriesResult.categories || [])
       }
     } catch (error) {
       console.error("Error fetching inventory:", error)
       toast({
-        title: "Error",
-        description: "Failed to load inventory data",
         variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch inventory data",
       })
     } finally {
       setLoading(false)
@@ -197,27 +167,29 @@ export default function InventoryPage() {
       const result = await response.json()
       console.log("[v0] Category creation response:", result)
 
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Category added successfully",
-        })
-        setShowCategoryModal(false)
-        setCategoryFormData({
-          name: "",
-          icon: "Package",
-          color: "bg-gray-500",
-        })
-        fetchInventoryData()
-      } else {
-        throw new Error(result.error || "Failed to add category")
+      if (!response.ok) {
+        throw new Error("Failed to create category")
       }
+
+      toast({
+        title: "Success",
+        description: "Category created successfully",
+      })
+
+      setCategoryFormData({
+        name: "",
+        icon: "Package",
+        color: "bg-gray-500",
+      })
+      setShowCategoryModal(false)
+
+      await fetchInventoryData()
     } catch (error) {
       console.error("[v0] Error adding category:", error)
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to add category",
         variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create category",
       })
     }
   }
@@ -578,40 +550,40 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
-          <div className="flex justify-end mb-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Inventory Categories</h3>
+              <p className="text-sm text-muted-foreground">Manage your inventory categories</p>
+            </div>
             <Button onClick={() => setShowCategoryModal(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Category
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {inventoryData.categories.map((category) => {
-              const IconComponent = getIconComponent(category.icon)
-              return (
-                <Card key={category.name}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className={`p-2 rounded-lg ${category.color}`}>
-                        <IconComponent className="h-4 w-4 text-white" />
-                      </div>
-                      {category.name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Items</span>
-                        <span className="font-medium">{category.count}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Value</span>
-                        <span className="font-medium">KSh {category.value.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {categories.length > 0 ? (
+              categories.map((category) => {
+                const categoryStats = inventoryData?.categories.find((c) => c.name === category.name)
+
+                return (
+                  <Card key={category.id}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
+                      <div className={`p-2 rounded ${category.color}`}>{/* Render icon based on category.icon */}</div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{categoryStats?.item_count || 0}</div>
+                      <p className="text-xs text-muted-foreground">items in this category</p>
+                    </CardContent>
+                  </Card>
+                )
+              })
+            ) : (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                No categories found. Click "Add Category" to create one.
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -819,11 +791,17 @@ export default function InventoryPage() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {inventoryData.categories.map((cat) => (
-                        <SelectItem key={cat.name} value={cat.name}>
-                          {cat.name}
+                      {categories.length > 0 ? (
+                        categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.name}>
+                            {cat.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="" disabled>
+                          No categories available
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -904,8 +882,8 @@ export default function InventoryPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {inventoryData.categories.map((cat) => (
-                          <SelectItem key={cat.name} value={cat.name}>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.name}>
                             {cat.name}
                           </SelectItem>
                         ))}

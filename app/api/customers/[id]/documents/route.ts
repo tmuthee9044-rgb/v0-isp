@@ -4,17 +4,26 @@ import { getSql } from "@/lib/db"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
 
     if (isNaN(customerId)) {
       return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 })
     }
 
-    // Get documents for the customer
+    // Get documents for the customer (exclude file_content from list view for performance)
     const documents = await sql`
       SELECT 
-        cd.*,
+        cd.id,
+        cd.customer_id,
+        cd.document_name,
+        cd.document_type,
+        cd.file_name,
+        cd.file_size,
+        cd.mime_type,
+        cd.description,
+        cd.tags,
+        cd.is_confidential,
+        cd.created_at,
         u.username as uploaded_by_name
       FROM customer_documents cd
       LEFT JOIN users u ON cd.uploaded_by = u.id
@@ -75,14 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "File type not allowed" }, { status: 400 })
     }
 
-    // Create file path
-    const timestamp = Date.now()
-    const fileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
-    const filePath = `/uploads/documents/customer_${customerId}/${fileName}`
-
-    // In a real implementation, you would save the file to storage
-    // For now, we'll simulate the file upload
-    const fileBuffer = await file.arrayBuffer()
+    const fileBuffer = Buffer.from(await file.arrayBuffer())
 
     // Parse tags
     const tagsArray = tags
@@ -92,34 +94,33 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           .filter(Boolean)
       : []
 
-    // Insert document record
     const [document] = await sql`
       INSERT INTO customer_documents (
         customer_id,
         document_name,
         document_type,
-        file_path,
         file_name,
         file_size,
         mime_type,
         description,
         tags,
         is_confidential,
-        uploaded_by
+        uploaded_by,
+        file_content
       ) VALUES (
         ${customerId},
         ${file.name},
         ${documentType},
-        ${filePath},
-        ${fileName},
+        ${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")},
         ${file.size},
         ${file.type},
         ${description},
         ${tagsArray},
         ${isConfidential},
-        1
+        1,
+        ${fileBuffer}
       )
-      RETURNING *
+      RETURNING id, customer_id, document_name, document_type, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, created_at
     `
 
     // Log the upload action

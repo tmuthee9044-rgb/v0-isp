@@ -151,6 +151,7 @@ ALTER TABLE finance_audit_trail ADD COLUMN IF NOT EXISTS action VARCHAR(50);
 ALTER TABLE finance_audit_trail ADD COLUMN IF NOT EXISTS user_id INTEGER;
 ALTER TABLE finance_audit_trail ADD COLUMN IF NOT EXISTS ip_address INET;
 ALTER TABLE finance_audit_trail ADD COLUMN IF NOT EXISTS user_agent TEXT;
+ALTER TABLE finance_audit_trail ADD COLUMN IF NOT EXISTS action_type VARCHAR(50) NOT NULL DEFAULT 'unknown';
 
 -- TABLE: capacity_predictions
 ALTER TABLE capacity_predictions ADD COLUMN IF NOT EXISTS prediction_date DATE;

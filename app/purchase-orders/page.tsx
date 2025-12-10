@@ -352,8 +352,8 @@ export default function PurchaseOrdersPage() {
 
   const filteredPurchaseOrders = purchaseOrders.filter((po) => {
     const matchesSearch =
-      po.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.supplier_name.toLowerCase().includes(searchTerm.toLowerCase())
+      (po.order_number?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (po.supplier_name?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === "all" || po.status === statusFilter
     const matchesSupplier = supplierFilter === "all" || po.supplier_id === supplierFilter
 

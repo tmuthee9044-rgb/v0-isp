@@ -11,31 +11,19 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type")
     const search = searchParams.get("search")
 
-    const queryConditions = []
+    const conditions: Array<string> = []
 
     if (status && status !== "all") {
-      queryConditions.push(`c.status = '${status.replace(/'/g, "''")}'`)
+      conditions.push(`c.status = $1`)
     }
     if (location && location !== "all") {
-      queryConditions.push(`c.city = '${location.replace(/'/g, "''")}'`)
+      conditions.push(`c.city = $2`)
     }
     if (type && type !== "all") {
-      queryConditions.push(`c.customer_type = '${type.replace(/'/g, "''")}'`)
-    }
-    if (search) {
-      const searchTerm = search.replace(/'/g, "''").toLowerCase()
-      queryConditions.push(`(
-        c.first_name ILIKE '%${searchTerm}%' OR 
-        c.last_name ILIKE '%${searchTerm}%' OR 
-        c.business_name ILIKE '%${searchTerm}%' OR 
-        c.email ILIKE '%${searchTerm}%' OR 
-        c.account_number ILIKE '%${searchTerm}%'
-      )`)
+      conditions.push(`c.customer_type = $3`)
     }
 
-    const whereClause = queryConditions.length > 0 ? `WHERE ${queryConditions.join(" AND ")}` : ""
-
-    const query = `
+    let query = `
       SELECT 
         c.id,
         c.account_number,
@@ -47,38 +35,53 @@ export async function GET(request: NextRequest) {
         c.phone,
         c.city,
         c.status,
-        c.created_at,
-        (SELECT COUNT(*) FROM customer_services WHERE customer_id = c.id AND status != 'terminated')::integer as service_count,
-        (SELECT SUM(amount) FROM invoices WHERE customer_id = c.id)::numeric as total_invoices,
-        (SELECT SUM(amount) FROM payments WHERE customer_id = c.id)::numeric as total_payments,
-        (SELECT COUNT(*) FROM support_tickets WHERE customer_id = c.id AND status IN ('open', 'in_progress'))::integer as open_tickets
+        c.created_at
       FROM customers c
-      ${whereClause}
-      ORDER BY c.created_at DESC
-      LIMIT 1000
     `
+    const values: Array<string> = []
 
-    const customers = await sql.unsafe(query)
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(" AND ")}`
+      values.push(status || "", location || "", type || "")
+    }
+
+    if (search) {
+      const searchTerm = search.replace(/'/g, "''").toLowerCase()
+      if (conditions.length > 0) {
+        query += ` AND (`
+      } else {
+        query += ` WHERE (`
+      }
+      query += `c.first_name ILIKE '%' || $${values.length + 1} || '%' OR 
+        c.last_name ILIKE '%' || $${values.length + 2} || '%' OR 
+        c.business_name ILIKE '%' || $${values.length + 3} || '%' OR 
+        c.email ILIKE '%' || $${values.length + 4} || '%' OR 
+        c.account_number ILIKE '%' || $${values.length + 5} || '%')`
+      values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
+    }
+
+    query += ` ORDER BY c.created_at DESC LIMIT 1000`
+
+    const customers = await sql.unsafe(query, values)
 
     const transformedCustomers = customers.map((customer: any) => ({
       ...customer,
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
-      service_count: Number(customer.service_count) || 0,
-      total_payments: Number(customer.total_payments) || 0,
-      total_invoices: Number(customer.total_invoices) || 0,
-      outstanding_balance: (Number(customer.total_invoices) || 0) - (Number(customer.total_payments) || 0),
-      open_tickets: Number(customer.open_tickets) || 0,
+      service_count: 0,
+      total_payments: 0,
+      total_in_stock: 0,
+      outstanding_balance: 0,
+      open_tickets: 0,
     }))
 
     return NextResponse.json(transformedCustomers)
   } catch (error) {
-    console.error("Failed to fetch customers:", error)
     return NextResponse.json(
       {
         success: false,
         error: "Failed to fetch customers",
-        details: error.message,
+        details: (error as any).message,
         customers: [],
         count: 0,
       },
@@ -178,7 +181,7 @@ export async function POST(request: NextRequest) {
         ${data.business_type || data.business_reg_no || null},
         ${data.preferred_contact_method || "phone"}, 
         ${data.referral_source || null},
-        ${data.special_requirements || data.internal_notes ? JSON.stringify({ special_requirements: data.special_requirements, internal_notes: data.internal_notes, sales_rep: data.sales_rep, account_manager: data.account_manager }) : null},
+        ${data.service_requirements || data.internal_notes ? JSON.stringify({ special_requirements: data.special_requirements, internal_notes: data.internal_notes, sales_rep: data.sales_rep, account_manager: data.account_manager }) : null},
         'active', NOW(), NOW()
       ) RETURNING *
     `
@@ -262,6 +265,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
+        success: false,
         error: "Failed to create customer",
         message: "An unexpected error occurred while creating the customer. Please try again.",
       },

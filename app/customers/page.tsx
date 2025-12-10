@@ -91,75 +91,43 @@ export default function CustomersPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchCustomers()
-    fetchStats()
-    fetchLocations()
+    Promise.all([
+      fetch("/api/customers").then((r) => r.json()),
+      fetch("/api/reports/customers/stats").then((r) => r.json()),
+      fetch("/api/locations").then((r) => r.json()),
+    ])
+      .then(([customersData, statsData, locationsData]) => {
+        let customersArray = []
+        if (Array.isArray(customersData)) {
+          customersArray = customersData
+        } else if (customersData.customers && Array.isArray(customersData.customers)) {
+          customersArray = customersData.customers
+        }
+
+        setCustomers(customersArray)
+        setStats(statsData)
+
+        const locationsArray = Array.isArray(locationsData.locations)
+          ? locationsData.locations
+          : Array.isArray(locationsData)
+            ? locationsData
+            : []
+        setLocations(locationsArray)
+        setLoading(false)
+      })
+      .catch((error) => {
+        console.error("Failed to fetch data:", error)
+        setCustomers([])
+        setLoading(false)
+        toast({
+          title: "Error",
+          description: "Failed to fetch data",
+          variant: "destructive",
+        })
+      })
   }, [])
 
-  const fetchCustomers = async () => {
-    try {
-      const response = await fetch("/api/customers")
-      if (response.ok) {
-        const data = await response.json()
-        let customersData = []
-        if (Array.isArray(data)) {
-          customersData = data
-        } else if (data.customers && Array.isArray(data.customers)) {
-          customersData = data.customers
-        } else if (data.success === false) {
-          console.error("[v0] API returned error:", data.error)
-          customersData = []
-        }
-        console.log("[v0] Setting customers data:", customersData.length, "customers")
-        setCustomers(customersData)
-      } else {
-        console.error("[v0] Failed to fetch customers, status:", response.status)
-        const errorData = await response.json()
-        console.error("[v0] Error response:", errorData)
-        setCustomers([])
-      }
-    } catch (error) {
-      console.error("Failed to fetch customers:", error)
-      setCustomers([])
-      toast({
-        title: "Error",
-        description: "Failed to fetch customers",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch("/api/reports/customers/stats")
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data)
-      }
-    } catch (error) {
-      console.error("Failed to fetch stats:", error)
-    }
-  }
-
-  const fetchLocations = async () => {
-    try {
-      const response = await fetch("/api/locations")
-      if (response.ok) {
-        const data = await response.json()
-        console.log("[v0] Locations API response:", data)
-        const locationsArray = Array.isArray(data.locations) ? data.locations : Array.isArray(data) ? data : []
-        console.log("[v0] Setting locations to:", locationsArray)
-        setLocations(locationsArray)
-      }
-    } catch (error) {
-      console.error("Failed to fetch locations:", error)
-      setLocations([])
-    }
-  }
-
-  const handleDeleteCustomer = async () => {
+  const handleDeleteCustomer = async (customerId: number) => {
     if (!deleteCustomerId || deleteConfirmText !== deleteCustomerId.toString()) {
       return
     }
@@ -173,7 +141,6 @@ export default function CustomersPage() {
         setCustomers(customers.filter((c) => c.id !== deleteCustomerId))
         setDeleteCustomerId(null)
         setDeleteConfirmText("")
-        fetchStats() // Refresh stats
         toast({
           title: "Success",
           description: "Customer deleted successfully",
@@ -205,8 +172,7 @@ export default function CustomersPage() {
 
       if (response.ok) {
         const data = await response.json()
-        fetchCustomers()
-        fetchStats()
+        setCustomers(customers.map((c) => (c.id === customerId ? { ...c, status: "suspended" } : c)))
         toast({
           title: "Success",
           description: data.message || "Customer suspended successfully",
@@ -236,8 +202,7 @@ export default function CustomersPage() {
       })
 
       if (response.ok) {
-        fetchCustomers()
-        fetchStats()
+        setCustomers(customers.map((c) => (c.id === customerId ? { ...c, status: "active" } : c)))
         toast({
           title: "Success",
           description: "Customer activated successfully",
@@ -723,7 +688,7 @@ export default function CustomersPage() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteCustomer}
+              onClick={() => deleteCustomerId !== null && handleDeleteCustomer(deleteCustomerId)}
               disabled={deleteConfirmText !== deleteCustomerId?.toString()}
               className="bg-red-600 hover:bg-red-700"
             >

@@ -101,6 +101,7 @@ export default function InventoryPage() {
     color: "bg-gray-500",
   })
   const [categories, setCategories] = useState<any[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
   const { toast } = useToast()
 
   const fetchInventoryData = async () => {
@@ -118,7 +119,10 @@ export default function InventoryPage() {
 
       if (categoriesResponse.ok) {
         const categoriesResult = await categoriesResponse.json()
+        console.log("[v0] Categories fetched:", categoriesResult)
         setCategories(categoriesResult.categories || [])
+      } else {
+        console.log("[v0] Categories API error:", categoriesResponse.status)
       }
     } catch (error) {
       console.error("Error fetching inventory:", error)
@@ -197,10 +201,10 @@ export default function InventoryPage() {
   const handleAddItem = async (formData: FormData) => {
     try {
       const warehouseId = formData.get("warehouse_id")
-      const itemData = {
+      const data = {
         name: formData.get("name"),
         sku: formData.get("sku"),
-        category: formData.get("category"),
+        category: selectedCategory, // Use state value
         stock_quantity: Number.parseInt(formData.get("stock_quantity") as string),
         unit_cost: Number.parseFloat(formData.get("unit_cost") as string),
         warehouse_id: warehouseId === "none" ? null : Number.parseInt(warehouseId as string),
@@ -214,15 +218,16 @@ export default function InventoryPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(itemData),
+        body: JSON.stringify(data),
       })
 
       if (response.ok) {
         toast({
           title: "Success",
-          description: "Inventory item added successfully",
+          description: "Item added successfully",
         })
         setShowAddModal(false)
+        setSelectedCategory("")
         fetchInventoryData()
       } else {
         throw new Error("Failed to add item")
@@ -564,16 +569,19 @@ export default function InventoryPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {categories.length > 0 ? (
               categories.map((category) => {
-                const categoryStats = inventoryData?.categories.find((c) => c.name === category.name)
+                const IconComponent = getIconComponent(category.icon)
+                const categoryStats = inventoryData?.categories?.find((c) => c.name === category.name)
 
                 return (
                   <Card key={category.id}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
-                      <div className={`p-2 rounded ${category.color}`}>{/* Render icon based on category.icon */}</div>
+                      <div className={`p-2 rounded ${category.color || "bg-gray-500"}`}>
+                        <IconComponent className="h-4 w-4 text-white" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{categoryStats?.item_count || 0}</div>
+                      <div className="text-2xl font-bold">{categoryStats?.count || 0}</div>
                       <p className="text-xs text-muted-foreground">items in this category</p>
                     </CardContent>
                   </Card>
@@ -786,7 +794,7 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <Label htmlFor="category">Category</Label>
-                  <Select name="category" required>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory} required>
                     <SelectTrigger>
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>

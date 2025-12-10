@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
   try {
     const sql = await getSql()
 
-    // Ensure table exists
-    await ensureTableExists(sql)
+    const tableReady = await ensureTableExists(sql)
+    console.log("[v0] Table ready:", tableReady)
 
     const categories = await sql`
       SELECT 
@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
       WHERE is_active = true
       ORDER BY name ASC
     `
+
+    console.log("[v0] Categories from DB:", categories?.length || 0)
 
     return NextResponse.json({
       success: true,

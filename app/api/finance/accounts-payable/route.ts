@@ -17,7 +17,6 @@ export async function GET(request: NextRequest) {
     `
 
     if (!tableExists[0]?.exists) {
-      console.log("[v0] supplier_invoices table does not exist, returning empty result")
       return NextResponse.json({
         success: true,
         summary: {
@@ -85,9 +84,6 @@ export async function GET(request: NextRequest) {
       `
     }
 
-    console.log("[v0] Accounts payable query returned", invoices.length, "invoices")
-
-    // Calculate totals
     const totalOutstanding = invoices.reduce((sum, inv) => sum + Number.parseFloat(inv.outstanding_amount || 0), 0)
     const totalOverdue = invoices
       .filter((inv) => inv.aging_status === "overdue")

@@ -168,7 +168,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
       await sql`
         UPDATE customer_services
-        SET ip_address = ${allocatedIpAddress}::text
+        SET ip_address = ${allocatedIpAddress}
         WHERE id = ${serviceId}
       `
     }
@@ -288,7 +288,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
         monthly_fee = ${monthlyFee},
         start_date = ${startDate},
         end_date = ${endDate},
-        ip_address = ${ipAddress},
+        ip_address = CAST(${ipAddress} AS inet),
         device_id = ${deviceId},
         connection_type = ${connectionType},
         status = ${status}

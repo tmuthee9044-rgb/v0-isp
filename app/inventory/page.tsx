@@ -439,7 +439,7 @@ export default function InventoryPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{category.count}</div>
-                    <p className="text-xs text-muted-foreground">KSh {category.value.toLocaleString()} value</p>
+                    <p className="text-xs text-muted-foreground">KSh {(category.value || 0).toLocaleString()} value</p>
                   </CardContent>
                 </Card>
               )

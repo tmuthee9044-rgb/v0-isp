@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import sql from "sql-template-strings" // Declare the sql variable
 
 export async function GET(request: NextRequest) {
   try {
-    const sqlClient = await getSql()
+    const sql = await getSql()
 
     const searchParams = request.nextUrl.searchParams
     const asOfDateParam = searchParams.get("asOfDate")
@@ -12,7 +11,7 @@ export async function GET(request: NextRequest) {
       ? new Date(asOfDateParam).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
 
-    const accounts = await sqlClient.query(sql`
+    const accounts = await sql`
       SELECT 
         coa.account_code,
         coa.account_name,
@@ -29,12 +28,12 @@ export async function GET(request: NextRequest) {
       GROUP BY coa.id, coa.account_code, coa.account_name, coa.account_type
       HAVING COALESCE(SUM(jel.debit_amount), 0) != 0 OR COALESCE(SUM(jel.credit_amount), 0) != 0
       ORDER BY coa.account_code, coa.account_name
-    `)
+    `
 
     let totalDebits = 0
     let totalCredits = 0
 
-    const formattedAccounts = accounts.rows.map((account) => {
+    const formattedAccounts = accounts.map((account) => {
       const debit = Number(account.debit_total) || 0
       const credit = Number(account.credit_total) || 0
 
@@ -92,10 +91,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Debits must equal credits" }, { status: 400 })
     }
 
+    const sql = await getSql()
+
     // Create journal entry
     const entryNumber = `MAN-${Date.now()}`
-    const sqlClient = await getSql()
-    const [journalEntry] = await sqlClient.query(sql`
+    const journalEntry = await sql`
       INSERT INTO journal_entries (
         entry_number,
         entry_date,
@@ -116,12 +116,12 @@ export async function POST(request: NextRequest) {
         1
       )
       RETURNING id
-    `)
+    `
 
     // Create journal entry lines
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]
-      await sqlClient.query(sql`
+      await sql`
         INSERT INTO journal_entry_lines (
           journal_entry_id,
           account_id,
@@ -130,19 +130,19 @@ export async function POST(request: NextRequest) {
           credit_amount,
           description
         ) VALUES (
-          ${journalEntry.rows[0].id},
+          ${journalEntry[0].id},
           ${entry.account_id},
           ${i + 1},
           ${entry.debit || 0},
           ${entry.credit || 0},
           ${entry.description || description}
         )
-      `)
+      `
     }
 
     return NextResponse.json({
       success: true,
-      data: { entry_id: journalEntry.rows[0].id, entry_number: entryNumber },
+      data: { entry_id: journalEntry[0].id, entry_number: entryNumber },
     })
   } catch (error) {
     console.error("Error creating journal entry:", error)

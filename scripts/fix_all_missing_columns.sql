@@ -359,6 +359,11 @@ CREATE INDEX IF NOT EXISTS idx_customer_services_ip_address ON customer_services
 CREATE INDEX IF NOT EXISTS idx_customer_services_status ON customer_services(status);
 CREATE INDEX IF NOT EXISTS idx_ip_subnets_router_id ON ip_subnets(router_id);
 
+-- Adding unique constraint for account_balances table to prevent duplicates
+-- Ensure account_balances has unique constraint on customer_id
+ALTER TABLE account_balances DROP CONSTRAINT IF EXISTS account_balances_customer_id_key;
+ALTER TABLE account_balances ADD CONSTRAINT account_balances_customer_id_key UNIQUE (customer_id);
+
 -- ================================================
 -- Add inventory_categories table for category management
 -- ================================================

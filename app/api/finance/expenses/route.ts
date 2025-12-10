@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { sql } from "sql-template-tag" // Declare sql variable here
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,22 +9,33 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
-    let dateFilter = sqlInstance``
+    let query
     if (startDate && endDate) {
-      dateFilter = sqlInstance`WHERE e.expense_date >= ${startDate} AND e.expense_date <= ${endDate}`
+      query = sqlInstance`
+        SELECT 
+          e.*,
+          ec.name as category_name,
+          ec.color as category_color
+        FROM expenses e
+        LEFT JOIN expense_categories ec ON e.category_id = ec.id
+        WHERE e.expense_date >= ${startDate} AND e.expense_date <= ${endDate}
+        ORDER BY e.expense_date DESC
+        LIMIT 50
+      `
+    } else {
+      query = sqlInstance`
+        SELECT 
+          e.*,
+          ec.name as category_name,
+          ec.color as category_color
+        FROM expenses e
+        LEFT JOIN expense_categories ec ON e.category_id = ec.id
+        ORDER BY e.expense_date DESC
+        LIMIT 50
+      `
     }
 
-    const expenses = await sqlInstance`
-      SELECT 
-        e.*,
-        ec.name as category_name,
-        ec.color as category_color
-      FROM expenses e
-      LEFT JOIN expense_categories ec ON e.category_id = ec.id
-      ${dateFilter}
-      ORDER BY e.expense_date DESC
-      LIMIT 50
-    `
+    const expenses = await query
 
     return NextResponse.json({ expenses })
   } catch (error) {
@@ -36,6 +46,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sqlInstance = await getSql()
+
     const requestData = await request.json()
     console.log("[v0] Received expense creation request:", requestData)
 
@@ -89,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
     console.log("[v0] Data being inserted into database:", insertData)
 
-    const [expense] = await sql`
+    const [expense] = await sqlInstance`
       INSERT INTO expenses (
         category_id, 
         amount, 
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Get current invoice details
-        const [invoice] = await sql`
+        const [invoice] = await sqlInstance`
           SELECT * FROM supplier_invoices WHERE id = ${supplier_invoice_id}
         `
 
@@ -148,7 +160,7 @@ export async function POST(request: NextRequest) {
           })
 
           // Update the invoice
-          await sql`
+          await sqlInstance`
             UPDATE supplier_invoices
             SET 
               paid_amount = ${newPaidAmount},
@@ -159,7 +171,7 @@ export async function POST(request: NextRequest) {
 
           console.log("[v0] Supplier invoice updated successfully")
 
-          await sql`
+          await sqlInstance`
             INSERT INTO admin_logs (
               action,
               resource_type,

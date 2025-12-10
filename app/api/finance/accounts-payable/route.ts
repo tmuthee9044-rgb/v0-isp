@@ -9,30 +9,83 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
-    let dateFilter = sql``
-    if (startDate && endDate) {
-      dateFilter = sql`AND si.invoice_date >= ${startDate} AND si.invoice_date <= ${endDate}`
+    const tableExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'supplier_invoices'
+      )
+    `
+
+    if (!tableExists[0]?.exists) {
+      console.log("[v0] supplier_invoices table does not exist, returning empty result")
+      return NextResponse.json({
+        success: true,
+        summary: {
+          total_outstanding: 0,
+          total_overdue: 0,
+          total_due_soon: 0,
+          invoice_count: 0,
+        },
+        invoices: [],
+      })
     }
 
-    // Get outstanding supplier invoices
-    const invoices = await sql`
-      SELECT 
-        si.*,
-        s.company_name as supplier_name,
-        s.email as supplier_email,
-        s.phone as supplier_phone,
-        (si.total_amount - si.paid_amount) as outstanding_amount,
-        CASE 
-          WHEN si.due_date < CURRENT_DATE AND si.paid_amount < si.total_amount THEN 'overdue'
-          WHEN si.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
-          ELSE 'current'
-        END as aging_status
-      FROM supplier_invoices si
-      LEFT JOIN suppliers s ON si.supplier_id = s.id
-      WHERE si.status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
-      ${dateFilter}
-      ORDER BY si.due_date ASC
-    `
+    let invoices
+    if (startDate && endDate) {
+      invoices = await sql`
+        SELECT 
+          si.id,
+          si.supplier_id,
+          si.invoice_number,
+          si.invoice_date,
+          si.due_date,
+          si.total_amount,
+          COALESCE(si.paid_amount, 0) as paid_amount,
+          si.status,
+          COALESCE(s.company_name, 'Unknown') as supplier_name,
+          s.email as supplier_email,
+          s.phone as supplier_phone,
+          (si.total_amount - COALESCE(si.paid_amount, 0)) as outstanding_amount,
+          CASE 
+            WHEN si.due_date < CURRENT_DATE AND COALESCE(si.paid_amount, 0) < si.total_amount THEN 'overdue'
+            WHEN si.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
+            ELSE 'current'
+          END as aging_status
+        FROM supplier_invoices si
+        LEFT JOIN suppliers s ON si.supplier_id = s.id
+        WHERE si.status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
+          AND si.invoice_date >= ${startDate}::date
+          AND si.invoice_date <= ${endDate}::date
+        ORDER BY si.due_date ASC
+      `
+    } else {
+      invoices = await sql`
+        SELECT 
+          si.id,
+          si.supplier_id,
+          si.invoice_number,
+          si.invoice_date,
+          si.due_date,
+          si.total_amount,
+          COALESCE(si.paid_amount, 0) as paid_amount,
+          si.status,
+          COALESCE(s.company_name, 'Unknown') as supplier_name,
+          s.email as supplier_email,
+          s.phone as supplier_phone,
+          (si.total_amount - COALESCE(si.paid_amount, 0)) as outstanding_amount,
+          CASE 
+            WHEN si.due_date < CURRENT_DATE AND COALESCE(si.paid_amount, 0) < si.total_amount THEN 'overdue'
+            WHEN si.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
+            ELSE 'current'
+          END as aging_status
+        FROM supplier_invoices si
+        LEFT JOIN suppliers s ON si.supplier_id = s.id
+        WHERE si.status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
+        ORDER BY si.due_date ASC
+      `
+    }
+
+    console.log("[v0] Accounts payable query returned", invoices.length, "invoices")
 
     // Calculate totals
     const totalOutstanding = invoices.reduce((sum, inv) => sum + Number.parseFloat(inv.outstanding_amount || 0), 0)

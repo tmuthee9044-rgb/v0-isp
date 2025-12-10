@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
         c.last_name ILIKE '%${searchTerm}%' OR 
         c.business_name ILIKE '%${searchTerm}%' OR 
         c.email ILIKE '%${searchTerm}%' OR 
-        c.phone ILIKE '%${searchTerm}%' OR 
         c.account_number ILIKE '%${searchTerm}%'
       )`)
     }
@@ -46,40 +45,17 @@ export async function GET(request: NextRequest) {
         c.customer_type,
         c.email,
         c.phone,
-        c.address,
         c.city,
-        c.state,
-        c.country,
-        c.postal_code,
         c.status,
         c.created_at,
-        c.updated_at,
-        -- Service count and details
-        COALESCE(COUNT(DISTINCT cs.id), 0)::integer as service_count,
-        sp.name as service_plan_name,
-        sp.price as monthly_fee,
-        -- Balance calculations
-        COALESCE(SUM(DISTINCT i.amount), 0) as total_invoices,
-        COALESCE(SUM(DISTINCT p.amount), 0) as total_payments,
-        COALESCE(SUM(DISTINCT i.amount), 0) - COALESCE(SUM(DISTINCT p.amount), 0) as outstanding_balance,
-        COALESCE(SUM(DISTINCT p.amount), 0) - COALESCE(SUM(DISTINCT i.amount), 0) as actual_balance,
-        -- Open tickets count
-        COALESCE(COUNT(DISTINCT CASE WHEN st.status IN ('open', 'in_progress', 'pending') THEN st.id END), 0)::integer as open_tickets
+        (SELECT COUNT(*) FROM customer_services WHERE customer_id = c.id AND status != 'terminated')::integer as service_count,
+        (SELECT SUM(amount) FROM invoices WHERE customer_id = c.id)::numeric as total_invoices,
+        (SELECT SUM(amount) FROM payments WHERE customer_id = c.id)::numeric as total_payments,
+        (SELECT COUNT(*) FROM support_tickets WHERE customer_id = c.id AND status IN ('open', 'in_progress'))::integer as open_tickets
       FROM customers c
-      LEFT JOIN customer_services cs ON c.id = cs.customer_id 
-        AND cs.status NOT IN ('terminated')
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      LEFT JOIN invoices i ON c.id = i.customer_id
-      LEFT JOIN payments p ON c.id = p.customer_id
-      LEFT JOIN support_tickets st ON c.id = st.customer_id 
-        AND st.status IN ('open', 'in_progress', 'pending')
       ${whereClause}
-      GROUP BY 
-        c.id, c.account_number, c.first_name, c.last_name, c.business_name,
-        c.customer_type, c.email, c.phone, c.address, c.city, c.state,
-        c.country, c.postal_code, c.status, c.created_at, c.updated_at,
-        sp.name, sp.price
       ORDER BY c.created_at DESC
+      LIMIT 1000
     `
 
     const customers = await sql.unsafe(query)
@@ -89,12 +65,9 @@ export async function GET(request: NextRequest) {
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
       service_count: Number(customer.service_count) || 0,
-      service_plan_name: customer.service_plan_name || "",
-      monthly_fee: Number(customer.monthly_fee) || 0,
       total_payments: Number(customer.total_payments) || 0,
       total_invoices: Number(customer.total_invoices) || 0,
-      outstanding_balance: Number(customer.outstanding_balance) || 0,
-      actual_balance: Number(customer.actual_balance) || 0,
+      outstanding_balance: (Number(customer.total_invoices) || 0) - (Number(customer.total_payments) || 0),
       open_tickets: Number(customer.open_tickets) || 0,
     }))
 
@@ -117,10 +90,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const sql = await getSql()
-
     const data = await request.json()
-
-    console.log("[v0] Received customer data:", JSON.stringify(data, null, 2))
 
     if (data.email) {
       const existingCustomer = await sql`
@@ -134,7 +104,6 @@ export async function POST(request: NextRequest) {
       `
 
       if (existingCustomer.length > 0) {
-        console.log("[v0] Duplicate email detected:", data.email)
         return NextResponse.json(
           {
             error: "Email address already exists",
@@ -179,12 +148,8 @@ export async function POST(request: NextRequest) {
     const lastName = data.last_name || data.contact_person?.split(" ").slice(1).join(" ") || "N/A"
     const businessName = data.name || data.business_name || null
 
-    console.log("[v0] Processed names:", { firstName, lastName, businessName })
-
     const normalizedEmail = data.email ? data.email.toLowerCase().trim() : null
-
     const customerType = data.customer_type || "individual"
-    console.log("[v0] Customer type:", customerType)
 
     const customerName =
       customerType === "individual"
@@ -219,7 +184,6 @@ export async function POST(request: NextRequest) {
     `
 
     const customer = customerResult[0]
-    console.log("[v0] Customer created successfully:", customer.id)
 
     if (data.phone_primary) {
       await sql`

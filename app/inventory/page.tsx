@@ -1,5 +1,7 @@
 "use client"
 
+import { DialogTrigger } from "@/components/ui/dialog"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,6 +46,9 @@ import {
   Cable,
   HardDrive,
   Warehouse,
+  Cpu,
+  Wrench,
+  Antenna,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -95,11 +100,9 @@ export default function InventoryPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [categoryFormData, setCategoryFormData] = useState({
-    name: "",
-    icon: "Package",
-    color: "bg-gray-500",
-  })
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [newCategoryIcon, setNewCategoryIcon] = useState("Package")
+  const [newCategoryColor, setNewCategoryColor] = useState("bg-blue-500")
   const [categories, setCategories] = useState<any[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const { toast } = useToast()
@@ -156,16 +159,17 @@ export default function InventoryPage() {
     }
   }
 
-  const handleAddCategory = async () => {
+  const handleAddCategory = async (e: any) => {
+    e.preventDefault()
     try {
-      console.log("[v0] Adding category:", categoryFormData)
+      console.log("[v0] Adding category:", { name: newCategoryName, icon: newCategoryIcon, color: newCategoryColor })
 
       const response = await fetch("/api/inventory/categories", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(categoryFormData),
+        body: JSON.stringify({ name: newCategoryName, icon: newCategoryIcon, color: newCategoryColor }),
       })
 
       const result = await response.json()
@@ -180,11 +184,9 @@ export default function InventoryPage() {
         description: "Category created successfully",
       })
 
-      setCategoryFormData({
-        name: "",
-        icon: "Package",
-        color: "bg-gray-500",
-      })
+      setNewCategoryName("")
+      setNewCategoryIcon("Package")
+      setNewCategoryColor("bg-blue-500")
       setShowCategoryModal(false)
 
       await fetchInventoryData()
@@ -317,6 +319,9 @@ export default function InventoryPage() {
       Server,
       Cable,
       HardDrive,
+      Cpu,
+      Wrench,
+      Antenna,
     }
     return iconMap[iconName] || Package
   }
@@ -555,218 +560,115 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold">Inventory Categories</h3>
-              <p className="text-sm text-muted-foreground">Manage your inventory categories</p>
-            </div>
-            <Button onClick={() => setShowCategoryModal(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Category
-            </Button>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">Categories</h2>
+            <Dialog open={showCategoryModal} onOpenChange={setShowCategoryModal}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Category
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Category</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleAddCategory} className="space-y-4">
+                  <div>
+                    <Label htmlFor="categoryName">Category Name</Label>
+                    <Input
+                      id="categoryName"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Enter category name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="categoryIcon">Icon</Label>
+                    <Select value={newCategoryIcon} onValueChange={setNewCategoryIcon}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an icon" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Package">📦 Package</SelectItem>
+                        <SelectItem value="Cpu">💻 CPU</SelectItem>
+                        <SelectItem value="Wrench">🔧 Wrench</SelectItem>
+                        <SelectItem value="Wifi">📡 Wifi</SelectItem>
+                        <SelectItem value="HardDrive">💾 Hard Drive</SelectItem>
+                        <SelectItem value="Cable">🔌 Cable</SelectItem>
+                        <SelectItem value="Server">🖥️ Server</SelectItem>
+                        <SelectItem value="Antenna">📶 Antenna</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="categoryColor">Color</Label>
+                    <Select value={newCategoryColor} onValueChange={setNewCategoryColor}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a color" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="blue">🔵 Blue</SelectItem>
+                        <SelectItem value="green">🟢 Green</SelectItem>
+                        <SelectItem value="red">🔴 Red</SelectItem>
+                        <SelectItem value="yellow">🟡 Yellow</SelectItem>
+                        <SelectItem value="purple">🟣 Purple</SelectItem>
+                        <SelectItem value="orange">🟠 Orange</SelectItem>
+                        <SelectItem value="pink">🩷 Pink</SelectItem>
+                        <SelectItem value="gray">⚫ Gray</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => setShowCategoryModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">Add Category</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {categories.length > 0 ? (
+            {categories.length === 0 ? (
+              <p className="text-muted-foreground col-span-full">
+                No categories found. Click "Add Category" to create one.
+              </p>
+            ) : (
               categories.map((category) => {
+                const stats = inventoryData.categories?.find(
+                  (c: any) => c.name.toLowerCase() === category.name.toLowerCase(),
+                ) || { count: 0, value: 0 }
+
                 const IconComponent = getIconComponent(category.icon)
-                const categoryStats = inventoryData?.categories?.find((c) => c.name === category.name)
 
                 return (
-                  <Card key={category.id}>
+                  <Card key={category.name}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
-                      <div className={`p-2 rounded ${category.color || "bg-gray-500"}`}>
+                      <div
+                        className="h-8 w-8 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: category.color }}
+                      >
                         <IconComponent className="h-4 w-4 text-white" />
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{categoryStats?.count || 0}</div>
-                      <p className="text-xs text-muted-foreground">items in this category</p>
+                      <div className="text-2xl font-bold">{stats.count}</div>
+                      <p className="text-xs text-muted-foreground">KSh {(stats.value || 0).toLocaleString()} value</p>
                     </CardContent>
                   </Card>
                 )
               })
-            ) : (
-              <div className="col-span-full text-center py-8 text-muted-foreground">
-                No categories found. Click "Add Category" to create one.
-              </div>
             )}
           </div>
         </TabsContent>
       </Tabs>
 
       {/* Category Management Modal */}
-      <Dialog open={showCategoryModal} onOpenChange={setShowCategoryModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Category</DialogTitle>
-            <DialogDescription>Create a new inventory category with custom icon and color</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="category-name">Category Name</Label>
-              <Input
-                id="category-name"
-                value={categoryFormData.name}
-                onChange={(e) =>
-                  setCategoryFormData((prev) => ({
-                    ...prev,
-                    name: e.target.value,
-                  }))
-                }
-                placeholder="e.g., Network Equipment"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="category-icon">Icon</Label>
-              <Select
-                value={categoryFormData.icon}
-                onValueChange={(value) =>
-                  setCategoryFormData((prev) => ({
-                    ...prev,
-                    icon: value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select icon" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Router">
-                    <div className="flex items-center gap-2">
-                      <Router className="h-4 w-4" />
-                      Router
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="Zap">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4" />
-                      Zap
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="Wifi">
-                    <div className="flex items-center gap-2">
-                      <Wifi className="h-4 w-4" />
-                      Wifi
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="Server">
-                    <div className="flex items-center gap-2">
-                      <Server className="h-4 w-4" />
-                      Server
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="Cable">
-                    <div className="flex items-center gap-2">
-                      <Cable className="h-4 w-4" />
-                      Cable
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="HardDrive">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="h-4 w-4" />
-                      Hard Drive
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="Package">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4" />
-                      Package
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="category-color">Color</Label>
-              <Select
-                value={categoryFormData.color}
-                onValueChange={(value) =>
-                  setCategoryFormData((prev) => ({
-                    ...prev,
-                    color: value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select color" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bg-blue-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-blue-500"></div>
-                      Blue
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-green-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-green-500"></div>
-                      Green
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-purple-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-purple-500"></div>
-                      Purple
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-orange-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-orange-500"></div>
-                      Orange
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-red-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-red-500"></div>
-                      Red
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-yellow-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-yellow-500"></div>
-                      Yellow
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-gray-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-gray-500"></div>
-                      Gray
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bg-indigo-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-indigo-500"></div>
-                      Indigo
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setShowCategoryModal(false)
-                setCategoryFormData({
-                  name: "",
-                  icon: "Package",
-                  color: "bg-gray-500",
-                })
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={handleAddCategory}>
-              Add Category
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Removed the old category modal code */}
 
       {/* Item Management Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>

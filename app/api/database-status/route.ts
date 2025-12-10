@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { neon } from "@neondatabase/serverless"
 
 export const dynamic = "force-dynamic"
 
@@ -34,23 +33,10 @@ export async function GET() {
       }
     }
 
-    let schemaDifferences: any = null
-    try {
-      const neonSql = neon(process.env.DATABASE_URL!)
-      const neonTableCount = await neonSql`
-        SELECT COUNT(*) as count 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-      `
-
-      schemaDifferences = {
-        neon_tables: Number(neonTableCount[0].count),
-        local_tables: tables.length,
-        difference: Number(neonTableCount[0].count) - tables.length,
-        status: Number(neonTableCount[0].count) === tables.length ? "synced" : "out_of_sync",
-      }
-    } catch (error) {
-      console.error("Error comparing with Neon:", error)
+    const schemaDifferences = {
+      local_tables: tables.length,
+      status: "postgresql_only",
+      note: "System uses PostgreSQL exclusively (Rule 4 - offline support)",
     }
 
     // Check specific module schemas

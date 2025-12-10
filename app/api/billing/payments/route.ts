@@ -33,12 +33,11 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Fetching payments with filters:", { search, method, status, dateFrom, dateTo, limit, offset })
 
-    let whereClause = ""
-    const searchConditions = []
+    const conditions = ["1=1"]
 
     if (search) {
       const searchPattern = `%${search}%`
-      searchConditions.push(`(
+      conditions.push(`(
         c.first_name ILIKE '${searchPattern}' OR 
         c.last_name ILIKE '${searchPattern}' OR 
         p.transaction_id ILIKE '${searchPattern}' OR 
@@ -47,26 +46,24 @@ export async function GET(request: NextRequest) {
     }
 
     if (method !== "all") {
-      searchConditions.push(`p.payment_method = '${method}'`)
+      conditions.push(`p.payment_method = '${method}'`)
     }
 
     if (status !== "all") {
-      searchConditions.push(`p.status = '${status}'`)
+      conditions.push(`p.status = '${status}'`)
     }
 
     if (dateFrom) {
-      searchConditions.push(`COALESCE(p.payment_date, p.created_at) >= '${dateFrom}'`)
+      conditions.push(`COALESCE(p.payment_date, p.created_at) >= '${dateFrom}'`)
     }
 
     if (dateTo) {
-      searchConditions.push(`COALESCE(p.payment_date, p.created_at) <= '${dateTo}'`)
+      conditions.push(`COALESCE(p.payment_date, p.created_at) <= '${dateTo}'`)
     }
 
-    if (searchConditions.length > 0) {
-      whereClause = `AND ${searchConditions.join(" AND ")}`
-    }
+    const whereClause = conditions.join(" AND ")
 
-    const paymentsResult = await sql`
+    const query = `
       SELECT 
         p.id,
         p.customer_id,
@@ -85,19 +82,23 @@ export async function GET(request: NextRequest) {
       LEFT JOIN customers c ON p.customer_id = c.id
       LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status = 'active'
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      WHERE 1=1 ${sql.unsafe(whereClause)}
+      WHERE ${whereClause}
       ORDER BY COALESCE(p.payment_date, p.created_at) DESC 
       LIMIT ${limit} OFFSET ${offset}
     `
 
+    const paymentsResult = await sql.unsafe(query)
+
     console.log("[v0] Found", paymentsResult.length, "payments")
 
-    const countResult = await sql`
+    const countQuery = `
       SELECT COUNT(*) as total
       FROM payments p
       LEFT JOIN customers c ON p.customer_id = c.id
-      WHERE 1=1 ${sql.unsafe(whereClause)}
+      WHERE ${whereClause}
     `
+
+    const countResult = await sql.unsafe(countQuery)
 
     const total = Number.parseInt(countResult?.[0]?.total || "0")
     console.log("[v0] Total payments count:", total)

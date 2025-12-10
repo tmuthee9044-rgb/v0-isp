@@ -169,7 +169,6 @@ export default function Dashboard() {
           setLastUpdated(new Date())
         }
       } catch (error) {
-        console.error("[v0] Failed to fetch dashboard data:", error)
         setError("Failed to load dashboard data. Please try refreshing the page.")
       } finally {
         setLoading(false)
@@ -187,7 +186,7 @@ export default function Dashboard() {
           setLastUpdated(new Date())
         }
       } catch (error) {
-        console.error("[v0] Failed to fetch real-time KPIs:", error)
+        // Silent failure for real-time updates
       }
     }, 30000)
 

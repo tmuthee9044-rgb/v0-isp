@@ -86,7 +86,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
       const existingIP = await sql`
         SELECT id, customer_id 
         FROM ip_addresses 
-        WHERE ip_address = ${ipAddress}::inet 
+        WHERE ip_address::inet = ${ipAddress}::inet 
         AND status = 'assigned'
         LIMIT 1
       `
@@ -162,7 +162,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
       await sql`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-        WHERE ip_address = ${ipAddress}::inet
+        WHERE ip_address::inet = ${ipAddress}::inet
       `
       allocatedIpAddress = ipAddress
 
@@ -354,7 +354,7 @@ export async function deleteCustomerService(serviceId: number) {
           id: inv.id,
           invoice_number: inv.invoice_number,
           amount: inv.amount,
-          paid_amount: inv.paid_amount,
+          paid_amount: inv.paid_amount || 0,
           status: inv.status,
         })),
       )

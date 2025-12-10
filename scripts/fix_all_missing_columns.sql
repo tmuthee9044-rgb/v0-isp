@@ -316,6 +316,30 @@ ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS source_module VARCHAR(100);
 ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS raw_log TEXT;
 ALTER TABLE router_logs ADD COLUMN IF NOT EXISTS log_timestamp TIMESTAMP WITHOUT TIME ZONE;
 
+-- TABLE: pending_tasks (CREATE if not exists)
+-- Adding pending_tasks table for background task queue system
+CREATE TABLE IF NOT EXISTS pending_tasks (
+    id BIGSERIAL PRIMARY KEY,
+    task_type VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(100),
+    resource_id BIGINT,
+    data JSONB,
+    status VARCHAR(50) DEFAULT 'pending',
+    priority INTEGER DEFAULT 5,
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    error_message TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    started_at TIMESTAMP WITHOUT TIME ZONE,
+    completed_at TIMESTAMP WITHOUT TIME ZONE,
+    scheduled_for TIMESTAMP WITHOUT TIME ZONE
+);
+
+-- Add indexes for pending_tasks
+CREATE INDEX IF NOT EXISTS idx_pending_tasks_status ON pending_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_pending_tasks_resource ON pending_tasks(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_pending_tasks_created ON pending_tasks(created_at);
+
 -- ================================================
 -- Add indexes for better performance
 -- ================================================

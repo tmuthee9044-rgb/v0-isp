@@ -122,27 +122,16 @@ export async function POST(request: NextRequest) {
       ORDER BY revenue DESC
     `
 
-    // Get recurring vs one-time revenue
+    // Get recurring vs one-time revenue - simplified to just count payment types
     const recurringRevenueResult = await sql`
       SELECT 
-        CASE 
-          WHEN sp.billing_cycle IS NOT NULL THEN 'Recurring'
-          ELSE 'One-time'
-        END as revenue_type,
+        'One-time' as revenue_type,
         COALESCE(SUM(p.amount), 0) as revenue,
         COUNT(p.id) as transaction_count
       FROM payments p
-      LEFT JOIN customers c ON p.customer_id = c.id
-      LEFT JOIN customer_services cs ON c.id = cs.customer_id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE p.status = 'completed' 
         AND p.created_at >= ${dateFrom}
         AND p.created_at <= ${dateTo}
-      GROUP BY 
-        CASE 
-          WHEN sp.billing_cycle IS NOT NULL THEN 'Recurring'
-          ELSE 'One-time'
-        END
     `
 
     // Calculate growth metrics

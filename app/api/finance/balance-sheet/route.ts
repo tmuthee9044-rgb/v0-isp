@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       expensesResult,
     ] = await Promise.all([
       sqlClient`
-        SELECT COALESCE(SUM(amount), 0) as accounts_payable
+        SELECT COALESCE(SUM(total_amount), 0) as accounts_payable
         FROM supplier_invoices
         WHERE status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
           AND invoice_date <= ${asOfDate}

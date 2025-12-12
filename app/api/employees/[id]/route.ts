@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db" // Fixed import path from @/lib/database to @/lib/db
 
 export const dynamic = "force-dynamic"
 
@@ -34,7 +34,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   try {
     const sql = await getSql()
     const id = Number(params.id)
-    const body = await request.json()
+
+    let body
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error("Error parsing JSON:", parseError)
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 })
+    }
 
     const {
       first_name,
@@ -51,6 +58,20 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       emergency_contact_phone,
     } = body
 
+    const parsedDepartmentId = department_id ? Number(department_id) : null
+    const parsedRoleId = role_id ? Number(role_id) : null
+    const parsedSalary = salary ? Number(salary) : null
+
+    if (department_id && isNaN(parsedDepartmentId)) {
+      return NextResponse.json({ error: "Invalid department_id" }, { status: 400 })
+    }
+    if (role_id && isNaN(parsedRoleId)) {
+      return NextResponse.json({ error: "Invalid role_id" }, { status: 400 })
+    }
+    if (salary && isNaN(parsedSalary)) {
+      return NextResponse.json({ error: "Invalid salary" }, { status: 400 })
+    }
+
     const result = await sql`
       UPDATE employees 
       SET 
@@ -58,9 +79,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         last_name = ${last_name},
         email = ${email},
         phone = ${phone},
-        department_id = ${department_id},
-        role_id = ${role_id},
-        salary = ${salary},
+        department_id = ${parsedDepartmentId},
+        role_id = ${parsedRoleId},
+        salary = ${parsedSalary},
         hire_date = ${hire_date},
         status = ${status},
         address = ${address},

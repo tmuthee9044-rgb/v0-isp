@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
         WITH customer_cohorts AS (
           SELECT 
             c.id,
-            c.first_name || ' ' || c.last_name as customer_name,
+            c.name as customer_name,
             DATE_TRUNC('month', c.created_at) as cohort_month,
             DATE_TRUNC('month', p.created_at) as payment_month,
             SUM(p.amount) as revenue
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
             AND p.status = 'completed'
             AND p.created_at >= ${dateFrom}
             AND p.created_at <= ${dateTo}
-          GROUP BY c.id, c.first_name, c.last_name, cohort_month, payment_month
+          GROUP BY c.id, c.name, cohort_month, payment_month
         )
         SELECT 
           cohort_month,

@@ -11,8 +11,7 @@ export async function GET() {
     const invoices = await sql`
       SELECT 
         i.*,
-        c.first_name,
-        c.last_name,
+        c.name,
         c.email,
         c.business_name
       FROM invoices i

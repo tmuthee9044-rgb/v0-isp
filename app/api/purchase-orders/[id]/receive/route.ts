@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const [updatedPOItem] = await sql`
         UPDATE purchase_order_items 
         SET 
-          quantity_received = ${quantity_received},
+          received_quantity = ${quantity_received},
           updated_at = NOW()
         WHERE id = ${purchase_order_item_id}
         RETURNING *

@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           COUNT(*) as transactions
         FROM payments 
         WHERE status = 'completed' 
-          AND created_at >= ${dateFrom}
+          AND created_at >= ${dateFrom} 
           AND created_at <= ${dateTo}
         GROUP BY DATE_TRUNC('month', created_at)
         ORDER BY period ASC
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     // Get top revenue customers
     const topCustomersResult = await sql`
       SELECT 
-        c.first_name || ' ' || c.last_name as customer_name,
+        c.name as customer_name,
         c.email,
         sp.name as plan_name,
         COALESCE(SUM(p.amount), 0) as total_revenue,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
         AND p.status = 'completed'
         AND p.created_at >= ${dateFrom} 
         AND p.created_at <= ${dateTo}
-      GROUP BY c.id, c.first_name, c.last_name, c.email, sp.name
+      GROUP BY c.id, c.name, c.email, sp.name
       HAVING SUM(p.amount) > 0
       ORDER BY total_revenue DESC
       LIMIT 10

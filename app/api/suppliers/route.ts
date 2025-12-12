@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
@@ -15,21 +15,14 @@ export async function GET(request: NextRequest) {
       const isActiveValue = status === "active"
       result = await sql`
         SELECT 
-          s.*,
-          0 as total_orders,
-          0 as total_order_value,
-          0 as active_orders
+          s.*
         FROM suppliers s
         WHERE s.is_active = ${isActiveValue}
         ORDER BY s.company_name ASC
       `
     } else {
       result = await sql`
-        SELECT 
-          s.*,
-          0 as total_orders,
-          0 as total_order_value,
-          0 as active_orders
+        SELECT s.*
         FROM suppliers s
         ORDER BY s.company_name ASC
       `
@@ -67,7 +60,7 @@ export async function GET(request: NextRequest) {
       summary: {
         total_suppliers: suppliers.length,
         active_suppliers: suppliers.filter((s) => s.status === "active").length,
-        total_order_value: suppliers.reduce((sum, s) => sum + s.total_order_value, 0),
+        total_order_value: 0,
       },
     })
   } catch (error) {

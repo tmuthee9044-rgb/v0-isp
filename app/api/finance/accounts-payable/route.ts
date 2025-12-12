@@ -39,14 +39,14 @@ export async function GET(request: NextRequest) {
           si.invoice_date,
           si.due_date,
           si.total_amount,
-          COALESCE(si.paid_amount, 0) as paid_amount,
+          0 as paid_amount,
           si.status,
           COALESCE(s.company_name, 'Unknown') as supplier_name,
           s.email as supplier_email,
           s.phone as supplier_phone,
-          (si.total_amount - COALESCE(si.paid_amount, 0)) as outstanding_amount,
+          si.total_amount as outstanding_amount,
           CASE 
-            WHEN si.due_date < CURRENT_DATE AND COALESCE(si.paid_amount, 0) < si.total_amount THEN 'overdue'
+            WHEN si.due_date < CURRENT_DATE THEN 'overdue'
             WHEN si.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
             ELSE 'current'
           END as aging_status
@@ -66,14 +66,14 @@ export async function GET(request: NextRequest) {
           si.invoice_date,
           si.due_date,
           si.total_amount,
-          COALESCE(si.paid_amount, 0) as paid_amount,
+          0 as paid_amount,
           si.status,
           COALESCE(s.company_name, 'Unknown') as supplier_name,
           s.email as supplier_email,
           s.phone as supplier_phone,
-          (si.total_amount - COALESCE(si.paid_amount, 0)) as outstanding_amount,
+          si.total_amount as outstanding_amount,
           CASE 
-            WHEN si.due_date < CURRENT_DATE AND COALESCE(si.paid_amount, 0) < si.total_amount THEN 'overdue'
+            WHEN si.due_date < CURRENT_DATE THEN 'overdue'
             WHEN si.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
             ELSE 'current'
           END as aging_status

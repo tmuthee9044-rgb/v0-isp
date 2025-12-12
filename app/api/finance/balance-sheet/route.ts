@@ -17,96 +17,66 @@ export async function GET(request: NextRequest) {
       asOfDate = new Date().toISOString().split("T")[0]
     }
 
-    const chartAccountsData = await sqlClient`
-      SELECT 
-        account_type,
-        account_name,
-        COALESCE(SUM(
-          CASE 
-            WHEN account_type IN ('Asset', 'Expense') THEN jel.debit_amount - jel.credit_amount
-            WHEN account_type IN ('Liability', 'Equity', 'Revenue') THEN jel.credit_amount - jel.debit_amount
-            ELSE 0
-          END
-        ), 0) as balance
-      FROM chart_of_accounts coa
-      LEFT JOIN journal_entry_lines jel ON jel.account_id = coa.id
-      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
-      WHERE je.entry_date <= ${asOfDate} OR je.entry_date IS NULL
-      GROUP BY coa.account_type, coa.account_name
-    `
-
-    const chartAssets = chartAccountsData
-      .filter((row: any) => row.account_type === "Asset")
-      .reduce((sum: number, row: any) => sum + Number.parseFloat(row.balance || 0), 0)
-
-    const chartLiabilities = chartAccountsData
-      .filter((row: any) => row.account_type === "Liability")
-      .reduce((sum: number, row: any) => sum + Number.parseFloat(row.balance || 0), 0)
-
-    const chartEquity = chartAccountsData
-      .filter((row: any) => row.account_type === "Equity")
-      .reduce((sum: number, row: any) => sum + Number.parseFloat(row.balance || 0), 0)
-
-    const accountsPayableResult = await sqlClient`
-      SELECT COALESCE(SUM(total_amount - paid_amount), 0) as accounts_payable
-      FROM supplier_invoices
-      WHERE status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
-        AND invoice_date <= ${asOfDate}
-    `
+    const [
+      accountsPayableResult,
+      accountsReceivableResult,
+      inventoryResult,
+      cashResult,
+      revenueResult,
+      expensesResult,
+    ] = await Promise.all([
+      sqlClient`
+        SELECT COALESCE(SUM(amount), 0) as accounts_payable
+        FROM supplier_invoices
+        WHERE status IN ('UNPAID', 'PARTIALLY_PAID', 'OVERDUE')
+          AND invoice_date <= ${asOfDate}
+      `,
+      sqlClient`
+        SELECT COALESCE(SUM(amount), 0) as accounts_receivable
+        FROM invoices
+        WHERE status IN ('pending', 'overdue', 'partially_paid')
+          AND created_at <= ${asOfDate}
+      `,
+      sqlClient`
+        SELECT COALESCE(SUM(stock_quantity * unit_cost), 0) as inventory_value
+        FROM inventory_items
+        WHERE status = 'active'
+      `,
+      sqlClient`
+        SELECT COALESCE(SUM(amount), 0) as cash_balance
+        FROM payments
+        WHERE status = 'completed'
+          AND payment_date <= ${asOfDate}
+      `,
+      sqlClient`
+        SELECT COALESCE(SUM(amount), 0) as total_revenue
+        FROM invoices
+        WHERE status = 'paid' AND created_at <= ${asOfDate}
+      `,
+      sqlClient`
+        SELECT COALESCE(SUM(amount), 0) as total_expenses
+        FROM expenses
+        WHERE status = 'approved' AND expense_date <= ${asOfDate}
+      `,
+    ])
 
     const operationalAccountsPayable = Number.parseFloat(accountsPayableResult[0]?.accounts_payable || 0)
-
-    const accountsReceivableResult = await sqlClient`
-      SELECT COALESCE(SUM(amount - paid_amount), 0) as accounts_receivable
-      FROM invoices
-      WHERE status IN ('pending', 'overdue', 'partially_paid')
-        AND created_at <= ${asOfDate}
-    `
-
     const operationalAccountsReceivable = Number.parseFloat(accountsReceivableResult[0]?.accounts_receivable || 0)
-
-    const inventoryResult = await sqlClient`
-      SELECT COALESCE(SUM(stock_quantity * unit_cost), 0) as inventory_value
-      FROM inventory_items
-      WHERE status = 'active'
-    `
-
     const inventoryValue = Number.parseFloat(inventoryResult[0]?.inventory_value || 0)
-
-    const cashResult = await sqlClient`
-      SELECT COALESCE(SUM(amount), 0) as cash_balance
-      FROM payments
-      WHERE status = 'completed'
-        AND payment_date <= ${asOfDate}
-    `
-
     const operationalCashBalance = Number.parseFloat(cashResult[0]?.cash_balance || 0)
-
-    const profitResult = await sqlClient`
-      SELECT 
-        COALESCE(SUM(i.amount), 0) as total_revenue,
-        COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.status = 'approved' AND e.expense_date <= ${asOfDate}), 0) as total_expenses
-      FROM invoices i
-      WHERE i.status = 'paid'
-        AND i.created_at <= ${asOfDate}
-    `
-
-    const totalRevenue = Number.parseFloat(profitResult[0]?.total_revenue || 0)
-    const totalExpenses = Number.parseFloat(profitResult[0]?.total_expenses || 0)
+    const totalRevenue = Number.parseFloat(revenueResult[0]?.total_revenue || 0)
+    const totalExpenses = Number.parseFloat(expensesResult[0]?.total_expenses || 0)
     const netIncome = totalRevenue - totalExpenses
 
-    const totalCurrentAssets = Math.max(
-      chartAssets,
-      operationalCashBalance + operationalAccountsReceivable + inventoryValue,
-    )
+    const totalCurrentAssets = operationalCashBalance + operationalAccountsReceivable + inventoryValue
     const totalFixedAssets = 0
     const totalAssets = totalCurrentAssets + totalFixedAssets
 
-    const totalCurrentLiabilities = Math.max(chartLiabilities, operationalAccountsPayable)
+    const totalCurrentLiabilities = operationalAccountsPayable
     const totalLongTermLiabilities = 0
     const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities
 
-    const totalEquity = Math.max(chartEquity, totalAssets - totalLiabilities)
+    const totalEquity = totalAssets - totalLiabilities
     const capital = totalEquity - netIncome
     const retainedEarnings = netIncome
 
@@ -116,14 +86,8 @@ export async function GET(request: NextRequest) {
         asOfDate,
         assets: {
           current: {
-            cash_and_equivalents: Math.max(
-              chartAccountsData.find((r: any) => r.account_name?.toLowerCase().includes("cash"))?.balance || 0,
-              operationalCashBalance,
-            ),
-            accounts_receivable: Math.max(
-              chartAccountsData.find((r: any) => r.account_name?.toLowerCase().includes("receivable"))?.balance || 0,
-              operationalAccountsReceivable,
-            ),
+            cash_and_equivalents: operationalCashBalance,
+            accounts_receivable: operationalAccountsReceivable,
             inventory: inventoryValue,
             total: totalCurrentAssets,
           },
@@ -137,21 +101,12 @@ export async function GET(request: NextRequest) {
         },
         liabilities: {
           current: {
-            accounts_payable: Math.max(
-              chartAccountsData.find((r: any) => r.account_name?.toLowerCase().includes("payable"))?.balance || 0,
-              operationalAccountsPayable,
-            ),
-            short_term_debt:
-              chartAccountsData.find(
-                (r: any) => r.account_name?.toLowerCase().includes("short") && r.account_type === "Liability",
-              )?.balance || 0,
+            accounts_payable: operationalAccountsPayable,
+            short_term_debt: 0,
             total: totalCurrentLiabilities,
           },
           long_term: {
-            long_term_debt:
-              chartAccountsData.find(
-                (r: any) => r.account_name?.toLowerCase().includes("long") && r.account_type === "Liability",
-              )?.balance || 0,
+            long_term_debt: 0,
           },
           total: totalLiabilities,
         },

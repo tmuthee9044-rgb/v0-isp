@@ -51,6 +51,25 @@ CREATE INDEX IF NOT EXISTS idx_customer_services_ip ON customer_services(ip_addr
 CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category) WHERE category IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);
 
+-- Adding finance-specific indexes for Rule 7 compliance
+-- Expenses table indexes for fast date range queries
+CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_status_date ON expenses(status, expense_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_category_date ON expenses(category_id, expense_date);
+
+-- Supplier invoices indexes for accounts payable
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_status ON supplier_invoices(status);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_due_date ON supplier_invoices(due_date);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier_status ON supplier_invoices(supplier_id, status);
+
+-- Finance audit trail index
+CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_timestamp ON finance_audit_trail(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_resource ON finance_audit_trail(resource_type, resource_id);
+
+-- Tax records indexes
+CREATE INDEX IF NOT EXISTS idx_tax_records_due_date ON tax_records(due_date);
+CREATE INDEX IF NOT EXISTS idx_tax_records_status ON tax_records(status);
+
 -- Analyze tables for query optimization
 ANALYZE payments;
 ANALYZE invoices;
@@ -61,3 +80,8 @@ ANALYZE network_devices;
 ANALYZE support_tickets;
 ANALYZE ip_addresses;
 ANALYZE inventory;
+-- Analyzing finance tables
+ANALYZE expenses;
+ANALYZE supplier_invoices;
+ANALYZE finance_audit_trail;
+ANALYZE tax_records;

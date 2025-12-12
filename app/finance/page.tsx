@@ -527,19 +527,13 @@ export default function FinancePage() {
   const fetchAuditLogs = async () => {
     setAuditLogsLoading(true)
     try {
-      console.log("[v0] Fetching audit logs from /api/finance/audit-logs?limit=50")
       const response = await fetch("/api/finance/audit-logs?limit=50")
-      console.log("[v0] Audit logs response status:", response.status)
 
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Audit logs data received:", data)
-        console.log("[v0] Number of logs:", data.logs?.length || 0)
         setAuditLogs(data.logs || [])
         setActivitySummary(data.activitySummary || { today: 0, thisWeek: 0, thisMonth: 0 })
       } else {
-        const errorText = await response.text()
-        console.error("[v0] Failed to fetch audit logs - Status:", response.status, "Error:", errorText)
         toast({
           title: "Error",
           description: `Failed to fetch audit logs: ${response.status}`,
@@ -547,7 +541,7 @@ export default function FinancePage() {
         })
       }
     } catch (error) {
-      console.error("[v0] Error fetching audit logs:", error)
+      console.error("Error fetching audit logs:", error)
       toast({
         title: "Error",
         description: "Failed to fetch audit logs - Network error",
@@ -923,39 +917,28 @@ export default function FinancePage() {
 
     try {
       setLoadingInvoices(true)
-      console.log("[v0] Fetching pending invoices for supplier:", supplierName)
 
-      // Find supplier by company name
       const supplier = suppliers.find((s) => s.company_name === supplierName)
       if (!supplier) {
-        console.log("[v0] Supplier not found:", supplierName)
         setPendingInvoices([])
         return
       }
 
-      console.log("[v0] Found supplier ID:", supplier.id)
-
-      // Fetch invoices for this supplier
       const response = await fetch(`/api/suppliers/${supplier.id}/invoices`)
       if (!response.ok) {
         throw new Error("Failed to fetch supplier invoices")
       }
 
       const data = await response.json()
-      console.log("[v0] Fetched invoices:", data)
 
-      // Filter for pending/unpaid invoices
       const pending = (data.invoices || []).filter(
         (inv: any) => inv.status === "UNPAID" || inv.status === "PARTIALLY_PAID" || inv.status === "OVERDUE",
       )
 
-      console.log("[v0] Pending invoices:", pending)
       setPendingInvoices(pending)
 
-      // Auto-select first invoice if only one exists
       if (pending.length === 1) {
         setSelectedInvoiceId(pending[0].id.toString())
-        // Auto-fill amount from invoice
         setExpenseForm((prev) => ({
           ...prev,
           amount: (pending[0].total_amount - (pending[0].paid_amount || 0)).toString(),
@@ -964,7 +947,7 @@ export default function FinancePage() {
         }))
       }
     } catch (error) {
-      console.error("[v0] Error fetching pending invoices:", error)
+      console.error("Error fetching pending invoices:", error)
       setPendingInvoices([])
     } finally {
       setLoadingInvoices(false)
@@ -987,22 +970,6 @@ export default function FinancePage() {
 
   const handleCreateExpense = async () => {
     try {
-      console.log("[v0] Creating expense with data:", expenseForm)
-      console.log("[v0] Expense form details:", {
-        category_id: expenseForm.category_id,
-        category_id_type: typeof expenseForm.category_id,
-        category_id_parsed: Number.parseInt(expenseForm.category_id),
-        expense_date: expenseForm.expense_date,
-        expense_date_type: typeof expenseForm.expense_date,
-        amount: expenseForm.amount,
-        description: expenseForm.description,
-        vendor: expenseForm.vendor,
-        payment_method: expenseForm.payment_method,
-        status: expenseForm.status,
-        notes: expenseForm.notes,
-        supplier_invoice_id: expenseForm.supplier_invoice_id,
-      })
-
       // Validate required fields
       if (!expenseForm.category_id || !expenseForm.amount || !expenseForm.description) {
         toast({
@@ -1025,8 +992,6 @@ export default function FinancePage() {
         supplier_invoice_id: expenseForm.supplier_invoice_id ? Number.parseInt(expenseForm.supplier_invoice_id) : null,
       }
 
-      console.log("[v0] Request body being sent to API:", requestBody)
-
       const response = await fetch("/api/finance/expenses", {
         method: "POST",
         headers: {
@@ -1035,17 +1000,10 @@ export default function FinancePage() {
         body: JSON.stringify(requestBody),
       })
 
-      console.log("[v0] API Response status:", response.status)
-      console.log("[v0] API Response headers:", Object.fromEntries(response.headers.entries()))
-
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("[v0] API Error response:", errorData)
         throw new Error(errorData.error || "Failed to create expense")
       }
-
-      const result = await response.json()
-      console.log("[v0] Expense created successfully:", result)
 
       toast({
         title: "Expense Created",
@@ -1070,7 +1028,7 @@ export default function FinancePage() {
       fetchExpenses() // Refresh the expenses list
       setIsExpenseModalOpen(false)
     } catch (error) {
-      console.error("[v0] Error creating expense:", error)
+      console.error("Error creating expense:", error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to create expense. Please try again.",

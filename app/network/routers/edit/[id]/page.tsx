@@ -67,8 +67,6 @@ interface RouterInterface {
   rxPackets: number
   txPackets: number
   rxErrors: number
-  txErrors: number
-  rxDrops: number
   txDrops: number
 }
 
@@ -173,17 +171,18 @@ export default function EditRouterPage() {
   }
 
   const fetchTrafficData = async () => {
-    const mockData: TrafficData[] = []
-    const now = new Date()
-    for (let i = 23; i >= 0; i--) {
-      const time = new Date(now.getTime() - i * 60 * 60 * 1000)
-      mockData.push({
-        time: time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        tx: Math.random() * 0.8,
-        rx: Math.random() * 0.6,
-      })
+    try {
+      const response = await fetch(`/api/network/routers/${routerId}/traffic-history`)
+      if (response.ok) {
+        const data = await response.json()
+        setTrafficData(data.history || [])
+      } else {
+        setTrafficData([])
+      }
+    } catch (error) {
+      console.error("Error fetching traffic data:", error)
+      setTrafficData([])
     }
-    setTrafficData(mockData)
   }
 
   const fetchBlockingRules = async () => {

@@ -204,8 +204,8 @@ export async function POST(request: NextRequest) {
 
           for (const ip of batch) {
             await sql`
-              INSERT INTO ip_addresses (ip_address, subnet_id, status, version, created_at)
-              VALUES (${ip}, ${createdSubnet.id}, 'available', ${ipVersion}, NOW())
+              INSERT INTO ip_addresses (ip_address, subnet_id, status, created_at)
+              VALUES (${ip}, ${createdSubnet.id}, 'available', NOW())
               ON CONFLICT (ip_address, subnet_id) DO NOTHING
             `
             insertedCount++

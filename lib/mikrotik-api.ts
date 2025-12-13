@@ -41,9 +41,16 @@ export class MikroTikAPI {
     try {
       console.log(`[v0] Connecting to MikroTik router at ${this.config.host}:${this.config.port}`)
 
-      // For now, simulate connection with validation
-      if (!this.config.host || !this.config.username || !this.config.password) {
-        throw new Error("Missing required connection parameters")
+      if (!this.config.host) {
+        throw new Error("Missing required parameter: host")
+      }
+      if (!this.config.username) {
+        throw new Error("Missing required parameter: username")
+      }
+      if (!this.config.password) {
+        throw new Error(
+          "Missing required parameter: password. Please set the MikroTik password in router configuration.",
+        )
       }
 
       // Simulate connection delay
@@ -62,7 +69,7 @@ export class MikroTikAPI {
     } catch (error) {
       console.error(`[v0] MikroTik connection error:`, error)
       this.connected = false
-      return false
+      throw error // Rethrow error so caller can see the specific message
     }
   }
 
@@ -327,11 +334,18 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
       return null
     }
 
+    if (!router.mikrotik_user) {
+      throw new Error("MikroTik username not configured. Please set 'mikrotik_user' in router configuration.")
+    }
+    if (!router.mikrotik_password) {
+      throw new Error("MikroTik password not configured. Please set 'mikrotik_password' in router configuration.")
+    }
+
     const config: MikroTikConfig = {
       host: router.ip_address,
       port: router.api_port ? Number.parseInt(router.api_port) : 8728,
-      username: router.mikrotik_user || "admin",
-      password: router.mikrotik_password || "",
+      username: router.mikrotik_user,
+      password: router.mikrotik_password,
     }
 
     const client = new MikroTikAPI(config)
@@ -345,6 +359,6 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
     return client
   } catch (error) {
     console.error(`[v0] Error creating MikroTik client:`, error)
-    return null
+    throw error // Rethrow so the error message is visible to the caller
   }
 }

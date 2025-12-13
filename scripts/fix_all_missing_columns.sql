@@ -277,6 +277,10 @@ ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS name VARCHAR(255);
 ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS contact_type VARCHAR(50);
 ALTER TABLE customer_contacts ADD COLUMN IF NOT EXISTS relationship VARCHAR(100);
 
+-- TABLE: customer_documents (file storage support)
+ALTER TABLE customer_documents ADD COLUMN IF NOT EXISTS file_content BYTEA;
+CREATE INDEX IF NOT EXISTS idx_customer_document_access_logs_document_id ON customer_document_access_logs(document_id);
+
 -- TABLE: locations (ensure city column exists)
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS city VARCHAR(100);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS region VARCHAR(100);
@@ -365,6 +369,13 @@ CREATE INDEX IF NOT EXISTS idx_ip_subnets_router_id ON ip_subnets(router_id);
 ALTER TABLE account_balances DROP CONSTRAINT IF EXISTS account_balances_customer_id_key;
 ALTER TABLE account_balances ADD CONSTRAINT account_balances_customer_id_key UNIQUE (customer_id);
 
+-- Finance performance indexes
+CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_invoice_date ON supplier_invoices(invoice_date);
+CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_created_at ON finance_audit_trail(created_at);
+CREATE INDEX IF NOT EXISTS idx_tax_records_tax_period_start ON tax_records(tax_period_start);
+CREATE INDEX IF NOT EXISTS idx_tax_records_tax_period_end ON tax_records(tax_period_end);
+
 -- ================================================
 -- Add inventory_categories table for category management
 -- ================================================
@@ -412,6 +423,6 @@ SELECT 'Cables & Accessories', 'Cable', 'bg-indigo-500'
 WHERE NOT EXISTS (SELECT 1 FROM inventory_categories WHERE name = 'Cables & Accessories');
 
 -- ================================================
--- Success message
+-- END OF SCRIPT
 -- ================================================
 -- Removed problematic DO block that was causing syntax errors

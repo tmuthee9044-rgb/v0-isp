@@ -373,8 +373,10 @@ ALTER TABLE account_balances ADD CONSTRAINT account_balances_customer_id_key UNI
 CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_supplier_invoices_invoice_date ON supplier_invoices(invoice_date);
 CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_created_at ON finance_audit_trail(created_at);
-CREATE INDEX IF NOT EXISTS idx_tax_returns_tax_period_start ON tax_returns(tax_period_start);
-CREATE INDEX IF NOT EXISTS idx_tax_returns_tax_period_end ON tax_returns(tax_period_end);
+CREATE INDEX IF NOT EXISTS idx_tax_returns_period_id ON tax_returns(period_id);
+CREATE INDEX IF NOT EXISTS idx_tax_returns_filed_date ON tax_returns(filed_date);
+CREATE INDEX IF NOT EXISTS idx_tax_returns_due_date ON tax_returns(due_date);
+CREATE INDEX IF NOT EXISTS idx_tax_returns_status ON tax_returns(status);
 
 -- ================================================
 -- Add inventory_categories table for category management

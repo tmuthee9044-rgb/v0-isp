@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -77,192 +77,103 @@ interface ServicePlan {
   description: string
 }
 
-const mockServicePlans: ServicePlan[] = [
-  {
-    id: 1,
-    name: "Basic Home",
-    type: "residential",
-    category: "basic",
-    price: 29.99,
-    currency: "USD",
-    setupFee: 50,
-    speedDown: 25,
-    speedUp: 5,
-    guaranteedSpeedDown: 20,
-    guaranteedSpeedUp: 4,
-    burstSpeedDown: 35,
-    burstSpeedUp: 8,
-    burstDuration: 300,
-    aggregationRatio: "1:8",
-    dataLimit: 500,
-    dataLimitPeriod: "monthly",
-    fupAction: "throttle",
-    throttleSpeed: 5,
-    taxRate: 16,
-    contractLength: 12,
-    staticIP: false,
-    portForwarding: false,
-    prioritySupport: false,
-    slaGuarantee: 95,
-    deviceLimit: 5,
-    connectionLimit: 50,
-    contentFiltering: true,
-    portBlocking: ["25", "135", "139", "445"],
-    qosPriority: "standard",
-    active: true,
-    customers: 1250,
-    description: "Perfect for light browsing, email, and basic streaming",
-  },
-  {
-    id: 2,
-    name: "Standard Home",
-    type: "residential",
-    category: "standard",
-    price: 49.99,
-    currency: "USD",
-    setupFee: 75,
-    speedDown: 50,
-    speedUp: 10,
-    guaranteedSpeedDown: 40,
-    guaranteedSpeedUp: 8,
-    burstSpeedDown: 75,
-    burstSpeedUp: 15,
-    burstDuration: 600,
-    aggregationRatio: "1:6",
-    dataLimit: 1000,
-    dataLimitPeriod: "monthly",
-    fupAction: "throttle",
-    throttleSpeed: 10,
-    taxRate: 16,
-    contractLength: 12,
-    staticIP: false,
-    portForwarding: true,
-    prioritySupport: false,
-    slaGuarantee: 97,
-    deviceLimit: 10,
-    connectionLimit: 100,
-    contentFiltering: true,
-    portBlocking: ["25", "135", "139"],
-    qosPriority: "standard",
-    active: true,
-    customers: 2100,
-    description: "Great for streaming, gaming, and working from home",
-  },
-  {
-    id: 3,
-    name: "Premium Home",
-    type: "residential",
-    category: "premium",
-    price: 79.99,
-    currency: "USD",
-    setupFee: 100,
-    speedDown: 100,
-    speedUp: 20,
-    guaranteedSpeedDown: 85,
-    guaranteedSpeedUp: 17,
-    burstSpeedDown: 150,
-    burstSpeedUp: 30,
-    burstDuration: 900,
-    aggregationRatio: "1:4",
-    dataLimit: null,
-    dataLimitPeriod: "monthly",
-    fupAction: "notify",
-    throttleSpeed: 0,
-    taxRate: 16,
-    contractLength: 12,
-    staticIP: true,
-    portForwarding: true,
-    prioritySupport: true,
-    slaGuarantee: 99,
-    deviceLimit: 20,
-    connectionLimit: 200,
-    contentFiltering: false,
-    portBlocking: ["25"],
-    qosPriority: "high",
-    active: true,
-    customers: 890,
-    description: "Unlimited high-speed internet for power users",
-  },
-  {
-    id: 4,
-    name: "Business Starter",
-    type: "business",
-    category: "standard",
-    price: 149.99,
-    currency: "USD",
-    setupFee: 200,
-    speedDown: 100,
-    speedUp: 50,
-    guaranteedSpeedDown: 95,
-    guaranteedSpeedUp: 45,
-    burstSpeedDown: 150,
-    burstSpeedUp: 75,
-    burstDuration: 1200,
-    aggregationRatio: "1:3",
-    dataLimit: null,
-    dataLimitPeriod: "monthly",
-    fupAction: "notify",
-    throttleSpeed: 0,
-    taxRate: 16,
-    contractLength: 24,
-    staticIP: true,
-    portForwarding: true,
-    prioritySupport: true,
-    slaGuarantee: 99.5,
-    deviceLimit: 50,
-    connectionLimit: 500,
-    contentFiltering: false,
-    portBlocking: [],
-    qosPriority: "high",
-    active: true,
-    customers: 450,
-    description: "Reliable business internet with SLA guarantee",
-  },
-  {
-    id: 5,
-    name: "Enterprise Pro",
-    type: "enterprise",
-    category: "enterprise",
-    price: 299.99,
-    currency: "USD",
-    setupFee: 500,
-    speedDown: 500,
-    speedUp: 100,
-    guaranteedSpeedDown: 480,
-    guaranteedSpeedUp: 95,
-    burstSpeedDown: 750,
-    burstSpeedUp: 150,
-    burstDuration: 1800,
-    aggregationRatio: "1:2",
-    dataLimit: null,
-    dataLimitPeriod: "monthly",
-    fupAction: "notify",
-    throttleSpeed: 0,
-    taxRate: 16,
-    contractLength: 36,
-    staticIP: true,
-    portForwarding: true,
-    prioritySupport: true,
-    slaGuarantee: 99.9,
-    deviceLimit: 100,
-    connectionLimit: 1000,
-    contentFiltering: false,
-    portBlocking: [],
-    qosPriority: "premium",
-    active: true,
-    customers: 125,
-    description: "Enterprise-grade connectivity with maximum reliability",
-  },
-]
-
 export default function ServiceComparisonPage() {
-  const [selectedPlans, setSelectedPlans] = useState<number[]>([1, 2, 3])
-  const [availablePlans, setAvailablePlans] = useState<ServicePlan[]>(mockServicePlans)
+  const [selectedPlans, setSelectedPlans] = useState<number[]>([])
+  const [availablePlans, setAvailablePlans] = useState<ServicePlan[]>([])
   const [comparisonView, setComparisonView] = useState<"table" | "cards" | "chart">("table")
   const [filterType, setFilterType] = useState<string>("all")
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false)
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+
+  useEffect(() => {
+    const fetchServicePlans = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch("/api/services")
+        const result = await response.json()
+
+        if (result.success && result.data) {
+          const plans: ServicePlan[] = result.data.map((plan: any) => ({
+            id: plan.id,
+            name: plan.name,
+            type: plan.service_type || "residential",
+            category: plan.category || "standard",
+            price: Number.parseFloat(plan.price) || 0,
+            currency: plan.currency || "USD",
+            setupFee: Number.parseFloat(plan.setup_fee) || 0,
+            speedDown: Number.parseInt(plan.speed_download) || 0,
+            speedUp: Number.parseInt(plan.speed_upload) || 0,
+            guaranteedSpeedDown:
+              Number.parseInt(plan.guaranteed_speed_down) || Number.parseInt(plan.speed_download) * 0.8 || 0,
+            guaranteedSpeedUp:
+              Number.parseInt(plan.guaranteed_speed_up) || Number.parseInt(plan.speed_upload) * 0.8 || 0,
+            burstSpeedDown: Number.parseInt(plan.burst_speed_down) || Number.parseInt(plan.speed_download) * 1.5 || 0,
+            burstSpeedUp: Number.parseInt(plan.burst_speed_up) || Number.parseInt(plan.speed_upload) * 1.5 || 0,
+            burstDuration: Number.parseInt(plan.burst_duration) || 300,
+            aggregationRatio: plan.aggregation_ratio || "1:10",
+            dataLimit: plan.data_limit ? Number.parseInt(plan.data_limit) : null,
+            dataLimitPeriod: plan.data_limit_period || "monthly",
+            fupAction: plan.fup_action || "throttle",
+            throttleSpeed: Number.parseInt(plan.fup_speed) || 0,
+            taxRate: Number.parseFloat(plan.tax_rate) || 16,
+            contractLength: Number.parseInt(plan.contract_period) || 12,
+            staticIP: plan.static_ip || false,
+            portForwarding: plan.port_forwarding || false,
+            prioritySupport: plan.priority_support || false,
+            slaGuarantee: Number.parseFloat(plan.sla_guarantee) || 95,
+            deviceLimit: Number.parseInt(plan.device_limit) || 10,
+            connectionLimit: Number.parseInt(plan.connection_limit) || 100,
+            contentFiltering: plan.content_filtering || false,
+            portBlocking: plan.port_blocking || [],
+            qosPriority: plan.qos_priority || "standard",
+            active: plan.is_active !== false,
+            customers: Number.parseInt(plan.total_customers) || 0,
+            description: plan.description || "",
+          }))
+
+          setAvailablePlans(plans)
+          if (plans.length > 0) {
+            setSelectedPlans(plans.slice(0, Math.min(3, plans.length)).map((p) => p.id))
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching service plans:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load service plans",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchServicePlans()
+  }, [toast])
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading service plans...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (availablePlans.length === 0) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-muted-foreground mb-4">No service plans available</p>
+          <p className="text-sm text-muted-foreground">Create service plans to compare them</p>
+        </div>
+      </div>
+    )
+  }
 
   const filteredPlans = availablePlans.filter((plan) => {
     const typeMatch = filterType === "all" || plan.type === filterType
@@ -410,7 +321,6 @@ export default function ServiceComparisonPage() {
 
   return (
     <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Service Plan Comparison</h2>
@@ -432,7 +342,6 @@ export default function ServiceComparisonPage() {
         </div>
       </div>
 
-      {/* Filters and Controls */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -498,7 +407,6 @@ export default function ServiceComparisonPage() {
             </div>
           </div>
 
-          {/* Plan Selection */}
           <div>
             <Label className="text-sm font-medium mb-3 block">Select Plans to Compare ({selectedPlans.length}/5)</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -532,7 +440,6 @@ export default function ServiceComparisonPage() {
         </CardContent>
       </Card>
 
-      {/* Comparison Content */}
       <Tabs value={comparisonView} onValueChange={(value) => setComparisonView(value as "table" | "cards" | "chart")}>
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="table">Table Comparison</TabsTrigger>
@@ -540,7 +447,6 @@ export default function ServiceComparisonPage() {
           <TabsTrigger value="chart">Chart Analysis</TabsTrigger>
         </TabsList>
 
-        {/* Table View */}
         <TabsContent value="table">
           <Card>
             <CardHeader>
@@ -586,7 +492,6 @@ export default function ServiceComparisonPage() {
           </Card>
         </TabsContent>
 
-        {/* Card View */}
         <TabsContent value="cards">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {selectedPlanData.map((plan) => (
@@ -599,14 +504,12 @@ export default function ServiceComparisonPage() {
                   <CardDescription>{plan.description}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Pricing */}
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
                     <div className="text-3xl font-bold">${plan.price}</div>
                     <div className="text-sm text-muted-foreground">per month</div>
                     <div className="text-xs text-muted-foreground">Setup: ${plan.setupFee}</div>
                   </div>
 
-                  {/* Speed */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium flex items-center gap-1">
@@ -633,7 +536,6 @@ export default function ServiceComparisonPage() {
                     </div>
                   </div>
 
-                  {/* Features */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Data Limit</span>
@@ -649,7 +551,6 @@ export default function ServiceComparisonPage() {
                     </div>
                   </div>
 
-                  {/* Included Features */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium">Included Features</h4>
                     <div className="grid grid-cols-2 gap-1 text-xs">
@@ -688,7 +589,6 @@ export default function ServiceComparisonPage() {
                     </div>
                   </div>
 
-                  {/* Customer Count */}
                   <div className="text-center text-xs text-muted-foreground">
                     {(plan.customers || 0).toLocaleString()} active customers
                   </div>
@@ -698,10 +598,8 @@ export default function ServiceComparisonPage() {
           </div>
         </TabsContent>
 
-        {/* Chart View */}
         <TabsContent value="chart">
           <div className="space-y-6">
-            {/* Speed Comparison Chart */}
             <Card>
               <CardHeader>
                 <CardTitle>Speed Comparison</CardTitle>
@@ -723,7 +621,6 @@ export default function ServiceComparisonPage() {
               </CardContent>
             </Card>
 
-            {/* Price Comparison Chart */}
             <Card>
               <CardHeader>
                 <CardTitle>Price Comparison</CardTitle>
@@ -745,7 +642,6 @@ export default function ServiceComparisonPage() {
               </CardContent>
             </Card>
 
-            {/* Feature Radar Chart */}
             <Card>
               <CardHeader>
                 <CardTitle>Feature Analysis</CardTitle>
@@ -776,7 +672,6 @@ export default function ServiceComparisonPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Recommendation Engine */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

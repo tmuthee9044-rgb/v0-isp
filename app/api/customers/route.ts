@@ -95,6 +95,8 @@ export async function POST(request: NextRequest) {
     const sql = await getSql()
     const data = await request.json()
 
+    console.log("[v0] Received customer data:", data)
+
     if (data.email) {
       const existingCustomer = await sql`
         SELECT id, email, 
@@ -161,37 +163,65 @@ export async function POST(request: NextRequest) {
 
     const customerResult = await sql`
       INSERT INTO customers (
-        account_number, name, first_name, last_name, business_name, customer_type, email, phone,
+        account_number, name, first_name, last_name, business_name, customer_type, 
+        email, alternate_email, phone,
         address, city, state, country, postal_code, gps_coordinates,
-        billing_address, installation_address,
-        id_number, tax_number, business_type,
+        billing_address, installation_address, location_id,
+        id_number, tax_number, business_type, contact_person,
+        date_of_birth, gender,
         preferred_contact_method, referral_source, service_preferences,
         status, created_at, updated_at
       ) VALUES (
-        ${accountNumber}, ${customerName}, ${firstName}, ${lastName},
-        ${businessName}, ${customerType}, ${normalizedEmail}, ${data.phone_primary || data.phone},
-        ${data.physical_address || data.address}, ${data.physical_city || data.city}, 
-        ${data.physical_county || data.state}, ${data.country || "Kenya"}, 
+        ${accountNumber}, 
+        ${customerName}, 
+        ${firstName}, 
+        ${lastName},
+        ${businessName}, 
+        ${customerType}, 
+        ${normalizedEmail}, 
+        ${data.alternate_email ? data.alternate_email.toLowerCase().trim() : null},
+        ${data.phone_primary || data.phone},
+        ${data.physical_address || data.address}, 
+        ${data.physical_city || data.city}, 
+        ${data.physical_county || data.state}, 
+        ${data.country || "Kenya"}, 
         ${data.physical_postal_code || data.postal_code || null}, 
         ${data.physical_gps_coordinates || data.gps_coordinates || null},
         ${data.same_as_physical ? data.physical_address || data.address : data.billing_address || null},
         ${data.installation_address || data.physical_address || data.address},
+        ${data.location_id || null},
         ${data.national_id || data.id_number || null},
         ${data.vat_pin || data.tax_id || data.tax_number || null},
-        ${data.business_type || data.business_reg_no || null},
+        ${data.business_reg_no || data.business_type || null},
+        ${data.contact_person || null},
+        ${data.date_of_birth || null},
+        ${data.gender || null},
         ${data.preferred_contact_method || "phone"}, 
         ${data.referral_source || null},
-        ${data.service_requirements || data.internal_notes ? JSON.stringify({ special_requirements: data.special_requirements, internal_notes: data.internal_notes, sales_rep: data.sales_rep, account_manager: data.account_manager }) : null},
-        'active', NOW(), NOW()
+        ${
+          data.special_requirements || data.internal_notes || data.sales_rep || data.account_manager
+            ? JSON.stringify({
+                special_requirements: data.special_requirements,
+                internal_notes: data.internal_notes,
+                sales_rep: data.sales_rep,
+                account_manager: data.account_manager,
+              })
+            : null
+        },
+        'active', 
+        NOW(), 
+        NOW()
       ) RETURNING *
     `
 
     const customer = customerResult[0]
+    console.log("[v0] Customer created:", customer)
 
     if (data.phone_primary) {
       await sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_primary}, 'mobile', true, NOW())
+        ON CONFLICT DO NOTHING
       `
     }
 
@@ -199,6 +229,7 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_secondary}, 'mobile', false, NOW())
+        ON CONFLICT DO NOTHING
       `
     }
 
@@ -206,6 +237,7 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_office}, 'office', false, NOW())
+        ON CONFLICT DO NOTHING
       `
     }
 
@@ -219,6 +251,7 @@ export async function POST(request: NextRequest) {
           ${data.emergency_contact_relationship || null},
           NOW()
         )
+        ON CONFLICT DO NOTHING
       `
     }
 
@@ -226,6 +259,7 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO customer_contacts (customer_id, name, contact_type, is_primary, created_at)
         VALUES (${customer.id}, ${data.contact_person}, 'primary', true, NOW())
+        ON CONFLICT DO NOTHING
       `
     }
 
@@ -236,9 +270,22 @@ export async function POST(request: NextRequest) {
       `
     }
 
+    await sql`
+      INSERT INTO finance_audit_trail (
+        action, entity_type, entity_id, user_email, details, ip_address, created_at
+      ) VALUES (
+        'CREATE', 'customer', ${customer.id}, 'system', 
+        ${JSON.stringify({ customer_type: customerType, location_id: data.location_id })},
+        '127.0.0.1', NOW()
+      )
+    `.catch(() => {
+      // Ignore if audit table doesn't exist
+      console.log("[v0] Audit trail table not available")
+    })
+
     return NextResponse.json(customer, { status: 201 })
-  } catch (error) {
-    console.error("Failed to create customer:", error)
+  } catch (error: any) {
+    console.error("[v0] Failed to create customer:", error)
 
     if (error.code === "23505") {
       if (error.constraint === "customers_email_key") {
@@ -267,7 +314,8 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Failed to create customer",
-        message: "An unexpected error occurred while creating the customer. Please try again.",
+        message: error.message || "An unexpected error occurred while creating the customer. Please try again.",
+        details: error.toString(),
       },
       { status: 500 },
     )

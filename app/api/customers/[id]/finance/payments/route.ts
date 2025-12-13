@@ -152,7 +152,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
     const sql = await getSql()
 
     const pendingServices = await sql`
-      SELECT cs.*, sp.name as service_name
+      SELECT cs.*, sp.name as service_name, sp.id as service_plan_id
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
@@ -170,53 +170,63 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
     for (const service of pendingServices) {
       try {
-        const activationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/services/activate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            serviceId: service.id,
-            customerId: customerId,
-            paymentId: paymentId,
-          }),
+        await sql`
+          UPDATE customer_services 
+          SET status = 'active',
+              activated_at = NOW(),
+              updated_at = NOW()
+          WHERE id = ${service.id}
+        `
+
+        console.log("[v0] Successfully activated service", service.id, service.service_name)
+
+        activatedServices.push({
+          service_id: service.id,
+          service_name: service.service_name,
         })
 
-        if (activationResponse.ok) {
-          console.log("[v0] Successfully activated service", service.id, service.service_name)
-          activatedServices.push({
-            service_id: service.id,
-            service_name: service.service_name,
-          })
+        const logDetails = JSON.stringify({
+          customer_id: customerId,
+          service_id: service.id,
+          payment_id: paymentId,
+          service_plan_id: service.service_plan_id,
+        })
 
-          const logDetails = JSON.stringify({
-            customer_id: customerId,
-            service_id: service.id,
-            payment_id: paymentId,
-          })
+        try {
+          await sql`
+            INSERT INTO system_logs (
+              level, 
+              category, 
+              message, 
+              details, 
+              created_at,
+              updated_at
+            )
+            VALUES (
+              'info',
+              'service_activation',
+              ${`Service ${service.service_name} automatically activated after payment`},
+              ${logDetails}::jsonb,
+              NOW(),
+              NOW()
+            )
+          `
+        } catch (logError) {
+          console.log("[v0] system_logs insert error:", logError)
+        }
 
-          try {
-            await sql`
-              INSERT INTO system_logs (
-                level, 
-                category, 
-                message, 
-                details, 
-                created_at,
-                updated_at
-              )
-              VALUES (
-                'info',
-                'service_activation',
-                ${`Service ${service.service_name} automatically activated after payment`},
-                ${logDetails}::jsonb,
-                NOW(),
-                NOW()
-              )
-            `
-          } catch (logError) {
-            console.log("[v0] system_logs insert error:", logError)
-          }
-        } else {
-          console.error("[v0] Failed to activate service", service.id)
+        try {
+          await ActivityLogger.logCustomerActivity(
+            `Service ${service.service_name} activated after payment`,
+            customerId,
+            {
+              service_id: service.id,
+              payment_id: paymentId,
+              service_plan_id: service.service_plan_id,
+            },
+          )
+        } catch (activityError) {
+          console.log("[v0] Activity logging error:", activityError)
         }
       } catch (error) {
         console.error("[v0] Error activating service", service.id, ":", error)

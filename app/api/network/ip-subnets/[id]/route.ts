@@ -48,7 +48,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const subnetId = Number.parseInt(params.id)
     const body = await request.json()
 
-    const { name, description, type, gateway, vlan_id } = body
+    const { name, description, type, allocation_mode } = body
 
     const sql = await getSql()
 
@@ -57,8 +57,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         name = COALESCE(${name}, name),
         description = COALESCE(${description}, description),
         type = COALESCE(${type}, type),
-        gateway = COALESCE(${gateway}, gateway),
-        vlan_id = COALESCE(${vlan_id}, vlan_id),
+        allocation_mode = COALESCE(${allocation_mode}, allocation_mode),
         updated_at = NOW()
       WHERE id = ${subnetId}
       RETURNING *

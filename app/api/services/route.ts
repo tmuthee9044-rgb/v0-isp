@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db" // Fixed import path from @/lib/database to @/lib/db
 
 const parseIntOrNull = (value: any): number | null => {
   if (value === "" || value === null || value === undefined) return null
@@ -22,34 +22,39 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Creating service plan with data:", data)
 
-    const priorityLevelMap: { [key: string]: number } = {
-      low: 1,
-      standard: 2,
-      high: 3,
-      critical: 4,
-    }
-
-    const priorityLevelInt = priorityLevelMap[speed.priorityLevel] || 2
-
     const result = await sql`
       INSERT INTO service_plans (
-        name, description, status,
-        download_speed, upload_speed, priority_level,
-        price, billing_cycle, currency,
-        data_limit, features, qos_settings, fair_usage_policy,
-        created_at
+        name, 
+        description, 
+        speed_download, 
+        speed_upload, 
+        data_limit,
+        price, 
+        setup_fee,
+        fup_limit,
+        fup_speed,
+        contract_period,
+        is_active,
+        created_at,
+        updated_at
       ) VALUES (
-        ${basic.planName}, ${basic.description}, ${basic.status},
-        ${parseIntOrNull(speed.downloadSpeed?.[0]) || 0}, ${parseIntOrNull(speed.uploadSpeed?.[0]) || 0}, ${priorityLevelInt},
-        ${parseFloatOrNull(pricing.monthlyPrice) || 0}, ${pricing.billingCycle || "monthly"}, ${pricing.currency || "KES"},
-        ${parseIntOrNull(fup.dataLimit)}, ${JSON.stringify(advanced || {})}, 
-        ${qos.enabled ? JSON.stringify(qos) : null},
-        ${fup.enabled ? `Data limit: ${fup.dataLimit || "unlimited"}, Action: ${fup.actionAfterLimit || "throttle"}` : null},
+        ${basic.planName || "Unnamed Service"},
+        ${basic.description || ""},
+        ${parseIntOrNull(speed.downloadSpeed?.[0]) || 0},
+        ${parseIntOrNull(speed.uploadSpeed?.[0]) || 0},
+        ${parseIntOrNull(fup.dataLimit)},
+        ${parseFloatOrNull(pricing.monthlyPrice) || 0},
+        ${parseFloatOrNull(pricing.setupFee) || 0},
+        ${parseIntOrNull(fup.dataLimit)},
+        ${parseIntOrNull(fup.throttleSpeed?.[0])},
+        ${parseIntOrNull(pricing.contractLength) || 12},
+        ${basic.status === "active" ? true : false},
+        CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
-      ) RETURNING id, name
+      ) RETURNING id, name, speed_download, speed_upload, price
     `
 
-    console.log("[v0] Service plan created successfully:", result[0])
+    console.log("[v0] Service plan created successfully with all fields:", result[0])
 
     return NextResponse.json({
       success: true,
@@ -74,11 +79,12 @@ export async function GET() {
     const sql = await getSql()
     const servicePlans = await sql`
       SELECT 
-        id, name, description, status,
-        download_speed, upload_speed, price,
-        billing_cycle, data_limit, features, 
-        qos_settings, fair_usage_policy, priority_level,
-        currency, created_at
+        id, name, description,
+        speed_download, speed_upload, 
+        price, setup_fee,
+        data_limit, fup_limit, fup_speed,
+        contract_period, is_active,
+        created_at, updated_at
       FROM service_plans 
       ORDER BY created_at DESC
     `

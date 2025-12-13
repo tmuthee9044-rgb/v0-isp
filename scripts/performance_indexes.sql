@@ -66,9 +66,9 @@ CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier_status ON supplier_inv
 CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_timestamp ON finance_audit_trail(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_finance_audit_trail_resource ON finance_audit_trail(resource_type, resource_id);
 
--- Tax records indexes
-CREATE INDEX IF NOT EXISTS idx_tax_records_due_date ON tax_records(due_date);
-CREATE INDEX IF NOT EXISTS idx_tax_records_status ON tax_records(status);
+-- Tax returns indexes
+CREATE INDEX IF NOT EXISTS idx_tax_returns_due_date ON tax_returns(due_date);
+CREATE INDEX IF NOT EXISTS idx_tax_returns_status ON tax_returns(status);
 
 -- Analyze tables for query optimization
 ANALYZE payments;
@@ -84,4 +84,4 @@ ANALYZE inventory;
 ANALYZE expenses;
 ANALYZE supplier_invoices;
 ANALYZE finance_audit_trail;
-ANALYZE tax_records;
+ANALYZE tax_returns;

@@ -77,32 +77,79 @@ export async function POST(request: NextRequest) {
       lastName,
       email,
       phone,
+      nationalId,
+      dateOfBirth,
+      gender,
+      maritalStatus,
+      address,
+      emergencyContact,
+      emergencyPhone,
+      employeeId,
       position,
       department,
-      basicSalary,
-      employeeId,
+      reportingManager,
+      employmentType,
+      contractType,
       startDate,
+      probationPeriod,
+      workLocation,
+      basicSalary,
+      allowances,
+      benefits,
+      payrollFrequency,
+      bankName,
+      bankAccount,
+      kraPin,
+      nssfNumber,
+      shaNumber,
+      portalUsername,
+      portalPassword,
+      qualifications,
+      experience,
+      skills,
+      notes,
+      photoUrl,
       createUserAccount,
       userRole,
     } = data
 
-    // Generate employee ID if not provided
     const finalEmployeeId = employeeId || `EMP${Date.now().toString().slice(-6)}`
 
     const result = await sql`
       INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone, position,
-        department, salary, hire_date, status, created_at
+        employee_id, first_name, last_name, email, phone, national_id,
+        date_of_birth, gender, marital_status, address, emergency_contact,
+        emergency_phone, position, department, reporting_manager, employment_type,
+        contract_type, hire_date, probation_period, work_location, salary,
+        allowances, benefits, payroll_frequency, bank_name, bank_account,
+        kra_pin, nssf_number, sha_number, portal_username, portal_password,
+        qualifications, experience, skills, notes, photo_url, status, created_at
       ) VALUES (
-        ${finalEmployeeId}, ${firstName}, ${lastName}, ${email}, ${phone}, ${position},
-        ${department}, ${Number.parseFloat(basicSalary) || 0}, 
-        ${startDate ? new Date(startDate).toISOString() : new Date().toISOString()},
-        'active', NOW()
+        ${finalEmployeeId}, ${firstName}, ${lastName}, ${email}, ${phone}, ${nationalId},
+        ${dateOfBirth ? new Date(dateOfBirth).toISOString() : null}, ${gender}, 
+        ${maritalStatus}, ${address}, ${emergencyContact}, ${emergencyPhone},
+        ${position}, ${department}, ${reportingManager}, ${employmentType},
+        ${contractType}, ${startDate ? new Date(startDate).toISOString() : new Date().toISOString()},
+        ${probationPeriod ? Number.parseInt(probationPeriod) : null}, ${workLocation},
+        ${basicSalary ? Number.parseFloat(basicSalary) : 0}, 
+        ${allowances ? Number.parseFloat(allowances) : 0}, ${benefits},
+        ${payrollFrequency || "monthly"}, ${bankName}, ${bankAccount},
+        ${kraPin}, ${nssfNumber}, ${shaNumber}, ${portalUsername},
+        ${portalPassword}, ${qualifications}, ${experience}, ${skills},
+        ${notes}, ${photoUrl}, 'active', NOW()
       )
       RETURNING *
     `
 
-    // Create user account if requested
+    await sql`
+      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (
+        0, 'create', 'employee', ${result[0].id}, 
+        ${JSON.stringify({ employee_id: finalEmployeeId, name: `${firstName} ${lastName}`, position, department })},
+        NOW()
+      )
+    `
+
     if (createUserAccount === "true" || createUserAccount === true) {
       try {
         const existingUser = await sql`
@@ -123,7 +170,6 @@ export async function POST(request: NextRequest) {
         }
       } catch (userError) {
         console.error("Error creating user account:", userError)
-        // Continue even if user creation fails - don't fail the entire employee creation
       }
     }
 

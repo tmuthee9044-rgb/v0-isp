@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { sql } from "@vercel/postgres" // Declare sql variable
 
 export async function POST() {
   const sql = await getSql()
@@ -82,8 +81,10 @@ export async function POST() {
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     // Check if table exists and return sample data
-    const plans = await sql`SELECT * FROM service_plans ORDER BY price ASC`
+    const { rows: plans } = await sql`SELECT * FROM service_plans ORDER BY price ASC`
 
     return NextResponse.json({
       success: true,

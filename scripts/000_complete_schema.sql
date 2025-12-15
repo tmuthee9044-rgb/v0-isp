@@ -8,6 +8,14 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Drop existing tables if they exist (for clean reinstall)
 DROP TABLE IF EXISTS schema_migrations CASCADE;
+DROP TABLE IF EXISTS supplier_invoice_items CASCADE;
+DROP TABLE IF EXISTS supplier_invoices CASCADE;
+DROP TABLE IF EXISTS inventory_serial_numbers CASCADE;
+DROP TABLE IF EXISTS inventory_movements CASCADE;
+DROP TABLE IF EXISTS purchase_order_items CASCADE;
+DROP TABLE IF EXISTS purchase_orders CASCADE;
+DROP TABLE IF EXISTS inventory_items CASCADE;
+DROP TABLE IF EXISTS suppliers CASCADE;
 DROP TABLE IF EXISTS activity_logs CASCADE;
 DROP TABLE IF EXISTS leave_requests CASCADE;
 DROP TABLE IF EXISTS payroll CASCADE;
@@ -282,10 +290,37 @@ CREATE TABLE employees (
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE,
     phone VARCHAR(50),
+    national_id VARCHAR(100),
+    date_of_birth DATE,
+    gender VARCHAR(20),
+    marital_status VARCHAR(50),
+    address TEXT,
+    emergency_contact VARCHAR(255),
+    emergency_phone VARCHAR(50),
     department VARCHAR(100),
     position VARCHAR(100),
-    salary DECIMAL(10, 2),
+    reporting_manager VARCHAR(255),
+    employment_type VARCHAR(50),
+    contract_type VARCHAR(50),
     hire_date DATE,
+    probation_period INTEGER,
+    work_location VARCHAR(255),
+    salary DECIMAL(10, 2),
+    allowances DECIMAL(10, 2) DEFAULT 0.00,
+    benefits TEXT,
+    payroll_frequency VARCHAR(50) DEFAULT 'monthly',
+    bank_name VARCHAR(255),
+    bank_account VARCHAR(100),
+    kra_pin VARCHAR(50),
+    nssf_number VARCHAR(50),
+    sha_number VARCHAR(50),
+    portal_username VARCHAR(100),
+    portal_password VARCHAR(255),
+    qualifications TEXT,
+    experience TEXT,
+    skills TEXT,
+    notes TEXT,
+    photo_url TEXT,
     status VARCHAR(50) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -339,6 +374,146 @@ CREATE TABLE activity_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Inventory Management Tables
+
+-- Adding suppliers table for inventory management
+CREATE TABLE suppliers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    address TEXT,
+    city VARCHAR(100),
+    country VARCHAR(100),
+    tax_id VARCHAR(100),
+    payment_terms INTEGER DEFAULT 30,
+    credit_limit DECIMAL(15, 2) DEFAULT 0.00,
+    balance DECIMAL(15, 2) DEFAULT 0.00,
+    status VARCHAR(50) DEFAULT 'active',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding inventory_items table for tracking stock
+CREATE TABLE inventory_items (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    sku VARCHAR(100) UNIQUE,
+    category VARCHAR(100),
+    unit_of_measure VARCHAR(50) DEFAULT 'pcs',
+    stock_quantity INTEGER DEFAULT 0,
+    reorder_level INTEGER DEFAULT 0,
+    unit_cost DECIMAL(10, 2) DEFAULT 0.00,
+    selling_price DECIMAL(10, 2) DEFAULT 0.00,
+    requires_serial_number BOOLEAN DEFAULT false,
+    status VARCHAR(50) DEFAULT 'active',
+    supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+    location VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding purchase_orders table
+CREATE TABLE purchase_orders (
+    id SERIAL PRIMARY KEY,
+    order_number VARCHAR(100) UNIQUE NOT NULL,
+    supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+    order_date DATE DEFAULT CURRENT_DATE,
+    expected_delivery_date DATE,
+    actual_delivery_date DATE,
+    status VARCHAR(50) DEFAULT 'DRAFT',
+    subtotal DECIMAL(15, 2) DEFAULT 0.00,
+    tax_amount DECIMAL(15, 2) DEFAULT 0.00,
+    total_amount DECIMAL(15, 2) DEFAULT 0.00,
+    notes TEXT,
+    created_by INTEGER,
+    approved_by INTEGER,
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding purchase_order_items table with received_quantity column
+CREATE TABLE purchase_order_items (
+    id SERIAL PRIMARY KEY,
+    purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
+    description TEXT,
+    quantity INTEGER NOT NULL,
+    received_quantity INTEGER DEFAULT 0,
+    unit_cost DECIMAL(10, 2) NOT NULL,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding inventory_movements table for tracking stock changes
+CREATE TABLE inventory_movements (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
+    movement_type VARCHAR(50) NOT NULL,
+    quantity INTEGER NOT NULL,
+    reference_type VARCHAR(50),
+    reference_number VARCHAR(100),
+    notes TEXT,
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding inventory_serial_numbers table for serialized items
+CREATE TABLE inventory_serial_numbers (
+    id SERIAL PRIMARY KEY,
+    inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
+    serial_number VARCHAR(255) UNIQUE NOT NULL,
+    purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE SET NULL,
+    supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    received_date DATE,
+    assigned_date DATE,
+    status VARCHAR(50) DEFAULT 'in_stock',
+    location VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding supplier_invoices table
+CREATE TABLE supplier_invoices (
+    id SERIAL PRIMARY KEY,
+    invoice_number VARCHAR(100) UNIQUE NOT NULL,
+    supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+    purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE SET NULL,
+    invoice_date DATE DEFAULT CURRENT_DATE,
+    due_date DATE,
+    subtotal DECIMAL(15, 2) DEFAULT 0.00,
+    tax_amount DECIMAL(15, 2) DEFAULT 0.00,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    paid_amount DECIMAL(15, 2) DEFAULT 0.00,
+    status VARCHAR(50) DEFAULT 'UNPAID',
+    payment_terms INTEGER DEFAULT 30,
+    notes TEXT,
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding supplier_invoice_items table
+CREATE TABLE supplier_invoice_items (
+    id SERIAL PRIMARY KEY,
+    invoice_id INTEGER REFERENCES supplier_invoices(id) ON DELETE CASCADE,
+    inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
+    description TEXT,
+    quantity INTEGER NOT NULL,
+    unit_cost DECIMAL(10, 2) NOT NULL,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better performance
 CREATE INDEX idx_customers_email ON customers(email);
 CREATE INDEX idx_customers_status ON customers(status);
@@ -359,6 +534,25 @@ CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
 CREATE INDEX idx_activity_logs_entity_type ON activity_logs(entity_type);
 CREATE INDEX idx_activity_logs_created_at ON activity_logs(created_at);
 
+-- Adding indexes for purchase order tables
+CREATE INDEX idx_suppliers_status ON suppliers(status);
+CREATE INDEX idx_inventory_items_sku ON inventory_items(sku);
+CREATE INDEX idx_inventory_items_category ON inventory_items(category);
+CREATE INDEX idx_inventory_items_status ON inventory_items(status);
+CREATE INDEX idx_purchase_orders_supplier_id ON purchase_orders(supplier_id);
+CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX idx_purchase_order_items_purchase_order_id ON purchase_order_items(purchase_order_id);
+CREATE INDEX idx_purchase_order_items_inventory_item_id ON purchase_order_items(inventory_item_id);
+CREATE INDEX idx_inventory_movements_item_id ON inventory_movements(item_id);
+CREATE INDEX idx_inventory_movements_created_at ON inventory_movements(created_at);
+CREATE INDEX idx_inventory_serial_numbers_inventory_item_id ON inventory_serial_numbers(inventory_item_id);
+CREATE INDEX idx_inventory_serial_numbers_serial_number ON inventory_serial_numbers(serial_number);
+CREATE INDEX idx_inventory_serial_numbers_status ON inventory_serial_numbers(status);
+CREATE INDEX idx_supplier_invoices_supplier_id ON supplier_invoices(supplier_id);
+CREATE INDEX idx_supplier_invoices_purchase_order_id ON supplier_invoices(purchase_order_id);
+CREATE INDEX idx_supplier_invoices_status ON supplier_invoices(status);
+CREATE INDEX idx_supplier_invoice_items_invoice_id ON supplier_invoice_items(invoice_id);
+
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')
 ON CONFLICT (migration_name) DO NOTHING;
@@ -367,6 +561,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 13';
-    RAISE NOTICE 'Total indexes created: 18';
+    RAISE NOTICE 'Total tables created: 18';
+    RAISE NOTICE 'Total indexes created: 28';
 END $$;

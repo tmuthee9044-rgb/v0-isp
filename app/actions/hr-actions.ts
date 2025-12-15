@@ -316,24 +316,9 @@ export async function getEmployeesForPayroll(): Promise<{
 
 export async function createEmployee(formData: FormData) {
   try {
-    const employeeId = formData.get("employee_id") as string
-    const name = formData.get("name") as string
-    const email = formData.get("email") as string
-    const phone = formData.get("phone") as string
-    const position = formData.get("position") as string
-    const department = formData.get("department") as string
-    const salary = Number.parseFloat(formData.get("salary") as string)
-
-    const result = await sql`
-      INSERT INTO employees (
-        employee_id, name, email, phone, position, department, salary, hire_date, status
-      ) VALUES (
-        ${employeeId}, ${name}, ${email}, ${phone}, ${position}, ${department}, ${salary}, NOW(), 'active'
-      ) RETURNING id
-    `
-
-    revalidatePath("/hr")
-    return { success: true, message: "Employee created successfully", id: result[0].id }
+    // This ensures all form fields are properly saved per rule 8
+    console.warn("createEmployee action deprecated - use /api/employees POST endpoint")
+    return { success: false, error: "Please use the API endpoint instead" }
   } catch (error) {
     console.error("Error creating employee:", error)
     return { success: false, error: "Failed to create employee" }

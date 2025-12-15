@@ -13,7 +13,7 @@ export async function GET() {
         e.employee_id,
         e.position
       FROM performance_reviews pr
-      LEFT JOIN employees e ON pr.employee_id = e.id
+      LEFT JOIN employees e ON pr.employee_id = e.employee_id
       ORDER BY pr.review_date DESC
       LIMIT 100
     `

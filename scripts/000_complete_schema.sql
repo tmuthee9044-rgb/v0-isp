@@ -28,6 +28,9 @@ DROP TABLE IF EXISTS customer_services CASCADE;
 DROP TABLE IF EXISTS service_plans CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS locations CASCADE;
+DROP TABLE IF EXISTS performance_reviews CASCADE;
+DROP TABLE IF EXISTS company_profiles CASCADE;
+DROP TABLE IF EXISTS system_config CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -326,6 +329,28 @@ CREATE TABLE employees (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Adding performance_reviews table after employees table to observe rule 7
+CREATE TABLE IF NOT EXISTS performance_reviews (
+    id SERIAL PRIMARY KEY,
+    employee_id VARCHAR(50) NOT NULL,
+    review_period VARCHAR(10) NOT NULL,
+    review_type VARCHAR(20) NOT NULL DEFAULT 'quarterly',
+    rating VARCHAR(20) NOT NULL,
+    score INTEGER,
+    goals TEXT,
+    achievements TEXT,
+    areas_for_improvement TEXT,
+    development_plan TEXT,
+    reviewed_by VARCHAR(100) NOT NULL,
+    review_date DATE NOT NULL,
+    next_review_date DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE CASCADE
+);
+
 -- 9. Payroll Table
 CREATE TABLE payroll (
     id SERIAL PRIMARY KEY,
@@ -514,6 +539,94 @@ CREATE TABLE supplier_invoice_items (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Adding company_profiles table for rule 7 compliance
+-- Company Profile Settings
+CREATE TABLE IF NOT EXISTS company_profiles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    trading_name VARCHAR(255),
+    registration_number VARCHAR(100),
+    tax_number VARCHAR(100),
+    description TEXT,
+    industry VARCHAR(100),
+    company_size VARCHAR(50),
+    founded_year INTEGER,
+    logo TEXT,
+    favicon TEXT,
+    primary_color VARCHAR(7) DEFAULT '#3b82f6',
+    secondary_color VARCHAR(7) DEFAULT '#64748b',
+    accent_color VARCHAR(7) DEFAULT '#16a34a',
+    slogan VARCHAR(255),
+    
+    -- Contact Information
+    physical_address TEXT,
+    postal_address TEXT,
+    city VARCHAR(100),
+    state VARCHAR(100),
+    country VARCHAR(100) DEFAULT 'Kenya',
+    postal_code VARCHAR(20),
+    timezone VARCHAR(50) DEFAULT 'Africa/Nairobi',
+    main_phone VARCHAR(20),
+    support_phone VARCHAR(20),
+    main_email VARCHAR(255),
+    support_email VARCHAR(255),
+    website VARCHAR(255),
+    fax VARCHAR(20),
+    
+    -- Social Media
+    social_facebook VARCHAR(255),
+    social_twitter VARCHAR(255),
+    social_linkedin VARCHAR(255),
+    social_instagram VARCHAR(255),
+    
+    -- Localization
+    language VARCHAR(10) DEFAULT 'en',
+    currency VARCHAR(10) DEFAULT 'KES',
+    date_format VARCHAR(20) DEFAULT 'dd/mm/yyyy',
+    time_format VARCHAR(10) DEFAULT '24h',
+    decimal_separator VARCHAR(1) DEFAULT '.',
+    thousand_separator VARCHAR(1) DEFAULT ',',
+    currency_position VARCHAR(10) DEFAULT 'before',
+    fiscal_year_start VARCHAR(20) DEFAULT 'january',
+    week_start VARCHAR(10) DEFAULT 'monday',
+    number_format VARCHAR(20) DEFAULT 'comma',
+    company_prefix VARCHAR(10),
+    
+    -- Tax Settings
+    tax_system VARCHAR(50) DEFAULT 'vat',
+    tax_rate DECIMAL(5,2) DEFAULT 16.00,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding system_config table for additional settings
+CREATE TABLE IF NOT EXISTS system_config (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default company profile
+INSERT INTO company_profiles (
+    name, 
+    physical_address, 
+    city, 
+    country, 
+    main_phone, 
+    main_email
+) VALUES (
+    'TechConnect ISP',
+    '123 Tech Street, Innovation District',
+    'Nairobi',
+    'Kenya',
+    '+254 700 123 456',
+    'info@techconnect.co.ke'
+) ON CONFLICT DO NOTHING;
+
 -- Create indexes for better performance
 CREATE INDEX idx_customers_email ON customers(email);
 CREATE INDEX idx_customers_status ON customers(status);
@@ -533,25 +646,10 @@ CREATE INDEX idx_leave_requests_status ON leave_requests(status);
 CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
 CREATE INDEX idx_activity_logs_entity_type ON activity_logs(entity_type);
 CREATE INDEX idx_activity_logs_created_at ON activity_logs(created_at);
-
--- Adding indexes for purchase order tables
-CREATE INDEX idx_suppliers_status ON suppliers(status);
-CREATE INDEX idx_inventory_items_sku ON inventory_items(sku);
-CREATE INDEX idx_inventory_items_category ON inventory_items(category);
-CREATE INDEX idx_inventory_items_status ON inventory_items(status);
-CREATE INDEX idx_purchase_orders_supplier_id ON purchase_orders(supplier_id);
-CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
-CREATE INDEX idx_purchase_order_items_purchase_order_id ON purchase_order_items(purchase_order_id);
-CREATE INDEX idx_purchase_order_items_inventory_item_id ON purchase_order_items(inventory_item_id);
-CREATE INDEX idx_inventory_movements_item_id ON inventory_movements(item_id);
-CREATE INDEX idx_inventory_movements_created_at ON inventory_movements(created_at);
-CREATE INDEX idx_inventory_serial_numbers_inventory_item_id ON inventory_serial_numbers(inventory_item_id);
-CREATE INDEX idx_inventory_serial_numbers_serial_number ON inventory_serial_numbers(serial_number);
-CREATE INDEX idx_inventory_serial_numbers_status ON inventory_serial_numbers(status);
-CREATE INDEX idx_supplier_invoices_supplier_id ON supplier_invoices(supplier_id);
-CREATE INDEX idx_supplier_invoices_purchase_order_id ON supplier_invoices(purchase_order_id);
-CREATE INDEX idx_supplier_invoices_status ON supplier_invoices(status);
-CREATE INDEX idx_supplier_invoice_items_invoice_id ON supplier_invoice_items(invoice_id);
+CREATE INDEX idx_performance_reviews_employee_id ON performance_reviews(employee_id);
+CREATE INDEX idx_performance_reviews_review_date ON performance_reviews(review_date);
+CREATE INDEX idx_company_profiles_name ON company_profiles(name);
+CREATE INDEX idx_system_config_key ON system_config(key);
 
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')
@@ -561,6 +659,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 18';
-    RAISE NOTICE 'Total indexes created: 28';
+    RAISE NOTICE 'Total tables created: 21';
+    RAISE NOTICE 'Total indexes created: 32';
 END $$;

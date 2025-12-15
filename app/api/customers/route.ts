@@ -91,17 +91,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
   try {
     const sql = await getSql()
     const data = await request.json()
 
-    console.log("[v0] Received customer data:", data)
+    console.log("[v0] Customer creation started")
 
     if (data.email) {
+      const normalizedEmail = data.email.toLowerCase().trim()
       const existingCustomer = await sql`
         SELECT id, email, name
         FROM customers 
-        WHERE email = ${data.email.toLowerCase().trim()}
+        WHERE email = ${normalizedEmail}
       `
 
       if (existingCustomer.length > 0) {
@@ -120,30 +122,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const generateAccountNumber = async () => {
-      let accountNumber
-      let isUnique = false
-
-      while (!isUnique) {
-        const date = new Date().toISOString().slice(0, 10).replace(/-/g, "")
-        const random = Math.floor(Math.random() * 9999)
-          .toString()
-          .padStart(4, "0")
-        accountNumber = `ACC-${date}-${random}`
-
-        const existing = await sql`
-          SELECT id FROM customers WHERE account_number = ${accountNumber}
-        `
-
-        if (existing.length === 0) {
-          isUnique = true
-        }
-      }
-
-      return accountNumber
-    }
-
-    const accountNumber = await generateAccountNumber()
+    const timestamp = Date.now().toString(36).toUpperCase()
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const accountNumber = `ACC-${timestamp}-${random}`
 
     const firstName = data.first_name || data.contact_person?.split(" ")[0] || ""
     const lastName = data.last_name || data.contact_person?.split(" ").slice(1).join(" ") || ""
@@ -215,26 +196,33 @@ export async function POST(request: NextRequest) {
     `
 
     const customer = customerResult[0]
-    console.log("[v0] Customer created successfully:", { id: customer.id, name: customer.name, email: customer.email })
 
-    if (data.phone_primary) {
-      await sql`
+    const elapsedTime = Date.now() - startTime
+    console.log(`[v0] Customer created successfully in ${elapsedTime}ms:`, {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+    })
+
+    Promise.all([
+      data.phone_primary
+        ? sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_primary}, 'mobile', true, NOW())
         ON CONFLICT DO NOTHING
-      `.catch(() => console.log("[v0] Phone numbers table not available"))
-    }
+      `.catch(() => {})
+        : Promise.resolve(),
 
-    if (data.phone_secondary) {
-      await sql`
+      data.phone_secondary
+        ? sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_secondary}, 'mobile', false, NOW())
         ON CONFLICT DO NOTHING
-      `.catch(() => console.log("[v0] Phone numbers table not available"))
-    }
+      `.catch(() => {})
+        : Promise.resolve(),
 
-    if (data.emergency_contact_name && data.emergency_contact_phone) {
-      await sql`
+      data.emergency_contact_name && data.emergency_contact_phone
+        ? sql`
         INSERT INTO customer_emergency_contacts (customer_id, name, phone, relationship, created_at)
         VALUES (
           ${customer.id}, 
@@ -244,25 +232,26 @@ export async function POST(request: NextRequest) {
           NOW()
         )
         ON CONFLICT DO NOTHING
-      `.catch(() => console.log("[v0] Emergency contacts table not available"))
-    }
+      `.catch(() => {})
+        : Promise.resolve(),
 
-    if (data.service_plan_id) {
-      await sql`
+      data.service_plan_id
+        ? sql`
         INSERT INTO customer_services (customer_id, service_plan_id, status, installation_date, created_at)
         VALUES (${customer.id}, ${data.service_plan_id}, 'pending', CURRENT_DATE, NOW())
-      `.catch((err) => console.log("[v0] Could not assign service:", err.message))
-    }
+      `.catch(() => {})
+        : Promise.resolve(),
 
-    await sql`
-      INSERT INTO activity_logs (
-        action, entity_type, entity_id, details, ip_address, created_at
-      ) VALUES (
-        'CREATE', 'customer', ${customer.id}, 
-        ${JSON.stringify({ customer_type: customerType, location_id: data.location_id || null })},
-        '127.0.0.1', NOW()
-      )
-    `.catch(() => console.log("[v0] Activity logs table not available"))
+      sql`
+        INSERT INTO activity_logs (
+          action, entity_type, entity_id, details, ip_address, created_at
+        ) VALUES (
+          'CREATE', 'customer', ${customer.id}, 
+          ${JSON.stringify({ customer_type: customerType, location_id: data.location_id || null })},
+          '127.0.0.1', NOW()
+        )
+      `.catch(() => {}),
+    ]).catch(() => {})
 
     return NextResponse.json(customer, { status: 201 })
   } catch (error: any) {

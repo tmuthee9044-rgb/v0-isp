@@ -213,8 +213,19 @@ export async function POST(request: NextRequest) {
     `
 
     await sql`
-      INSERT INTO activity_logs (action, description, created_by)
-      VALUES ('purchase_order_created', ${`Created purchase order ${orderNumber} with ${items.length} items, total: ${totalAmount}`}, ${created_by || 1})
+      INSERT INTO activity_logs (action, entity_type, entity_id, user_id, details)
+      VALUES (
+        'purchase_order_created', 
+        'purchase_order', 
+        ${poId}, 
+        ${created_by || 1}, 
+        ${JSON.stringify({
+          order_number: orderNumber,
+          items_count: items.length,
+          total_amount: totalAmount,
+          supplier_id: supplier_id,
+        })}
+      )
     `
 
     return NextResponse.json({

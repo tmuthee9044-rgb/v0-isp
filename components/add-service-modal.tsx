@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { addCustomerService } from "@/app/actions/customer-service-actions"
+import { addCustomerService, updateCustomerService } from "@/app/actions/customer-service-actions"
 import { Wifi, Globe, Zap, Clock, CheckCircle, Plus, Network, Shield, Edit, AlertTriangle } from "lucide-react"
 
 interface AddServiceModalProps {
@@ -206,7 +206,10 @@ function AddServiceModal({
         formData.append("pppoe_password", pppoePassword)
       }
 
-      const result = await addCustomerService(customerId, formData)
+      const result =
+        editMode && editingService
+          ? await updateCustomerService(editingService.id, formData)
+          : await addCustomerService(customerId, formData)
 
       if (result.success) {
         onOpenChange(false)

@@ -268,6 +268,117 @@ export async function addCustomerService(customerId: number, formData: FormData)
   }
 }
 
+export async function updateCustomerServiceWithoutInvoice(serviceId: number, formData: FormData) {
+  try {
+    const sql = await getSql()
+
+    const servicePlanIdStr = formData.get("service_plan_id") as string
+    const servicePlanId = Number.parseInt(servicePlanIdStr)
+
+    if (!servicePlanIdStr || isNaN(servicePlanId)) {
+      return {
+        success: false,
+        error: "Invalid service plan selected. Please select a valid service plan.",
+      }
+    }
+
+    const connectionType = formData.get("connection_type") as string
+
+    if (!connectionType) {
+      return {
+        success: false,
+        error: "Connection type is required. Please select a connection type.",
+      }
+    }
+
+    const autoRenew = formData.get("auto_renew") === "on"
+    const ipAddress = formData.get("ip_address") as string
+    const lockToMac = formData.get("lock_to_mac") === "on"
+    const pppoeEnabled = formData.get("pppoe_enabled") === "on"
+    const pppoeUsername = formData.get("pppoe_username") as string
+    const pppoePassword = formData.get("pppoe_password") as string
+
+    // Get the service plan details
+    const servicePlan = await sql`
+      SELECT id, name, price, speed_download, speed_upload 
+      FROM service_plans 
+      WHERE id = ${servicePlanId}
+      LIMIT 1
+    `
+
+    if (servicePlan.length === 0) {
+      return {
+        success: false,
+        error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
+      }
+    }
+
+    // Update the service WITHOUT creating a new invoice
+    const result = await sql`
+      UPDATE customer_services
+      SET 
+        service_plan_id = ${servicePlanId},
+        connection_type = ${connectionType},
+        monthly_fee = ${servicePlan[0].price},
+        updated_at = NOW()
+      WHERE id = ${serviceId}
+      RETURNING *
+    `
+
+    if (result.length === 0) {
+      return {
+        success: false,
+        error: "Service not found",
+      }
+    }
+
+    // Update IP address if changed
+    if (ipAddress && ipAddress !== "auto") {
+      await sql`
+        UPDATE customer_services
+        SET ip_address = ${ipAddress}
+        WHERE id = ${serviceId}
+      `
+    }
+
+    // Log the activity
+    await sql`
+      INSERT INTO activity_logs (
+        user_id,
+        action,
+        entity_type,
+        entity_id,
+        description,
+        created_at
+      ) VALUES (
+        1,
+        'update',
+        'customer_service',
+        ${serviceId},
+        ${`Updated service to ${servicePlan[0].name}`},
+        NOW()
+      )
+      ON CONFLICT DO NOTHING
+    `
+
+    const customerId = result[0].customer_id
+    revalidatePath(`/customers/${customerId}`, "page")
+
+    return {
+      success: true,
+      service: result[0],
+      message: "Service updated successfully",
+    }
+  } catch (error) {
+    console.error("Error updating customer service:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update service. Please try again.",
+    }
+  }
+}
+
+// Original updateCustomerService function
 export async function updateCustomerService(serviceId: number, formData: FormData) {
   try {
     const sql = await getSql()

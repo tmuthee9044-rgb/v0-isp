@@ -7,17 +7,16 @@ export async function GET() {
 
     const payrollHistory = await sql`
       SELECT 
-        period_month,
-        period_year,
+        period,
         COUNT(DISTINCT employee_id) as employee_count,
-        SUM(basic_salary + COALESCE(allowances, 0)) as gross_pay,
-        SUM(paye_tax + COALESCE(nssf_contribution, 0) + COALESCE(sha_contribution, 0)) as total_deductions,
+        SUM(basic_salary + COALESCE(allowances, 0) + COALESCE(overtime, 0)) as gross_pay,
+        SUM(paye + COALESCE(nssf, 0) + COALESCE(sha, 0) + COALESCE(other_deductions, 0)) as total_deductions,
         SUM(net_pay) as net_pay,
         status,
-        processed_date
+        MAX(processed_at) as processed_date
       FROM payroll_records
-      GROUP BY period_month, period_year, status, processed_date
-      ORDER BY period_year DESC, period_month DESC
+      GROUP BY period, status
+      ORDER BY period DESC
       LIMIT 12
     `
 

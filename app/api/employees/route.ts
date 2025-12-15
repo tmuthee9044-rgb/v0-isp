@@ -34,9 +34,11 @@ export async function GET() {
     const employees = await sql`
       SELECT 
         id, employee_id, first_name, last_name, 
-        email, phone, position, department, hire_date, salary, status, created_at
+        email, phone, position, department, 
+        hire_date, salary, status, created_at
       FROM employees 
       ORDER BY created_at DESC
+      LIMIT 500
     `
 
     console.log("[v0] Successfully fetched", employees.length, "employees")
@@ -44,6 +46,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       employees: employees,
+      count: employees.length,
     })
   } catch (error) {
     console.error("[v0] Error fetching employees:", error)

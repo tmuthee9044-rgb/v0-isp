@@ -44,19 +44,35 @@ export default function HRPage() {
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [activities, setActivities] = useState<any[]>([])
+  const [leaveRequests, setLeaveRequests] = useState<any[]>([])
+  const [leaveStats, setLeaveStats] = useState({ pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
+  const [payrollHistory, setPayrollHistory] = useState<any[]>([])
+  const [performanceReviews, setPerformanceReviews] = useState<any[]>([])
 
   useEffect(() => {
     fetchEmployees()
+    fetchActivities()
+    fetchLeaveRequests()
+    fetchPayrollHistory()
+    fetchPerformanceReviews()
   }, [])
 
   const fetchEmployees = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/employees")
+      const startTime = performance.now()
+      const response = await fetch("/api/employees", {
+        next: { revalidate: 60 }, // Cache for 60 seconds
+      })
       if (!response.ok) {
         throw new Error("Failed to fetch employees")
       }
       const data = await response.json()
+      const endTime = performance.now()
+      console.log(
+        `[v0] HR page loaded ${data.employees?.length || 0} employees in ${(endTime - startTime).toFixed(2)}ms`,
+      )
       setEmployees(data.employees || [])
     } catch (error) {
       console.error("Error fetching employees:", error)
@@ -76,6 +92,55 @@ export default function HRPage() {
     window.addEventListener("editEmployee", handleEditEvent)
     return () => window.removeEventListener("editEmployee", handleEditEvent)
   }, [])
+
+  const fetchActivities = async () => {
+    try {
+      const response = await fetch("/api/hr/activities")
+      if (response.ok) {
+        const data = await response.json()
+        setActivities(data.activities || [])
+      }
+    } catch (error) {
+      console.error("Error fetching activities:", error)
+    }
+  }
+
+  const fetchLeaveRequests = async () => {
+    try {
+      const response = await fetch("/api/hr/leave-requests")
+      if (response.ok) {
+        const data = await response.json()
+        setLeaveRequests(data.leaveRequests || [])
+        setLeaveStats(data.stats || { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
+      }
+    } catch (error) {
+      console.error("Error fetching leave requests:", error)
+    }
+  }
+
+  const fetchPayrollHistory = async () => {
+    try {
+      const response = await fetch("/api/hr/payroll-history")
+      if (response.ok) {
+        const data = await response.json()
+        setPayrollHistory(data.payrollHistory || [])
+      }
+    } catch (error) {
+      console.error("Error fetching payroll history:", error)
+    }
+  }
+
+  const fetchPerformanceReviews = async () => {
+    try {
+      const response = await fetch("/api/hr/performance-reviews")
+      if (response.ok) {
+        const data = await response.json()
+        setPerformanceReviews(data.reviews || [])
+      }
+    } catch (error) {
+      console.error("Error fetching performance reviews:", error)
+    }
+  }
 
   const payrollSummary = {
     totalEmployees: employees.length,
@@ -245,22 +310,26 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm">Mike Wilson's leave request approved</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm">Payroll processed for January 2024</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                    <span className="text-sm">Performance reviews due next week</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span className="text-sm">NSSF compliance report pending</span>
-                  </div>
+                  {activities.length > 0 ? (
+                    activities.map((activity, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <div
+                          className={`w-2 h-2 rounded-full ${
+                            activity.severity === "high"
+                              ? "bg-red-500"
+                              : activity.severity === "medium"
+                                ? "bg-yellow-500"
+                                : activity.severity === "low"
+                                  ? "bg-blue-500"
+                                  : "bg-green-500"
+                          }`}
+                        ></div>
+                        <span className="text-sm">{activity.description}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No recent activities</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -431,36 +500,33 @@ export default function HRPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell>January 2024</TableCell>
-                    <TableCell>{employees.length}</TableCell>
-                    <TableCell>{formatCurrency(payrollSummary.totalGrossPay)}</TableCell>
-                    <TableCell>{formatCurrency(payrollSummary.totalDeductions)}</TableCell>
-                    <TableCell>{formatCurrency(payrollSummary.totalNetPay)}</TableCell>
-                    <TableCell>
-                      <Badge>Processed</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>December 2023</TableCell>
-                    <TableCell>{employees.length - 1}</TableCell>
-                    <TableCell>{formatCurrency(1610000)}</TableCell>
-                    <TableCell>{formatCurrency(402500)}</TableCell>
-                    <TableCell>{formatCurrency(1207500)}</TableCell>
-                    <TableCell>
-                      <Badge>Processed</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  {payrollHistory.length > 0 ? (
+                    payrollHistory.map((record, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{`${new Date(0, record.period_month - 1).toLocaleString("default", { month: "long" })} ${record.period_year}`}</TableCell>
+                        <TableCell>{record.employee_count}</TableCell>
+                        <TableCell>{formatCurrency(record.gross_pay)}</TableCell>
+                        <TableCell>{formatCurrency(record.total_deductions)}</TableCell>
+                        <TableCell>{formatCurrency(record.net_pay)}</TableCell>
+                        <TableCell>
+                          <Badge variant={record.status === "processed" ? "default" : "secondary"}>
+                            {record.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        No payroll history found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -483,7 +549,7 @@ export default function HRPage() {
                 <Clock className="h-4 w-4 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">3</div>
+                <div className="text-2xl font-bold">{leaveStats.pending}</div>
                 <p className="text-xs text-muted-foreground">Awaiting approval</p>
               </CardContent>
             </Card>
@@ -493,8 +559,8 @@ export default function HRPage() {
                 <UserCheck className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">8</div>
-                <p className="text-xs text-muted-foreground">Total days: 45</p>
+                <div className="text-2xl font-bold">{leaveStats.approved}</div>
+                <p className="text-xs text-muted-foreground">Total days: {leaveStats.approvedDays}</p>
               </CardContent>
             </Card>
             <Card>
@@ -503,8 +569,8 @@ export default function HRPage() {
                 <Calendar className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1</div>
-                <p className="text-xs text-muted-foreground">Mike Wilson</p>
+                <div className="text-2xl font-bold">{leaveStats.onLeave}</div>
+                <p className="text-xs text-muted-foreground">Employees on leave</p>
               </CardContent>
             </Card>
           </div>
@@ -527,7 +593,43 @@ export default function HRPage() {
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>{/* Placeholder for dynamic leave requests */}</TableBody>
+                <TableBody>
+                  {leaveRequests.length > 0 ? (
+                    leaveRequests.map((request) => (
+                      <TableRow key={request.id}>
+                        <TableCell>{`${request.first_name} ${request.last_name}`}</TableCell>
+                        <TableCell>{request.leave_type}</TableCell>
+                        <TableCell>{new Date(request.start_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{new Date(request.end_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{request.days_requested}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              request.status === "approved"
+                                ? "default"
+                                : request.status === "pending"
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                          >
+                            {request.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        No leave requests found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
               </Table>
             </CardContent>
           </Card>
@@ -612,33 +714,45 @@ export default function HRPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.map((employee) => (
-                    <TableRow key={employee.id}>
-                      <TableCell className="font-medium">{`${employee.first_name} ${employee.last_name}`}</TableCell>
-                      <TableCell>{employee.position}</TableCell>
-                      <TableCell>Q4 2023</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            employee.performance_rating === "excellent"
-                              ? "default"
-                              : employee.performance_rating === "good"
-                                ? "secondary"
-                                : "outline"
-                          }
-                        >
-                          {employee.performance_rating}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>85%</TableCell>
-                      <TableCell>Q1 2024</TableCell>
-                      <TableCell>
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                  {performanceReviews.length > 0 ? (
+                    performanceReviews.map((review) => (
+                      <TableRow key={review.id}>
+                        <TableCell className="font-medium">{`${review.first_name} ${review.last_name}`}</TableCell>
+                        <TableCell>{review.position}</TableCell>
+                        <TableCell>
+                          {review.review_period || new Date(review.review_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              review.rating === "excellent"
+                                ? "default"
+                                : review.rating === "good"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {review.rating}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{review.goals_met_percentage || 0}%</TableCell>
+                        <TableCell>
+                          {review.next_review_date ? new Date(review.next_review_date).toLocaleDateString() : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        No performance reviews found
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -732,22 +846,44 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <span className="text-sm">2 employment contracts expire in 30 days</span>
-                  </div>
+                  {employees.filter(
+                    (emp) =>
+                      emp.contract_end_date &&
+                      new Date(emp.contract_end_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                  ).length > 0 && (
+                    <div className="flex items-center space-x-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm">
+                        {
+                          employees.filter(
+                            (emp) =>
+                              emp.contract_end_date &&
+                              new Date(emp.contract_end_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                          ).length
+                        }{" "}
+                        employment contracts expire in 30 days
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-2">
                     <FileText className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm">NSSF monthly returns due in 5 days</span>
+                    <span className="text-sm">
+                      NSSF monthly returns due in{" "}
+                      {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 9).getDate() -
+                        new Date().getDate()}{" "}
+                      days
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <UserCheck className="h-4 w-4 text-green-500" />
                     <span className="text-sm">All SHA contributions up to date</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Shield className="h-4 w-4 text-red-500" />
-                    <span className="text-sm">Annual leave policy review required</span>
-                  </div>
+                  {new Date().getMonth() === 11 && (
+                    <div className="flex items-center space-x-2">
+                      <Shield className="h-4 w-4 text-red-500" />
+                      <span className="text-sm">Annual leave policy review required</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

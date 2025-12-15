@@ -296,7 +296,10 @@ export async function getEmployeesForPayroll(): Promise<{
       ORDER BY id
     `
 
-    const employeesWithName = result.map((employee) => ({
+    // Handle both array and object with rows property
+    const employees = Array.isArray(result) ? result : result.rows || []
+
+    const employeesWithName = employees.map((employee) => ({
       ...employee,
       name: `${employee.first_name} ${employee.last_name}`,
     }))

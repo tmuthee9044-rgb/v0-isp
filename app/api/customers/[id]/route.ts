@@ -22,7 +22,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         c.*,
         COALESCE(
           JSON_AGG(
-            DISTINCT CASE WHEN cpn.id IS NOT NULL THEN
+            CASE WHEN cpn.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
                 'id', cpn.id,
                 'number', cpn.phone_number,
@@ -35,7 +35,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         ) as phone_numbers,
         COALESCE(
           JSON_AGG(
-            DISTINCT CASE WHEN cec.id IS NOT NULL THEN
+            CASE WHEN cec.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
                 'id', cec.id,
                 'name', cec.name,
@@ -49,7 +49,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         ) as emergency_contacts,
         COALESCE(
           JSON_AGG(
-            DISTINCT CASE WHEN cs.id IS NOT NULL THEN
+            CASE WHEN cs.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
                 'id', cs.id,
                 'service_plan_id', cs.service_plan_id,

@@ -57,11 +57,9 @@ export async function POST(request: NextRequest) {
       port,
       username,
       password,
-      connection_type,
       connection_method,
-      notes,
-      subnets = [],
-      services = [],
+      latitude,
+      longitude,
       radius_secret,
       nas_ip_address,
       api_username,
@@ -69,13 +67,11 @@ export async function POST(request: NextRequest) {
       enable_traffic_recording,
       enable_speed_control,
       blocking_page_url,
+      notes,
+      status,
     } = body
 
-    const routerIpAddress = ip_address || hostname
-    const routerConnectionMethod = connection_method || connection_type || "public_ip"
-    const routerPort = port || api_port || 8728
-
-    if (!name || !type || !routerIpAddress) {
+    if (!name || !type || !ip_address) {
       const errorMsg = "Missing required fields: name, type, and ip_address are required"
       console.error("[v0] Validation error:", errorMsg)
       return NextResponse.json({ message: errorMsg }, { status: 400 })
@@ -83,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     const existingRouter = await sql`
       SELECT id FROM network_devices 
-      WHERE ip_address = ${routerIpAddress} 
+      WHERE ip_address = ${ip_address} 
       AND type = ${type}
     `
 
@@ -107,62 +103,78 @@ export async function POST(request: NextRequest) {
       locationName = location[0].name
     }
 
-    const configuration = {
-      model: model || null,
-      serial: serial || null,
-      port: routerPort,
-      api_port: api_port || routerPort,
-      ssh_port: ssh_port || 22,
-      username: username || null,
-      password: password || null,
-      connection_method: routerConnectionMethod,
-      notes: notes || null,
-      radius_secret: radius_secret || null,
-      nas_ip_address: nas_ip_address || null,
-      api_username: api_username || null,
-      api_password: api_password || null,
-      enable_traffic_recording: enable_traffic_recording || false,
-      enable_speed_control: enable_speed_control || false,
-      blocking_page_url: blocking_page_url || null,
-      services: services || [],
-    }
-
-    console.log("[v0] Configuration object:", configuration)
-    console.log("[v0] Inserting router into database...")
+    console.log("[v0] Inserting router with all fields into database...")
 
     const result = await sql`
       INSERT INTO network_devices (
-        location, name, type, ip_address, status, configuration, created_at
+        location, 
+        location_id,
+        name, 
+        type, 
+        ip_address, 
+        hostname,
+        model,
+        serial_number,
+        port,
+        api_port,
+        ssh_port,
+        username,
+        password,
+        connection_method,
+        radius_secret,
+        nas_ip_address,
+        api_username,
+        api_password,
+        enable_traffic_recording,
+        enable_speed_control,
+        blocking_page_url,
+        latitude,
+        longitude,
+        notes,
+        status,
+        created_at
       ) VALUES (
-        ${locationName}, ${name}, ${type}, ${routerIpAddress}, 'active', 
-        ${JSON.stringify(configuration)}, NOW()
+        ${locationName}, 
+        ${location_id || null},
+        ${name}, 
+        ${type}, 
+        ${ip_address},
+        ${hostname || null},
+        ${model || null},
+        ${serial || null},
+        ${port || api_port || 8728},
+        ${api_port || port || 8728},
+        ${ssh_port || 22},
+        ${username || null},
+        ${password || null},
+        ${connection_method || "api"},
+        ${radius_secret || null},
+        ${nas_ip_address || null},
+        ${api_username || null},
+        ${api_password || null},
+        ${enable_traffic_recording !== undefined ? enable_traffic_recording : true},
+        ${enable_speed_control !== undefined ? enable_speed_control : true},
+        ${blocking_page_url || null},
+        ${latitude || null},
+        ${longitude || null},
+        ${notes || null},
+        ${status || "active"},
+        NOW()
       )
       RETURNING *
     `
 
     console.log("[v0] Router created successfully:", result[0])
-    const routerId = result[0].id
 
-    if (subnets.length > 0) {
-      console.log("[v0] Adding subnets:", subnets)
-      for (const subnet of subnets) {
-        await sql`
-          INSERT INTO ip_subnets (router_id, cidr, description, name, allocation_mode, type, created_at)
-          VALUES (
-            ${routerId}, 
-            ${subnet.cidr}, 
-            ${subnet.description || null}, 
-            ${subnet.name || `Subnet ${subnet.cidr}`},
-            ${subnet.allocation_mode || "manual"},
-            ${subnet.type || "customer"},
-            NOW()
-          )
-        `
-      }
-      console.log("[v0] Subnets added successfully")
-    }
+    await sql`
+      INSERT INTO activity_logs (
+        action, entity_type, entity_id, details, created_at
+      ) VALUES (
+        'create', 'router', ${result[0].id}, 
+        ${JSON.stringify({ name, type, ip_address })}, NOW()
+      )
+    `
 
-    console.log("[v0] Services stored in configuration:", services)
     console.log("[v0] Router creation completed successfully")
 
     return NextResponse.json(result[0], { status: 201 })

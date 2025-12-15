@@ -169,69 +169,53 @@ export async function POST(request: NextRequest) {
 
     const customerResult = await sql`
       INSERT INTO customers (
-        name, email, phone, address, customer_type, status, 
+        account_number,
+        name, first_name, last_name, business_name,
+        email, alternate_email,
+        phone, phone_primary, phone_secondary, phone_office,
+        date_of_birth, gender, national_id,
+        contact_person, business_reg_no, vat_pin, tax_number, business_type,
+        address, physical_address, physical_city, physical_county, physical_postal_code, physical_gps_coordinates,
+        billing_address, installation_address,
+        city, state, country, postal_code, gps_coordinates, region,
+        location_id,
+        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+        referral_source, sales_rep, special_requirements, internal_notes,
+        billing_cycle, auto_renewal, paperless_billing, sms_notifications,
+        customer_type, status,
         created_at, updated_at
       ) VALUES (
-        ${customerName}, 
-        ${normalizedEmail}, 
-        ${data.phone_primary || data.phone},
-        ${fullAddress || null},
-        ${customerType}, 
-        'active', 
-        NOW(), 
-        NOW()
+        ${accountNumber},
+        ${customerName}, ${firstName || null}, ${lastName || null}, ${businessName || null},
+        ${normalizedEmail}, ${data.alternate_email || null},
+        ${data.phone_primary || data.phone}, ${data.phone_primary || data.phone}, 
+        ${data.phone_secondary || null}, ${data.phone_office || null},
+        ${data.date_of_birth || null}, ${data.gender || null}, ${data.national_id || null},
+        ${data.contact_person || null}, ${data.business_reg_no || null}, 
+        ${data.vat_pin || null}, ${data.tax_number || null}, ${data.business_type || null},
+        ${fullAddress || null}, ${data.physical_address || data.address || null}, 
+        ${data.physical_city || data.city || null}, ${data.physical_county || data.state || null},
+        ${data.physical_postal_code || data.postal_code || null}, 
+        ${data.physical_gps_coordinates || data.gps_coordinates || null},
+        ${data.same_as_physical ? data.physical_address || data.address : data.billing_address || null},
+        ${data.installation_address || data.physical_address || data.address || null},
+        ${data.physical_city || data.city || null}, ${data.physical_county || data.state || null},
+        ${data.country || "Kenya"}, ${data.physical_postal_code || data.postal_code || null},
+        ${data.physical_gps_coordinates || data.gps_coordinates || null}, ${data.region || null},
+        ${data.location_id || null},
+        ${data.emergency_contact_name || null}, ${data.emergency_contact_phone || null},
+        ${data.emergency_contact_relationship || null},
+        ${data.referral_source || null}, ${data.sales_rep || null},
+        ${data.special_requirements || null}, ${data.internal_notes || null},
+        ${data.billing_cycle || "monthly"}, ${data.auto_renewal || false},
+        ${data.paperless_billing || false}, ${data.sms_notifications !== false},
+        ${customerType}, 'active',
+        NOW(), NOW()
       ) RETURNING *
     `
 
     const customer = customerResult[0]
     console.log("[v0] Customer created successfully:", { id: customer.id, name: customer.name, email: customer.email })
-
-    try {
-      await sql`
-        INSERT INTO customer_metadata (
-          customer_id, 
-          first_name, last_name, business_name,
-          alternate_email, 
-          phone_primary, phone_secondary, phone_office,
-          physical_address, physical_city, physical_county, physical_postal_code, physical_gps_coordinates,
-          billing_address, installation_address, location_id,
-          national_id, tax_number, business_type, contact_person,
-          date_of_birth, gender,
-          emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-          referral_source, sales_rep, special_requirements, internal_notes,
-          billing_cycle, auto_renewal, paperless_billing, sms_notifications,
-          created_at
-        ) VALUES (
-          ${customer.id},
-          ${firstName || null}, ${lastName || null}, ${businessName || null},
-          ${data.alternate_email || null},
-          ${data.phone_primary || data.phone}, ${data.phone_secondary || null}, ${data.phone_office || null},
-          ${data.physical_address || data.address}, ${data.physical_city || data.city}, 
-          ${data.physical_county || data.state}, ${data.physical_postal_code || data.postal_code},
-          ${data.physical_gps_coordinates || data.gps_coordinates || null},
-          ${data.same_as_physical ? data.physical_address || data.address : data.billing_address || null},
-          ${data.installation_address || data.physical_address || data.address},
-          ${data.location_id || null},
-          ${data.national_id || data.id_number || null},
-          ${data.vat_pin || data.tax_id || data.tax_number || null},
-          ${data.business_reg_no || data.business_type || null},
-          ${data.contact_person || null},
-          ${data.date_of_birth || null},
-          ${data.gender || null},
-          ${data.emergency_contact_name || null}, ${data.emergency_contact_phone || null}, 
-          ${data.emergency_contact_relationship || null},
-          ${data.referral_source || null}, ${data.sales_rep || null}, 
-          ${data.special_requirements || null}, ${data.internal_notes || null},
-          ${data.billing_cycle || "monthly"}, ${data.auto_renewal || false}, 
-          ${data.paperless_billing || false}, ${data.sms_notifications || true},
-          NOW()
-        )
-      `
-      console.log("[v0] Customer metadata saved successfully")
-    } catch (metaError: any) {
-      // If metadata table doesn't exist, that's okay - customer is still created
-      console.log("[v0] Customer metadata table not available (this is okay):", metaError.message)
-    }
 
     if (data.phone_primary) {
       await sql`

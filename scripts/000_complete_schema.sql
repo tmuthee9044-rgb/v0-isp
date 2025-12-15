@@ -46,6 +46,7 @@ CREATE TABLE locations (
 -- 1. Customers Table
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
+    account_number VARCHAR(100) UNIQUE,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE,
     phone VARCHAR(50),
@@ -62,16 +63,20 @@ CREATE TABLE customers (
     installation_date DATE,
     last_payment_date DATE,
     contract_end_date DATE,
+    -- Added missing name fields
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     business_name VARCHAR(255),
+    -- Added contact fields
     alternate_email VARCHAR(255),
     phone_primary VARCHAR(50),
     phone_secondary VARCHAR(50),
     phone_office VARCHAR(50),
+    -- Added identification fields
     national_id VARCHAR(100),
     date_of_birth DATE,
     gender VARCHAR(20),
+    -- Added address fields
     physical_address TEXT,
     physical_city VARCHAR(100),
     physical_county VARCHAR(100),
@@ -82,13 +87,25 @@ CREATE TABLE customers (
     billing_city VARCHAR(100),
     billing_postal_code VARCHAR(20),
     installation_address TEXT,
+    city VARCHAR(100),
+    state VARCHAR(100),
+    country VARCHAR(100) DEFAULT 'Kenya',
+    postal_code VARCHAR(20),
+    gps_coordinates VARCHAR(100),
+    region VARCHAR(100),
+    -- Added location reference
     location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    -- Added emergency contact fields
     emergency_contact_name VARCHAR(255),
     emergency_contact_phone VARCHAR(50),
     emergency_contact_relationship VARCHAR(100),
+    -- Added business fields
     business_type VARCHAR(100),
+    business_reg_no VARCHAR(100),
     contact_person VARCHAR(255),
     tax_number VARCHAR(100),
+    vat_pin VARCHAR(100),
+    -- Added preferences and tracking fields
     preferred_contact_method VARCHAR(50) DEFAULT 'email',
     referral_source VARCHAR(255),
     sales_rep VARCHAR(255),
@@ -173,7 +190,36 @@ CREATE TABLE network_devices (
     ip_address VARCHAR(50),
     mac_address VARCHAR(50),
     location VARCHAR(255),
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
     status VARCHAR(50) DEFAULT 'active',
+    -- Added router connection fields
+    port INTEGER DEFAULT 8728,
+    api_port INTEGER DEFAULT 8728,
+    ssh_port INTEGER DEFAULT 22,
+    username VARCHAR(100),
+    password VARCHAR(255),
+    connection_method VARCHAR(50) DEFAULT 'api',
+    -- Added RADIUS authentication fields
+    radius_secret VARCHAR(255),
+    nas_ip_address VARCHAR(50),
+    -- Added API credentials fields
+    api_username VARCHAR(100),
+    api_password VARCHAR(255),
+    -- Added MikroTik feature flags
+    enable_traffic_recording BOOLEAN DEFAULT true,
+    enable_speed_control BOOLEAN DEFAULT true,
+    blocking_page_url TEXT,
+    -- Added GPS location fields
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    -- Added device details
+    model VARCHAR(100),
+    serial_number VARCHAR(100),
+    hostname VARCHAR(255),
+    firmware_version VARCHAR(50),
+    -- Keep configuration for additional settings
+    configuration JSONB,
+    notes TEXT,
     last_seen TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

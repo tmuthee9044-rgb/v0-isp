@@ -54,6 +54,7 @@ interface Customer {
   created_at: string
   balance?: number
   portal_username?: string
+  services?: Service[]
 }
 
 interface Service {
@@ -80,14 +81,12 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     if (!isNaN(customerId)) {
-      fetchCustomer()
-      fetchServices()
+      fetchCustomerData()
     }
 
     const handleServiceAdded = (event: CustomEvent) => {
       if (event.detail.customerId === customerId) {
-        fetchServices()
-        fetchCustomer()
+        fetchCustomerData()
       }
     }
 
@@ -98,29 +97,18 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
     }
   }, [customerId])
 
-  const fetchCustomer = async () => {
+  const fetchCustomerData = async () => {
     try {
       const response = await fetch(`/api/customers/${customerId}`)
       if (response.ok) {
         const data = await response.json()
         setCustomer(data)
+        setServices(data.services || [])
       }
     } catch (error) {
       console.error("Error fetching customer:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchServices = async () => {
-    try {
-      const response = await fetch(`/api/customer-services?customer_id=${customerId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setServices(data.services || [])
-      }
-    } catch (error) {
-      console.error("Error fetching services:", error)
     }
   }
 
@@ -179,7 +167,7 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
           title: "Success",
           description: "Service activated successfully",
         })
-        fetchServices()
+        fetchCustomerData()
       } else {
         toast({
           title: "Error",
@@ -210,7 +198,7 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
           title: "Success",
           description: "Service deleted successfully",
         })
-        fetchServices()
+        fetchCustomerData()
       } else {
         toast({
           title: "Error",
@@ -495,7 +483,7 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
             setAddServiceModalOpen(open)
             if (!open) {
               setEditingService(null)
-              fetchServices()
+              fetchCustomerData()
             }
           }}
           customerId={customerId}

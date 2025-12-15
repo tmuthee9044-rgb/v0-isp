@@ -16,13 +16,15 @@ export async function GET(request: Request, { params }: { params: { id: string }
       )
     }
 
+    // Single optimized query with all data
     const customerResult = await sql`
       SELECT 
         c.*,
         COALESCE(
           JSON_AGG(
-            CASE WHEN cpn.id IS NOT NULL THEN
+            DISTINCT CASE WHEN cpn.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
+                'id', cpn.id,
                 'number', cpn.phone_number,
                 'type', cpn.type,
                 'isPrimary', cpn.is_primary
@@ -33,8 +35,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
         ) as phone_numbers,
         COALESCE(
           JSON_AGG(
-            CASE WHEN cec.id IS NOT NULL THEN
+            DISTINCT CASE WHEN cec.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
+                'id', cec.id,
                 'name', cec.name,
                 'phone', cec.phone,
                 'email', cec.email,
@@ -46,16 +49,20 @@ export async function GET(request: Request, { params }: { params: { id: string }
         ) as emergency_contacts,
         COALESCE(
           JSON_AGG(
-            CASE WHEN cs.id IS NOT NULL THEN
+            DISTINCT CASE WHEN cs.id IS NOT NULL THEN
               JSON_BUILD_OBJECT(
                 'id', cs.id,
                 'service_plan_id', cs.service_plan_id,
                 'status', cs.status,
                 'start_date', cs.start_date,
+                'activated_at', cs.activated_at,
                 'plan_name', sp.name,
+                'service_name', sp.name,
+                'service_type', sp.type,
                 'price', sp.price,
-                'upload_speed', sp.upload_speed,
-                'download_speed', sp.download_speed,
+                'monthly_fee', sp.price,
+                'upload_speed', sp.speed_upload,
+                'download_speed', sp.speed_download,
                 'data_limit', sp.data_limit
               )
             END
@@ -83,22 +90,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     const customer = customerResult[0]
 
-    // Get available inventory items (separate query as it's not customer-specific)
-    const inventoryResult = await sql`
-      SELECT 
-        ii.*,
-        ii.name as item_name,
-        ii.category,
-        ii.unit_cost as price
-      FROM inventory_items ii
-      WHERE ii.status = 'available'
-      ORDER BY ii.name
-    `
-
     return NextResponse.json({
       success: true,
       ...customer,
-      inventory_items: inventoryResult,
     })
   } catch (error) {
     console.error("Database error:", error)

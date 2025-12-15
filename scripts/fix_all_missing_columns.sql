@@ -285,6 +285,28 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_contact_method VARCHAR(
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
 
+-- Adding all customer form fields to match the exact data structure sent by the form
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_primary VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_secondary VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_county VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_postal_code VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_gps_coordinates VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_rep VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS special_requirements TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS internal_notes TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS auto_renewal BOOLEAN DEFAULT false;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS paperless_billing BOOLEAN DEFAULT false;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sms_notifications BOOLEAN DEFAULT true;
+
 -- Update name column for existing customers if it's NULL
 UPDATE customers 
 SET name = CASE 

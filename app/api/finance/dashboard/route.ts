@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const dateTo = new Date().toISOString().split("T")[0]
     const dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+    console.log("[v0] Finance dashboard GET - Date range:", { dateFrom, dateTo })
     return await fetchDashboardData(dateFrom, dateTo)
   } catch (error) {
     console.error("Finance dashboard GET error:", error)
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { dateFrom, dateTo } = await request.json()
+    console.log("[v0] Finance dashboard POST - Date range:", { dateFrom, dateTo })
     return await fetchDashboardData(dateFrom, dateTo)
   } catch (error) {
     console.error("Finance dashboard POST error:", error)
@@ -26,6 +28,8 @@ export async function POST(request: NextRequest) {
 
 async function fetchDashboardData(dateFrom: string, dateTo: string) {
   const sql = await getSql()
+
+  console.log("[v0] Executing dashboard queries with date range:", { dateFrom, dateTo })
 
   const [revenueResult, expensesResult, receivableResult, payableResult] = await Promise.all([
     // Revenue from paid invoices in the date range
@@ -50,6 +54,13 @@ async function fetchDashboardData(dateFrom: string, dateTo: string) {
         WHERE status = 'pending'`,
   ])
 
+  console.log("[v0] Dashboard query results:", {
+    revenue: revenueResult[0],
+    expenses: expensesResult[0],
+    receivable: receivableResult[0],
+    payable: payableResult[0],
+  })
+
   const totalRevenue = Number(revenueResult[0]?.total_revenue) || 0
   const totalExpenses = Number(expensesResult[0]?.total_expenses) || 0
 
@@ -66,6 +77,8 @@ async function fetchDashboardData(dateFrom: string, dateTo: string) {
     expenseCount: Number(expensesResult[0]?.expense_count) || 0,
     pendingInvoices: Number(receivableResult[0]?.pending_invoices) || 0,
   }
+
+  console.log("[v0] Dashboard response data:", responseData)
 
   return NextResponse.json(responseData)
 }

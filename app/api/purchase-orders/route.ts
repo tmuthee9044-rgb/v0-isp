@@ -179,21 +179,20 @@ export async function POST(request: NextRequest) {
 
     const poId = purchaseOrder[0].id
 
-    // Add purchase order items and calculate total cost
     let totalAmount = 0
     for (const item of items) {
       if (!item.inventory_item_id || !item.quantity || item.unit_cost === undefined) {
         throw new Error("Each item must have inventory_item_id, quantity, and unit_cost")
       }
 
-      const totalCost = Number(item.quantity) * Number(item.unit_cost)
-      totalAmount += totalCost
+      const itemTotalAmount = Number(item.quantity) * Number(item.unit_cost)
+      totalAmount += itemTotalAmount
 
       await sql`
         INSERT INTO purchase_order_items (
-          purchase_order_id, inventory_item_id, quantity, unit_cost, total_cost
+          purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
         ) VALUES (
-          ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${totalCost}
+          ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
         )
       `
     }
@@ -211,6 +210,11 @@ export async function POST(request: NextRequest) {
       FROM purchase_orders po
       LEFT JOIN suppliers s ON po.supplier_id = s.id
       WHERE po.id = ${poId}
+    `
+
+    await sql`
+      INSERT INTO activity_logs (action, description, created_by)
+      VALUES ('purchase_order_created', ${`Created purchase order ${orderNumber} with ${items.length} items, total: ${totalAmount}`}, ${created_by || 1})
     `
 
     return NextResponse.json({

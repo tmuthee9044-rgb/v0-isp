@@ -58,7 +58,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
                 'activated_at', cs.activated_at,
                 'plan_name', sp.name,
                 'service_name', sp.name,
-                'service_type', sp.type,
+                'service_type', sp.service_type,
                 'price', sp.price,
                 'monthly_fee', sp.price,
                 'upload_speed', sp.speed_upload,

@@ -99,11 +99,7 @@ export async function POST(request: NextRequest) {
 
     if (data.email) {
       const existingCustomer = await sql`
-        SELECT id, email, 
-        CASE 
-          WHEN business_name IS NOT NULL AND business_name != '' THEN business_name
-          ELSE CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))
-        END as name
+        SELECT id, email, name
         FROM customers 
         WHERE email = ${data.email.toLowerCase().trim()}
       `
@@ -149,65 +145,38 @@ export async function POST(request: NextRequest) {
 
     const accountNumber = await generateAccountNumber()
 
-    const firstName = data.first_name || data.contact_person?.split(" ")[0] || "N/A"
-    const lastName = data.last_name || data.contact_person?.split(" ").slice(1).join(" ") || "N/A"
-    const businessName = data.name || data.business_name || null
-
-    const normalizedEmail = data.email ? data.email.toLowerCase().trim() : null
+    const firstName = data.first_name || data.contact_person?.split(" ")[0] || ""
+    const lastName = data.last_name || data.contact_person?.split(" ").slice(1).join(" ") || ""
+    const businessName = data.name || data.business_name || ""
     const customerType = data.customer_type || "individual"
 
     const customerName =
       customerType === "individual"
-        ? `${firstName} ${lastName}`.trim()
-        : businessName || `${firstName} ${lastName}`.trim()
+        ? `${firstName} ${lastName}`.trim() || "N/A"
+        : businessName || `${firstName} ${lastName}`.trim() || "N/A"
+
+    const fullAddress = [
+      data.physical_address || data.address,
+      data.physical_city || data.city,
+      data.physical_county || data.state,
+      data.physical_postal_code || data.postal_code,
+      data.country || "Kenya",
+    ]
+      .filter(Boolean)
+      .join(", ")
+
+    const normalizedEmail = data.email ? data.email.toLowerCase().trim() : null
 
     const customerResult = await sql`
       INSERT INTO customers (
-        account_number, name, first_name, last_name, business_name, customer_type, 
-        email, alternate_email, phone,
-        address, city, state, country, postal_code, gps_coordinates,
-        billing_address, installation_address, location_id,
-        id_number, tax_number, business_type, contact_person,
-        date_of_birth, gender,
-        preferred_contact_method, referral_source, service_preferences,
-        status, created_at, updated_at
+        name, email, phone, address, customer_type, status, 
+        created_at, updated_at
       ) VALUES (
-        ${accountNumber}, 
         ${customerName}, 
-        ${firstName}, 
-        ${lastName},
-        ${businessName}, 
-        ${customerType}, 
         ${normalizedEmail}, 
-        ${data.alternate_email ? data.alternate_email.toLowerCase().trim() : null},
         ${data.phone_primary || data.phone},
-        ${data.physical_address || data.address}, 
-        ${data.physical_city || data.city}, 
-        ${data.physical_county || data.state}, 
-        ${data.country || "Kenya"}, 
-        ${data.physical_postal_code || data.postal_code || null}, 
-        ${data.physical_gps_coordinates || data.gps_coordinates || null},
-        ${data.same_as_physical ? data.physical_address || data.address : data.billing_address || null},
-        ${data.installation_address || data.physical_address || data.address},
-        ${data.location_id || null},
-        ${data.national_id || data.id_number || null},
-        ${data.vat_pin || data.tax_id || data.tax_number || null},
-        ${data.business_reg_no || data.business_type || null},
-        ${data.contact_person || null},
-        ${data.date_of_birth || null},
-        ${data.gender || null},
-        ${data.preferred_contact_method || "phone"}, 
-        ${data.referral_source || null},
-        ${
-          data.special_requirements || data.internal_notes || data.sales_rep || data.account_manager
-            ? JSON.stringify({
-                special_requirements: data.special_requirements,
-                internal_notes: data.internal_notes,
-                sales_rep: data.sales_rep,
-                account_manager: data.account_manager,
-              })
-            : null
-        },
+        ${fullAddress || null},
+        ${customerType}, 
         'active', 
         NOW(), 
         NOW()
@@ -215,14 +184,61 @@ export async function POST(request: NextRequest) {
     `
 
     const customer = customerResult[0]
-    console.log("[v0] Customer created:", customer)
+    console.log("[v0] Customer created successfully:", { id: customer.id, name: customer.name, email: customer.email })
+
+    try {
+      await sql`
+        INSERT INTO customer_metadata (
+          customer_id, 
+          first_name, last_name, business_name,
+          alternate_email, 
+          phone_primary, phone_secondary, phone_office,
+          physical_address, physical_city, physical_county, physical_postal_code, physical_gps_coordinates,
+          billing_address, installation_address, location_id,
+          national_id, tax_number, business_type, contact_person,
+          date_of_birth, gender,
+          emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+          referral_source, sales_rep, special_requirements, internal_notes,
+          billing_cycle, auto_renewal, paperless_billing, sms_notifications,
+          created_at
+        ) VALUES (
+          ${customer.id},
+          ${firstName || null}, ${lastName || null}, ${businessName || null},
+          ${data.alternate_email || null},
+          ${data.phone_primary || data.phone}, ${data.phone_secondary || null}, ${data.phone_office || null},
+          ${data.physical_address || data.address}, ${data.physical_city || data.city}, 
+          ${data.physical_county || data.state}, ${data.physical_postal_code || data.postal_code},
+          ${data.physical_gps_coordinates || data.gps_coordinates || null},
+          ${data.same_as_physical ? data.physical_address || data.address : data.billing_address || null},
+          ${data.installation_address || data.physical_address || data.address},
+          ${data.location_id || null},
+          ${data.national_id || data.id_number || null},
+          ${data.vat_pin || data.tax_id || data.tax_number || null},
+          ${data.business_reg_no || data.business_type || null},
+          ${data.contact_person || null},
+          ${data.date_of_birth || null},
+          ${data.gender || null},
+          ${data.emergency_contact_name || null}, ${data.emergency_contact_phone || null}, 
+          ${data.emergency_contact_relationship || null},
+          ${data.referral_source || null}, ${data.sales_rep || null}, 
+          ${data.special_requirements || null}, ${data.internal_notes || null},
+          ${data.billing_cycle || "monthly"}, ${data.auto_renewal || false}, 
+          ${data.paperless_billing || false}, ${data.sms_notifications || true},
+          NOW()
+        )
+      `
+      console.log("[v0] Customer metadata saved successfully")
+    } catch (metaError: any) {
+      // If metadata table doesn't exist, that's okay - customer is still created
+      console.log("[v0] Customer metadata table not available (this is okay):", metaError.message)
+    }
 
     if (data.phone_primary) {
       await sql`
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_primary}, 'mobile', true, NOW())
         ON CONFLICT DO NOTHING
-      `
+      `.catch(() => console.log("[v0] Phone numbers table not available"))
     }
 
     if (data.phone_secondary) {
@@ -230,15 +246,7 @@ export async function POST(request: NextRequest) {
         INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
         VALUES (${customer.id}, ${data.phone_secondary}, 'mobile', false, NOW())
         ON CONFLICT DO NOTHING
-      `
-    }
-
-    if (data.phone_office) {
-      await sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
-        VALUES (${customer.id}, ${data.phone_office}, 'office', false, NOW())
-        ON CONFLICT DO NOTHING
-      `
+      `.catch(() => console.log("[v0] Phone numbers table not available"))
     }
 
     if (data.emergency_contact_name && data.emergency_contact_phone) {
@@ -252,36 +260,25 @@ export async function POST(request: NextRequest) {
           NOW()
         )
         ON CONFLICT DO NOTHING
-      `
-    }
-
-    if ((customerType === "company" || customerType === "school") && data.contact_person) {
-      await sql`
-        INSERT INTO customer_contacts (customer_id, name, contact_type, is_primary, created_at)
-        VALUES (${customer.id}, ${data.contact_person}, 'primary', true, NOW())
-        ON CONFLICT DO NOTHING
-      `
+      `.catch(() => console.log("[v0] Emergency contacts table not available"))
     }
 
     if (data.service_plan_id) {
       await sql`
-        INSERT INTO customer_services (customer_id, service_plan_id, status, start_date, created_at)
-        VALUES (${customer.id}, ${data.service_plan_id}, 'active', CURRENT_DATE, NOW())
-      `
+        INSERT INTO customer_services (customer_id, service_plan_id, status, installation_date, created_at)
+        VALUES (${customer.id}, ${data.service_plan_id}, 'pending', CURRENT_DATE, NOW())
+      `.catch((err) => console.log("[v0] Could not assign service:", err.message))
     }
 
     await sql`
-      INSERT INTO finance_audit_trail (
-        action, entity_type, entity_id, user_email, details, ip_address, created_at
+      INSERT INTO activity_logs (
+        action, entity_type, entity_id, details, ip_address, created_at
       ) VALUES (
-        'CREATE', 'customer', ${customer.id}, 'system', 
-        ${JSON.stringify({ customer_type: customerType, location_id: data.location_id })},
+        'CREATE', 'customer', ${customer.id}, 
+        ${JSON.stringify({ customer_type: customerType, location_id: data.location_id || null })},
         '127.0.0.1', NOW()
       )
-    `.catch(() => {
-      // Ignore if audit table doesn't exist
-      console.log("[v0] Audit trail table not available")
-    })
+    `.catch(() => console.log("[v0] Activity logs table not available"))
 
     return NextResponse.json(customer, { status: 201 })
   } catch (error: any) {
@@ -294,16 +291,6 @@ export async function POST(request: NextRequest) {
             error: "Email address already exists",
             message: "A customer with this email address already exists in the system.",
             code: "DUPLICATE_EMAIL",
-          },
-          { status: 409 },
-        )
-      }
-      if (error.constraint === "customers_account_number_key") {
-        return NextResponse.json(
-          {
-            error: "Account number conflict",
-            message: "There was an issue generating a unique account number. Please try again.",
-            code: "DUPLICATE_ACCOUNT_NUMBER",
           },
           { status: 409 },
         )

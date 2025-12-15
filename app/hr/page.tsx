@@ -51,36 +51,52 @@ export default function HRPage() {
   const [performanceReviews, setPerformanceReviews] = useState<any[]>([])
 
   useEffect(() => {
-    fetchEmployees()
-    fetchActivities()
-    fetchLeaveRequests()
-    fetchPayrollHistory()
-    fetchPerformanceReviews()
-  }, [])
-
-  const fetchEmployees = async () => {
-    try {
+    const fetchAllData = async () => {
       setLoading(true)
       const startTime = performance.now()
-      const response = await fetch("/api/employees", {
-        next: { revalidate: 60 }, // Cache for 60 seconds
-      })
-      if (!response.ok) {
-        throw new Error("Failed to fetch employees")
+
+      try {
+        const [employeesRes, activitiesRes, leaveRes, payrollRes, reviewsRes] = await Promise.all([
+          fetch("/api/employees", { next: { revalidate: 60 } }),
+          fetch("/api/hr/activities"),
+          fetch("/api/hr/leave-requests"),
+          fetch("/api/hr/payroll-history"),
+          fetch("/api/hr/performance-reviews"),
+        ])
+
+        const [employeesData, activitiesData, leaveData, payrollData, reviewsData] = await Promise.all([
+          employeesRes.ok ? employeesRes.json() : { employees: [] },
+          activitiesRes.ok ? activitiesRes.json() : { activities: [] },
+          leaveRes.ok
+            ? leaveRes.json()
+            : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
+          payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
+          reviewsRes.ok ? reviewsRes.json() : { reviews: [] },
+        ])
+
+        const endTime = performance.now()
+        console.log(`[v0] HR page loaded all data in ${(endTime - startTime).toFixed(2)}ms`)
+
+        setEmployees(employeesData.employees || [])
+        setActivities(activitiesData.activities || [])
+        setLeaveRequests(leaveData.leaveRequests || [])
+        setLeaveStats(leaveData.stats || { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
+        setPayrollHistory(payrollData.payrollHistory || [])
+        setPerformanceReviews(reviewsData.reviews || [])
+      } catch (error) {
+        console.error("[v0] Error fetching HR data:", error)
+        setEmployees([])
+        setActivities([])
+        setLeaveRequests([])
+        setPayrollHistory([])
+        setPerformanceReviews([])
+      } finally {
+        setLoading(false)
       }
-      const data = await response.json()
-      const endTime = performance.now()
-      console.log(
-        `[v0] HR page loaded ${data.employees?.length || 0} employees in ${(endTime - startTime).toFixed(2)}ms`,
-      )
-      setEmployees(data.employees || [])
-    } catch (error) {
-      console.error("Error fetching employees:", error)
-      setEmployees([])
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchAllData()
+  }, [])
 
   useEffect(() => {
     const handleEditEvent = (event: any) => {
@@ -92,55 +108,6 @@ export default function HRPage() {
     window.addEventListener("editEmployee", handleEditEvent)
     return () => window.removeEventListener("editEmployee", handleEditEvent)
   }, [])
-
-  const fetchActivities = async () => {
-    try {
-      const response = await fetch("/api/hr/activities")
-      if (response.ok) {
-        const data = await response.json()
-        setActivities(data.activities || [])
-      }
-    } catch (error) {
-      console.error("Error fetching activities:", error)
-    }
-  }
-
-  const fetchLeaveRequests = async () => {
-    try {
-      const response = await fetch("/api/hr/leave-requests")
-      if (response.ok) {
-        const data = await response.json()
-        setLeaveRequests(data.leaveRequests || [])
-        setLeaveStats(data.stats || { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
-      }
-    } catch (error) {
-      console.error("Error fetching leave requests:", error)
-    }
-  }
-
-  const fetchPayrollHistory = async () => {
-    try {
-      const response = await fetch("/api/hr/payroll-history")
-      if (response.ok) {
-        const data = await response.json()
-        setPayrollHistory(data.payrollHistory || [])
-      }
-    } catch (error) {
-      console.error("Error fetching payroll history:", error)
-    }
-  }
-
-  const fetchPerformanceReviews = async () => {
-    try {
-      const response = await fetch("/api/hr/performance-reviews")
-      if (response.ok) {
-        const data = await response.json()
-        setPerformanceReviews(data.reviews || [])
-      }
-    } catch (error) {
-      console.error("Error fetching performance reviews:", error)
-    }
-  }
 
   const payrollSummary = {
     totalEmployees: employees.length,

@@ -264,6 +264,27 @@ ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system_role BOOLEAN DEFAULT false;
 -- TABLE: customers (ensure name column exists and is set properly)
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(500);
 
+-- Adding all missing customer form fields to match API expectations
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS country VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS gps_coordinates VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS id_number VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_type VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_contact_method VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
+
 -- Update name column for existing customers if it's NULL
 UPDATE customers 
 SET name = CASE 

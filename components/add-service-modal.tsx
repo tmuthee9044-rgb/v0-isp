@@ -172,6 +172,11 @@ function AddServiceModal({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    event.stopPropagation() // Prevent event bubbling to avoid double submission
+
+    if (isLoading) {
+      return
+    }
 
     if (!selectedPlan) {
       setValidationError("Please select a service plan")
@@ -213,6 +218,7 @@ function AddServiceModal({
 
       if (result.success) {
         onOpenChange(false)
+
         setSelectedPlan("")
         setConnectionType("")
         setSelectedIpAddress("")
@@ -223,19 +229,20 @@ function AddServiceModal({
         setPppoePassword("")
         setCurrentTab("plans")
         setAdminOverride(false)
+        setIsLoading(false) // Reset loading state before dispatch
 
         setTimeout(() => {
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("serviceAdded", { detail: { customerId } }))
           }
-        }, 100)
+        }, 200)
       } else {
         setValidationError(result.error || "Failed to add service")
+        setIsLoading(false)
       }
     } catch (error) {
       console.error("Error processing service:", error)
       setValidationError(error instanceof Error ? error.message : "Unknown error occurred")
-    } finally {
       setIsLoading(false)
     }
   }
@@ -634,7 +641,7 @@ function AddServiceModal({
                 )}
 
                 <div className="flex justify-end pt-4">
-                  <Button onClick={handleSubmit} disabled={!selectedPlan || !connectionType || isLoading} size="lg">
+                  <Button type="submit" disabled={!selectedPlan || !connectionType || isLoading} size="lg">
                     {isLoading ? (
                       <>
                         <Clock className="w-4 h-4 mr-2 animate-spin" />

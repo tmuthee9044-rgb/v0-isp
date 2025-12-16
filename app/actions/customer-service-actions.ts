@@ -52,6 +52,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
   try {
     const sql = await getSql()
 
+    console.log("[v0] addCustomerService called for customer:", customerId) // Debug log
+
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
 
@@ -82,6 +84,22 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const inventoryItems = formData.get("inventory_items") as string
     const adminOverride = formData.get("admin_override") === "on"
 
+    const existingService = await sql`
+      SELECT id FROM customer_services 
+      WHERE customer_id = ${customerId} 
+      AND service_plan_id = ${servicePlanId}
+      AND status IN ('active', 'pending')
+      LIMIT 1
+    `
+
+    if (existingService.length > 0) {
+      console.log("[v0] Duplicate service detected, preventing creation") // Debug log
+      return {
+        success: false,
+        error: "This customer already has an active or pending service with this plan.",
+      }
+    }
+
     if (ipAddress && ipAddress !== "auto") {
       const existingIP = await sql`
         SELECT id, customer_id 
@@ -100,9 +118,9 @@ export async function addCustomerService(customerId: number, formData: FormData)
     }
 
     const servicePlan = await sql`
-      SELECT id, name, price, download_speed, upload_speed 
+      SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
-      WHERE id = ${servicePlanId} AND status = 'active'
+      WHERE id = ${servicePlanId} AND is_active = true
       LIMIT 1
     `
 
@@ -114,6 +132,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
     }
 
     const initialStatus = adminOverride ? "active" : "pending"
+
+    console.log("[v0] Creating new service with status:", initialStatus) // Debug log
 
     // Execute queries sequentially instead
     const result = await sql`

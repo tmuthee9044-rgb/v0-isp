@@ -63,15 +63,23 @@ export async function POST(request: Request) {
         try {
           const accountNumber = row.account_number || `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
+          const name =
+            row.business_name ||
+            (row.first_name && row.last_name ? `${row.first_name} ${row.last_name}` : null) ||
+            row.first_name ||
+            row.last_name ||
+            "Unknown Customer"
+
           await sql`
             INSERT INTO customers (
-              account_number, first_name, last_name, email, phone, national_id,
+              account_number, name, first_name, last_name, email, phone, national_id,
               customer_type, business_name, business_type, tax_number,
               address, city, state, postal_code, country,
               installation_address, billing_address, gps_coordinates,
               preferred_contact_method, referral_source, status, created_at
             ) VALUES (
               ${accountNumber},
+              ${name},
               ${row.first_name || ""},
               ${row.last_name || ""},
               ${row.email || null},

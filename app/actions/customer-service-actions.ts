@@ -52,12 +52,17 @@ export async function addCustomerService(customerId: number, formData: FormData)
   try {
     const sql = await getSql()
 
-    console.log("[v0] addCustomerService called for customer:", customerId) // Debug log
+    console.log("[v0] === addCustomerService START ===")
+    console.log("[v0] Customer ID:", customerId)
+    console.log("[v0] Timestamp:", new Date().toISOString())
 
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
 
+    console.log("[v0] Service Plan ID:", servicePlanId)
+
     if (!servicePlanIdStr || isNaN(servicePlanId)) {
+      console.log("[v0] Invalid service plan ID")
       return {
         success: false,
         error: "Invalid service plan selected. Please select a valid service plan.",
@@ -84,6 +89,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const inventoryItems = formData.get("inventory_items") as string
     const adminOverride = formData.get("admin_override") === "on"
 
+    console.log("[v0] Checking for existing service...")
     const existingService = await sql`
       SELECT id FROM customer_services 
       WHERE customer_id = ${customerId} 
@@ -92,30 +98,17 @@ export async function addCustomerService(customerId: number, formData: FormData)
       LIMIT 1
     `
 
+    console.log("[v0] Existing service check result:", existingService)
+
     if (existingService.length > 0) {
-      console.log("[v0] Duplicate service detected, preventing creation") // Debug log
+      console.log("[v0] DUPLICATE DETECTED - Service already exists:", existingService[0].id)
       return {
         success: false,
         error: "This customer already has an active or pending service with this plan.",
       }
     }
 
-    if (ipAddress && ipAddress !== "auto") {
-      const existingIP = await sql`
-        SELECT id, customer_id 
-        FROM ip_addresses 
-        WHERE ip_address::text = ${ipAddress}
-        AND status = 'assigned'
-        LIMIT 1
-      `
-
-      if (existingIP.length > 0) {
-        return {
-          success: false,
-          error: `IP address ${ipAddress} is already assigned to customer ${existingIP[0].customer_id}`,
-        }
-      }
-    }
+    console.log("[v0] No duplicate found, proceeding with insert...")
 
     const servicePlan = await sql`
       SELECT id, name, price, speed_download, speed_upload 
@@ -269,6 +262,9 @@ export async function addCustomerService(customerId: number, formData: FormData)
     }
 
     revalidatePath(`/customers/${customerId}`, "page")
+
+    console.log("[v0] Service created successfully:", result[0].id)
+    console.log("[v0] === addCustomerService END ===")
 
     return {
       success: true,
@@ -450,6 +446,7 @@ export async function deleteCustomerService(serviceId: number) {
     const [service] = await sql`
       SELECT cs.*, sp.name as service_name, sp.price as service_price, cs.customer_id, cs.monthly_fee
       FROM customer_services cs
+      LEFT JOIN customers c ON cs.customer_id = c.id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.id = ${serviceId}
     `

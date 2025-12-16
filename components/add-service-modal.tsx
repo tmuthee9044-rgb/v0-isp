@@ -174,7 +174,12 @@ function AddServiceModal({
     event.preventDefault()
     event.stopPropagation() // Prevent event bubbling to avoid double submission
 
+    console.log("[v0] === handleSubmit START ===")
+    console.log("[v0] isLoading:", isLoading)
+    console.log("[v0] Timestamp:", new Date().toISOString())
+
     if (isLoading) {
+      console.log("[v0] Already loading, preventing duplicate submission")
       return
     }
 
@@ -211,12 +216,20 @@ function AddServiceModal({
         formData.append("pppoe_password", pppoePassword)
       }
 
+      console.log("[v0] Calling addCustomerService/updateCustomerService...")
+      console.log("[v0] Edit mode:", editMode)
+
       const result =
         editMode && editingService
           ? await updateCustomerService(editingService.id, formData)
           : await addCustomerService(customerId, formData)
 
+      console.log("[v0] Result:", result)
+
       if (result.success) {
+        setIsLoading(false)
+
+        console.log("[v0] Service saved successfully, closing modal...")
         onOpenChange(false)
 
         setSelectedPlan("")
@@ -229,14 +242,15 @@ function AddServiceModal({
         setPppoePassword("")
         setCurrentTab("plans")
         setAdminOverride(false)
-        setIsLoading(false) // Reset loading state before dispatch
 
         setTimeout(() => {
+          console.log("[v0] Dispatching serviceAdded event")
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("serviceAdded", { detail: { customerId } }))
           }
-        }, 200)
+        }, 300)
       } else {
+        console.log("[v0] Failed to save service:", result.error)
         setValidationError(result.error || "Failed to add service")
         setIsLoading(false)
       }
@@ -245,6 +259,8 @@ function AddServiceModal({
       setValidationError(error instanceof Error ? error.message : "Unknown error occurred")
       setIsLoading(false)
     }
+
+    console.log("[v0] === handleSubmit END ===")
   }
 
   useEffect(() => {

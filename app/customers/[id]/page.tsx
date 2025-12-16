@@ -85,7 +85,13 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
     }
 
     const handleServiceAdded = (event: CustomEvent) => {
+      console.log("[v0] === serviceAdded event received ===")
+      console.log("[v0] Event customer ID:", event.detail.customerId)
+      console.log("[v0] Current customer ID:", customerId)
+      console.log("[v0] Timestamp:", new Date().toISOString())
+
       if (event.detail.customerId === customerId) {
+        console.log("[v0] Refreshing customer data...")
         fetchCustomerData()
       }
     }
@@ -98,10 +104,15 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
   }, [customerId])
 
   const fetchCustomerData = async () => {
+    console.log("[v0] === fetchCustomerData called ===")
+    console.log("[v0] Customer ID:", customerId)
+    console.log("[v0] Timestamp:", new Date().toISOString())
+
     try {
       const response = await fetch(`/api/customers/${customerId}`)
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] Customer data fetched, services count:", data.services?.length || 0)
         setCustomer(data)
         setServices(data.services || [])
       }

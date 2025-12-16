@@ -130,6 +130,8 @@ export function LeaveRequestModal({ open, onOpenChange }: LeaveRequestModalProps
         setEndDate(undefined)
         setReason("")
         onOpenChange(false)
+
+        window.dispatchEvent(new CustomEvent("leaveRequestAdded"))
       } else {
         console.error("Failed to submit leave request")
       }

@@ -30,6 +30,7 @@ import { AddEmployeeModal } from "@/components/add-employee-modal"
 import { EmployeeDetailsModal } from "@/components/employee-details-modal"
 import { PayrollModal } from "@/components/payroll-modal"
 import { LeaveRequestModal } from "@/components/leave-request-modal"
+import { PerformanceReviewModal } from "@/components/performance-review-modal"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/currency"
 
 export default function HRPage() {
@@ -38,6 +39,7 @@ export default function HRPage() {
   const [showEmployeeDetails, setShowEmployeeDetails] = useState(false)
   const [showPayroll, setShowPayroll] = useState(false)
   const [showLeaveRequest, setShowLeaveRequest] = useState(false)
+  const [showPerformanceReview, setShowPerformanceReview] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null)
   const [editingEmployee, setEditingEmployee] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,40 +51,69 @@ export default function HRPage() {
   const [leaveStats, setLeaveStats] = useState({ pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
   const [payrollHistory, setPayrollHistory] = useState<any[]>([])
   const [performanceReviews, setPerformanceReviews] = useState<any[]>([])
+  const [departments, setDepartments] = useState<any[]>([])
 
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true)
       const startTime = performance.now()
+      console.log("[v0] Starting parallel data fetch for HR page...")
 
       try {
-        const [employeesRes, activitiesRes, leaveRes, payrollRes, reviewsRes] = await Promise.all([
+        const [employeesRes, activitiesRes, leaveRes, payrollRes, performanceRes, departmentsRes] = await Promise.all([
           fetch("/api/employees", { next: { revalidate: 60 } }),
           fetch("/api/hr/activities"),
           fetch("/api/hr/leave-requests"),
           fetch("/api/hr/payroll-history"),
           fetch("/api/hr/performance-reviews"),
+          fetch("/api/hr/departments"),
         ])
 
-        const [employeesData, activitiesData, leaveData, payrollData, reviewsData] = await Promise.all([
-          employeesRes.ok ? employeesRes.json() : { employees: [] },
-          activitiesRes.ok ? activitiesRes.json() : { activities: [] },
-          leaveRes.ok
-            ? leaveRes.json()
-            : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
-          payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
-          reviewsRes.ok ? reviewsRes.json() : { reviews: [] },
-        ])
+        const [employeesData, activitiesData, leaveData, payrollData, performanceData, departmentsData] =
+          await Promise.all([
+            employeesRes.ok ? employeesRes.json() : { employees: [] },
+            activitiesRes.ok ? activitiesRes.json() : { activities: [] },
+            leaveRes.ok
+              ? leaveRes.json()
+              : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
+            payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
+            performanceRes.ok ? performanceRes.json() : { reviews: [] },
+            departmentsRes.ok ? departmentsRes.json() : { departments: [] },
+          ])
+
+        if (employeesData.success) {
+          setEmployees(employeesData.employees || [])
+        }
+
+        if (activitiesData.success) {
+          setActivities(activitiesData.activities || [])
+        }
+
+        if (leaveData.success) {
+          setLeaveRequests(leaveData.leaveRequests || [])
+          setLeaveStats({
+            pending: leaveData.stats?.pending || 0,
+            approved: leaveData.stats?.approved || 0,
+            onLeave: leaveData.stats?.onLeave || 0,
+            approvedDays: leaveData.stats?.approvedDays || 0,
+          })
+        }
+
+        if (payrollData.success) {
+          setPayrollHistory(payrollData.payrollHistory || [])
+        }
+
+        if (departmentsData.success) {
+          setDepartments(departmentsData.departments || [])
+        }
+
+        // Assuming performanceData also has a success flag and reviews property
+        if (performanceData.success) {
+          setPerformanceReviews(performanceData.reviews || [])
+        }
 
         const endTime = performance.now()
-        console.log(`[v0] HR page loaded all data in ${(endTime - startTime).toFixed(2)}ms`)
-
-        setEmployees(employeesData.employees || [])
-        setActivities(activitiesData.activities || [])
-        setLeaveRequests(leaveData.leaveRequests || [])
-        setLeaveStats(leaveData.stats || { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
-        setPayrollHistory(payrollData.payrollHistory || [])
-        setPerformanceReviews(reviewsData.reviews || [])
+        console.log(`[v0] HR page data loaded in ${(endTime - startTime).toFixed(2)}ms`)
       } catch (error) {
         console.error("[v0] Error fetching HR data:", error)
         setEmployees([])
@@ -90,6 +121,7 @@ export default function HRPage() {
         setLeaveRequests([])
         setPayrollHistory([])
         setPerformanceReviews([])
+        setDepartments([]) // Reset departments on error
       } finally {
         setLoading(false)
       }
@@ -105,8 +137,25 @@ export default function HRPage() {
       setShowAddEmployee(true)
     }
 
+    const handleLeaveAdded = () => {
+      console.log("[v0] Leave added event received, refreshing leave requests")
+      fetchLeaveRequests()
+    }
+
+    const handleReviewAdded = () => {
+      console.log("[v0] Review added event received, refreshing performance reviews")
+      fetchPerformanceReviews()
+    }
+
     window.addEventListener("editEmployee", handleEditEvent)
-    return () => window.removeEventListener("editEmployee", handleEditEvent)
+    window.addEventListener("leaveAdded", handleLeaveAdded)
+    window.addEventListener("reviewAdded", handleReviewAdded)
+
+    return () => {
+      window.removeEventListener("editEmployee", handleEditEvent)
+      window.removeEventListener("leaveAdded", handleLeaveAdded)
+      window.removeEventListener("reviewAdded", handleReviewAdded)
+    }
   }, [])
 
   const payrollSummary = {
@@ -142,6 +191,28 @@ export default function HRPage() {
     setShowAddEmployee(open)
     if (!open) {
       setEditingEmployee(null)
+    }
+  }
+
+  const fetchLeaveRequests = async () => {
+    const res = await fetch("/api/hr/leave-requests")
+    if (res.ok) {
+      const data = await res.json()
+      setLeaveRequests(data.leaveRequests || [])
+      setLeaveStats({
+        pending: data.stats?.pending || 0,
+        approved: data.stats?.approved || 0,
+        onLeave: data.stats?.onLeave || 0,
+        approvedDays: data.stats?.approvedDays || 0,
+      })
+    }
+  }
+
+  const fetchPerformanceReviews = async () => {
+    const res = await fetch("/api/hr/performance-reviews")
+    if (res.ok) {
+      const data = await res.json()
+      setPerformanceReviews(data.reviews || [])
     }
   }
 
@@ -236,36 +307,18 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Technical</span>
-                    <span className="text-sm font-medium">
-                      {employees.filter((emp) => emp.department === "Technical").length} employees
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Support</span>
-                    <span className="text-sm font-medium">
-                      {employees.filter((emp) => emp.department === "Support").length} employees
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Sales</span>
-                    <span className="text-sm font-medium">
-                      {employees.filter((emp) => emp.department === "Sales").length} employees
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Admin</span>
-                    <span className="text-sm font-medium">
-                      {employees.filter((emp) => emp.department === "Admin").length} employees
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Finance</span>
-                    <span className="text-sm font-medium">
-                      {employees.filter((emp) => emp.department === "Finance").length} employees
-                    </span>
-                  </div>
+                  {departments.length > 0 ? (
+                    departments.map((dept, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <span className="text-sm">{dept.name}</span>{" "}
+                        {/* Assuming department object has a 'name' property */}
+                        <span className="text-sm font-medium">{dept.employeeCount} employees</span>{" "}
+                        {/* Assuming department object has an 'employeeCount' property */}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No department data available</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -320,11 +373,11 @@ export default function HRPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                <SelectItem value="Technical">Technical</SelectItem>
-                <SelectItem value="Support">Support</SelectItem>
-                <SelectItem value="Sales">Sales</SelectItem>
-                <SelectItem value="HR">HR</SelectItem>
-                <SelectItem value="Finance">Finance</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.name}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm">
@@ -605,7 +658,7 @@ export default function HRPage() {
         <TabsContent value="performance" className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Performance Management</h3>
-            <Button>
+            <Button onClick={() => setShowPerformanceReview(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Review
             </Button>
@@ -869,6 +922,8 @@ export default function HRPage() {
       <PayrollModal open={showPayroll} onOpenChange={setShowPayroll} />
 
       <LeaveRequestModal open={showLeaveRequest} onOpenChange={setShowLeaveRequest} />
+
+      <PerformanceReviewModal open={showPerformanceReview} onOpenChange={setShowPerformanceReview} />
     </div>
   )
 }

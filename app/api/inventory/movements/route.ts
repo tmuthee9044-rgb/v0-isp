@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
     let movements
 
     if (customerId) {
-      // Get movements for a specific customer
       movements = await sql`
         SELECT 
           im.id,
@@ -21,13 +20,9 @@ export async function GET(request: NextRequest) {
           ii.sku,
           ii.category,
           im.quantity,
-          im.reason,
           im.notes,
-          im.status,
           im.created_at,
-          im.performed_by,
-          im.unit_cost,
-          im.total_cost
+          im.created_by as performed_by
         FROM inventory_movements im
         LEFT JOIN inventory_items ii ON im.item_id = ii.id
         WHERE im.movement_type = 'assigned' 
@@ -36,7 +31,6 @@ export async function GET(request: NextRequest) {
         LIMIT ${limit} OFFSET ${offset}
       `
     } else {
-      // Get all movements
       movements = await sql`
         SELECT 
           im.id,
@@ -45,15 +39,11 @@ export async function GET(request: NextRequest) {
           ii.sku,
           ii.category,
           im.quantity,
-          im.from_location,
-          im.to_location,
-          im.reason,
           im.notes,
-          im.status,
           im.created_at,
-          im.performed_by,
-          im.unit_cost,
-          im.total_cost
+          im.created_by as performed_by,
+          im.reference_type,
+          im.reference_number
         FROM inventory_movements im
         LEFT JOIN inventory_items ii ON im.item_id = ii.id
         ORDER BY im.created_at DESC
@@ -69,11 +59,15 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching inventory movements:", error)
 
-    return NextResponse.json({
-      success: true,
-      data: [],
-      total: 0,
-    })
+    return NextResponse.json(
+      {
+        success: false,
+        data: [],
+        total: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
 
@@ -124,21 +118,16 @@ export async function POST(request: NextRequest) {
       enhancedNotes = `${enhancedNotes} | customer_id:${customer_id}`
     }
 
-    // Create the movement record
     const result = await sql`
       INSERT INTO inventory_movements (
-        item_id, movement_type, quantity, reason, notes, 
-        unit_cost, total_cost, performed_by, status, created_at
+        item_id, movement_type, quantity, notes, 
+        created_by, created_at
       ) VALUES (
         ${inventory_item_id}, 
         ${movement_type}, 
         ${movement_type === "assigned" ? -Math.abs(quantity) : quantity}, 
-        ${reason || `${movement_type} operation`},
         ${enhancedNotes},
-        ${calculatedUnitCost},
-        ${totalCost},
         ${performed_by},
-        'completed',
         NOW()
       )
       RETURNING *

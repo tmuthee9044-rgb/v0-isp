@@ -7,12 +7,12 @@ export async function GET() {
 
     const activities = await sql`
       SELECT 
-        activity_type,
-        description,
+        action as activity_type,
+        details->>'description' as description,
         created_at,
-        severity
+        COALESCE(details->>'severity', 'info') as severity
       FROM activity_logs
-      WHERE module = 'HR'
+      WHERE entity_type = 'HR' OR entity_type = 'employee'
       ORDER BY created_at DESC
       LIMIT 10
     `

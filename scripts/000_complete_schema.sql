@@ -483,9 +483,16 @@ CREATE TABLE inventory_movements (
     item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
     movement_type VARCHAR(50) NOT NULL,
     quantity INTEGER NOT NULL,
+    from_location VARCHAR(255),
+    to_location VARCHAR(255),
+    reason TEXT,
     reference_type VARCHAR(50),
     reference_number VARCHAR(100),
     notes TEXT,
+    status VARCHAR(50) DEFAULT 'completed',
+    performed_by VARCHAR(100),
+    unit_cost DECIMAL(10, 2),
+    total_cost DECIMAL(10, 2),
     created_by INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

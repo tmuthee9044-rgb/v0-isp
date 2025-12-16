@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { ArrowLeft, Upload, Download, Users, Package, Wrench, Check, AlertCircle, FileSpreadsheet } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast" // Import useToast
+import { Label } from "@/components/ui/label" // Import Label
 
 type EntityType = "customers" | "services" | "inventory" | "vehicles"
 
@@ -18,6 +18,7 @@ interface ColumnConfig {
   key: string
   label: string
   required: boolean
+  description?: string // Added description field
 }
 
 interface EntityConfig {
@@ -601,7 +602,7 @@ export default function UniversalImportPage() {
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const file = event.target?.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
@@ -611,25 +612,37 @@ export default function UniversalImportPage() {
 
       if (lines.length < 2) {
         toast({
-          title: "Invalid File",
-          description: "File must contain at least a header row and one data row",
+          title: "Invalid file",
+          description: "The file must contain at least a header row and one data row",
           variant: "destructive",
         })
         return
       }
 
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
-      const rows = lines.slice(1).map((line) => line.split(",").map((cell) => cell.trim().replace(/"/g, "")))
+      const headers = lines[0]
+        .split(",")
+        .map((h) => h.trim())
+        .filter((h) => h !== "") // Remove empty headers
 
-      const fileData = {
+      const rows = lines.slice(1).map((line) => {
+        const values = line.split(",").map((v) => v.trim())
+        // Ensure row has same length as headers, padding with empty strings if needed
+        return headers.map((_, i) => values[i] || "")
+      })
+
+      setFileData({
+        filename: file.name,
         headers,
         rows,
-        filename: file.name,
-      }
+      })
 
-      setFileData(fileData)
-      sessionStorage.setItem("importFileData", JSON.stringify(fileData))
+      // Auto-map columns based on entity type
       autoMapColumns(headers, entityType)
+
+      toast({
+        title: "File uploaded",
+        description: `Successfully loaded ${rows.length} rows`,
+      })
     }
 
     reader.readAsText(file)
@@ -738,13 +751,12 @@ export default function UniversalImportPage() {
             <CardContent className="space-y-4">
               {currentConfig.columns.map((column) => (
                 <div key={column.key} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium">{column.label}</span>
-                    {column.required && (
-                      <Badge variant="destructive" className="text-xs">
-                        Required
-                      </Badge>
-                    )}
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium">
+                      {column.label}
+                      {column.required && <span className="text-red-500 ml-1">*</span>}
+                    </Label>
+                    {column.description && <p className="text-xs text-muted-foreground">{column.description}</p>}
                   </div>
                   <Select
                     value={columnMapping[column.key] || "none"}
@@ -755,11 +767,13 @@ export default function UniversalImportPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">-- Not mapped --</SelectItem>
-                      {fileData.headers.map((header) => (
-                        <SelectItem key={header} value={header}>
-                          {header}
-                        </SelectItem>
-                      ))}
+                      {fileData.headers
+                        .filter((header) => header && header.trim() !== "")
+                        .map((header) => (
+                          <SelectItem key={header} value={header}>
+                            {header}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

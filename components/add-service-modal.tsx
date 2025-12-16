@@ -224,10 +224,11 @@ function AddServiceModal({
         setCurrentTab("plans")
         setAdminOverride(false)
 
-        if (typeof window !== "undefined") {
-          // Dispatch custom event for parent to catch
-          window.dispatchEvent(new CustomEvent("serviceAdded", { detail: { customerId } }))
-        }
+        setTimeout(() => {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("serviceAdded", { detail: { customerId } }))
+          }
+        }, 100)
       } else {
         setValidationError(result.error || "Failed to add service")
       }

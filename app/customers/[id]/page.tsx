@@ -483,7 +483,6 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
             setAddServiceModalOpen(open)
             if (!open) {
               setEditingService(null)
-              fetchCustomerData()
             }
           }}
           customerId={customerId}

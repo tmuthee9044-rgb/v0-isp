@@ -19,7 +19,7 @@ This guide explains how the ISP Management System supports both **Neon Serverles
 
 The system uses a **smart wrapper** (`lib/neon-wrapper.ts`) that automatically detects which database to use based on the `DATABASE_URL` environment variable:
 
-\`\`\`
+```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Your Application Code                     │
 │                                                              │
@@ -42,7 +42,7 @@ The system uses a **smart wrapper** (`lib/neon-wrapper.ts`) that automatically d
     │   Port: 5432             │    │   HTTPS Connection       │
     │   Local Network          │    │   Internet Required      │
     └──────────────────────────┘    └──────────────────────────┘
-\`\`\`
+```
 
 ---
 
@@ -52,7 +52,7 @@ The system uses a **smart wrapper** (`lib/neon-wrapper.ts`) that automatically d
 
 The neon-wrapper checks your `DATABASE_URL` and automatically selects the appropriate driver:
 
-\`\`\`typescript
+```typescript
 // lib/neon-wrapper.ts (simplified)
 const databaseUrl = process.env.DATABASE_URL || '';
 const isLocalPostgres = 
@@ -69,20 +69,20 @@ if (isLocalPostgres) {
   const { neon } = require('@neondatabase/serverless');
   return neon(databaseUrl);
 }
-\`\`\`
+```
 
 ### 2. Webpack Module Aliasing
 
 The `next.config.mjs` automatically redirects all imports:
 
-\`\`\`javascript
+```javascript
 // next.config.mjs
 webpack: (config) => {
   config.resolve.alias['@neondatabase/serverless'] = 
     path.resolve('./lib/neon-wrapper.ts');
   return config;
 }
-\`\`\`
+```
 
 This means **you never need to change your import statements** - they work for both databases!
 
@@ -94,7 +94,7 @@ This means **you never need to change your import statements** - they work for b
 
 **Environment Variables (.env.local):**
 
-\`\`\`bash
+```bash
 # Offline PostgreSQL Configuration
 DATABASE_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
 POSTGRES_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
@@ -106,7 +106,7 @@ PGPORT=5432
 PGUSER=isp_admin
 PGPASSWORD=SecurePass123!
 PGDATABASE=isp_system
-\`\`\`
+```
 
 **When to use:**
 - Local development without internet
@@ -115,7 +115,7 @@ PGDATABASE=isp_system
 - Full control over database
 
 **Setup:**
-\`\`\`bash
+```bash
 # Run the installation script
 ./install.sh
 
@@ -123,7 +123,7 @@ PGDATABASE=isp_system
 sudo apt-get install postgresql postgresql-contrib
 sudo systemctl start postgresql
 createdb isp_system
-\`\`\`
+```
 
 ---
 
@@ -131,7 +131,7 @@ createdb isp_system
 
 **Environment Variables (.env.local):**
 
-\`\`\`bash
+```bash
 # Neon Serverless Configuration
 DATABASE_URL=postgresql://user:password@ep-cool-darkness-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
 POSTGRES_URL=postgresql://user:password@ep-cool-darkness-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
@@ -142,7 +142,7 @@ PGHOST=ep-cool-darkness-123456.us-east-2.aws.neon.tech
 PGUSER=user
 PGPASSWORD=password
 PGDATABASE=neondb
-\`\`\`
+```
 
 **When to use:**
 - Production deployment
@@ -162,7 +162,7 @@ PGDATABASE=neondb
 
 ### Example 1: Basic Query (Works with Both Databases)
 
-\`\`\`typescript
+```typescript
 // app/api/customers/route.ts
 import { sql } from '@neondatabase/serverless';
 
@@ -186,11 +186,11 @@ export async function GET() {
     return Response.json({ error: 'Failed to fetch customers' }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ### Example 2: Parameterized Query
 
-\`\`\`typescript
+```typescript
 // app/api/customers/[id]/route.ts
 import { sql } from '@neondatabase/serverless';
 
@@ -219,11 +219,11 @@ export async function GET(
     return Response.json({ error: 'Failed to fetch customer' }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ### Example 3: Transaction (PostgreSQL Only)
 
-\`\`\`typescript
+```typescript
 // app/api/payments/process/route.ts
 import { sql } from '@neondatabase/serverless';
 
@@ -273,11 +273,11 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Payment failed' }, { status: 500 });
   }
 }
-\`\`\`
+```
 
 ### Example 4: Server Action with Database
 
-\`\`\`typescript
+```typescript
 // app/actions/customer-actions.ts
 'use server';
 
@@ -314,11 +314,11 @@ export async function createCustomer(formData: FormData) {
     };
   }
 }
-\`\`\`
+```
 
 ### Example 5: Using with React Server Components
 
-\`\`\`typescript
+```typescript
 // app/dashboard/page.tsx
 import { sql } from '@neondatabase/serverless';
 
@@ -360,7 +360,7 @@ export default async function DashboardPage() {
     </div>
   );
 }
-\`\`\`
+```
 
 ---
 
@@ -369,52 +369,52 @@ export default async function DashboardPage() {
 ### From Offline PostgreSQL to Neon Serverless
 
 1. **Export your data:**
-   \`\`\`bash
+   ```bash
    pg_dump -U isp_admin isp_system > backup.sql
-   \`\`\`
+   ```
 
 2. **Create Neon database and import:**
-   \`\`\`bash
+   ```bash
    psql -h your-neon-host.neon.tech -U your-user -d neondb < backup.sql
-   \`\`\`
+   ```
 
 3. **Update .env.local:**
-   \`\`\`bash
+   ```bash
    # Replace localhost URL with Neon URL
    DATABASE_URL=postgresql://user:pass@your-neon-host.neon.tech/neondb?sslmode=require
-   \`\`\`
+   ```
 
 4. **Restart your application:**
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 ### From Neon Serverless to Offline PostgreSQL
 
 1. **Export from Neon:**
-   \`\`\`bash
+   ```bash
    pg_dump -h your-neon-host.neon.tech -U your-user neondb > backup.sql
-   \`\`\`
+   ```
 
 2. **Set up local PostgreSQL:**
-   \`\`\`bash
+   ```bash
    ./install.sh
-   \`\`\`
+   ```
 
 3. **Import data:**
-   \`\`\`bash
+   ```bash
    psql -U isp_admin -d isp_system < backup.sql
-   \`\`\`
+   ```
 
 4. **Update .env.local:**
-   \`\`\`bash
+   ```bash
    DATABASE_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
-   \`\`\`
+   ```
 
 5. **Restart your application:**
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 ---
 
@@ -425,7 +425,7 @@ export default async function DashboardPage() {
 **Cause:** The system is trying to use Neon serverless driver for a localhost URL.
 
 **Solution:**
-\`\`\`bash
+```bash
 # Check your DATABASE_URL
 echo $DATABASE_URL
 
@@ -435,40 +435,40 @@ DATABASE_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
 
 # Restart the dev server
 npm run dev
-\`\`\`
+```
 
 ### Issue 2: "password authentication failed for user 'isp_admin'"
 
 **Cause:** PostgreSQL user password doesn't match .env.local
 
 **Solution:**
-\`\`\`bash
+```bash
 # Reset the password in PostgreSQL
 sudo -u postgres psql -c "ALTER USER isp_admin WITH PASSWORD 'SecurePass123!';"
 
 # Or run the installation script to fix it
 ./install.sh --fix-db
-\`\`\`
+```
 
 ### Issue 3: "relation 'customers' does not exist"
 
 **Cause:** Database tables haven't been created
 
 **Solution:**
-\`\`\`bash
+```bash
 # Run migrations
 ./install.sh
 
 # Or manually create tables
 psql -U isp_admin -d isp_system -f scripts/000_complete_schema.sql
-\`\`\`
+```
 
 ### Issue 4: Module aliasing not working
 
 **Cause:** Next.js config not loaded or cached build
 
 **Solution:**
-\`\`\`bash
+```bash
 # Clear Next.js cache
 rm -rf .next
 
@@ -477,7 +477,7 @@ npm install
 
 # Restart dev server
 npm run dev
-\`\`\`
+```
 
 ### Issue 5: Slow queries on Neon
 
@@ -496,26 +496,26 @@ npm run dev
 ### 1. Always Use Parameterized Queries
 
 ✅ **Good:**
-\`\`\`typescript
+```typescript
 const result = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
-\`\`\`
+```
 
 ❌ **Bad (SQL Injection Risk):**
-\`\`\`typescript
+```typescript
 const result = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
-\`\`\`
+```
 
 ### 2. Handle Both Result Formats
 
-\`\`\`typescript
+```typescript
 // The wrapper normalizes results, but be defensive
 const result = await sql`SELECT * FROM customers`;
 const customers = result.rows || result;
-\`\`\`
+```
 
 ### 3. Use Transactions for Multi-Step Operations
 
-\`\`\`typescript
+```typescript
 try {
   await sql`BEGIN`;
   // Multiple operations
@@ -524,11 +524,11 @@ try {
   await sql`ROLLBACK`;
   throw error;
 }
-\`\`\`
+```
 
 ### 4. Log Database Errors Properly
 
-\`\`\`typescript
+```typescript
 try {
   const result = await sql`...`;
 } catch (error) {
@@ -540,18 +540,18 @@ try {
   // Log to activity_logs table
   await sql`INSERT INTO activity_logs (action, details) VALUES ('error', ${JSON.stringify(error)})`;
 }
-\`\`\`
+```
 
 ### 5. Use Environment-Specific Configurations
 
-\`\`\`typescript
+```typescript
 // lib/db-config.ts
 export const dbConfig = {
   maxConnections: process.env.NODE_ENV === 'production' ? 20 : 5,
   idleTimeout: 30000,
   connectionTimeout: 10000,
 };
-\`\`\`
+```
 
 ---
 
@@ -559,14 +559,14 @@ export const dbConfig = {
 
 ### Test Script
 
-\`\`\`bash
+```bash
 # Run the comprehensive database test
 bash scripts/test-database-connection.sh
-\`\`\`
+```
 
 ### Manual Testing
 
-\`\`\`typescript
+```typescript
 // scripts/test-connection.ts
 import { sql } from '@neondatabase/serverless';
 
@@ -599,12 +599,12 @@ async function testConnection() {
 }
 
 testConnection();
-\`\`\`
+```
 
 Run with:
-\`\`\`bash
+```bash
 npx tsx scripts/test-connection.ts
-\`\`\`
+```
 
 ---
 

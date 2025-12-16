@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
 
     const { dateFrom, dateTo, granularity = "monthly" } = await request.json()
 
+    console.log("[v0] Finance revenue - Date range:", { dateFrom, dateTo })
+
     // Get total revenue for the period
     const totalRevenueResult = await sql`
       SELECT 
@@ -21,24 +23,27 @@ export async function POST(request: NextRequest) {
         AND created_at <= ${dateTo}
     `
 
-    // Get revenue by service plan
+    console.log("[v0] Total revenue result:", totalRevenueResult[0])
+
     const revenueByPlanResult = await sql`
       SELECT 
-        sp.name as plan_name,
-        sp.price as plan_price,
+        COALESCE(sp.name, 'No Plan') as plan_name,
+        COALESCE(sp.price, 0) as plan_price,
         COALESCE(SUM(p.amount), 0) as revenue,
-        COUNT(DISTINCT c.id) as customer_count,
+        COUNT(DISTINCT p.customer_id) as customer_count,
         COUNT(p.id) as payment_count
-      FROM service_plans sp
-      LEFT JOIN customer_services cs ON sp.id = cs.service_plan_id
-      LEFT JOIN customers c ON cs.customer_id = c.id
-      LEFT JOIN payments p ON c.id = p.customer_id 
-        AND p.status = 'completed'
+      FROM payments p
+      INNER JOIN customers c ON p.customer_id = c.id
+      LEFT JOIN customer_services cs ON c.id = cs.customer_id AND cs.status = 'active'
+      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      WHERE p.status = 'completed'
         AND p.created_at >= ${dateFrom} 
         AND p.created_at <= ${dateTo}
       GROUP BY sp.id, sp.name, sp.price
       ORDER BY revenue DESC
     `
+
+    console.log("[v0] Revenue by plan:", revenueByPlanResult.length, "plans")
 
     // Get revenue trends based on granularity
     let trendQuery
@@ -85,20 +90,19 @@ export async function POST(request: NextRequest) {
 
     const trendData = await trendQuery
 
-    // Get top revenue customers
     const topCustomersResult = await sql`
       SELECT 
         c.name as customer_name,
         c.email,
-        sp.name as plan_name,
+        COALESCE(sp.name, 'No Plan') as plan_name,
         COALESCE(SUM(p.amount), 0) as total_revenue,
         COUNT(p.id) as payment_count,
         MAX(p.created_at) as last_payment_date
-      FROM customers c
-      LEFT JOIN customer_services cs ON c.id = cs.customer_id
+      FROM payments p
+      INNER JOIN customers c ON p.customer_id = c.id
+      LEFT JOIN customer_services cs ON c.id = cs.customer_id AND cs.status = 'active'
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      LEFT JOIN payments p ON c.id = p.customer_id 
-        AND p.status = 'completed'
+      WHERE p.status = 'completed'
         AND p.created_at >= ${dateFrom} 
         AND p.created_at <= ${dateTo}
       GROUP BY c.id, c.name, c.email, sp.name
@@ -107,10 +111,12 @@ export async function POST(request: NextRequest) {
       LIMIT 10
     `
 
+    console.log("[v0] Top customers:", topCustomersResult.length, "customers")
+
     // Get revenue by payment method
     const paymentMethodResult = await sql`
       SELECT 
-        payment_method,
+        COALESCE(payment_method, 'cash') as payment_method,
         COALESCE(SUM(amount), 0) as revenue,
         COUNT(*) as transaction_count,
         AVG(amount) as avg_amount
@@ -122,16 +128,18 @@ export async function POST(request: NextRequest) {
       ORDER BY revenue DESC
     `
 
+    console.log("[v0] Payment methods:", paymentMethodResult.length, "methods")
+
     // Get recurring vs one-time revenue - simplified to just count payment types
     const recurringRevenueResult = await sql`
       SELECT 
         'One-time' as revenue_type,
-        COALESCE(SUM(p.amount), 0) as revenue,
-        COUNT(p.id) as transaction_count
-      FROM payments p
-      WHERE p.status = 'completed' 
-        AND p.created_at >= ${dateFrom}
-        AND p.created_at <= ${dateTo}
+        COALESCE(SUM(amount), 0) as revenue,
+        COUNT(id) as transaction_count
+      FROM payments 
+      WHERE status = 'completed' 
+        AND created_at >= ${dateFrom}
+        AND created_at <= ${dateTo}
     `
 
     // Calculate growth metrics
@@ -187,12 +195,12 @@ export async function POST(request: NextRequest) {
       paymentCount: Number(customer.payment_count),
       lastPaymentDate: customer.last_payment_date,
       avgPaymentValue:
-        Number(customer.payment_count) > 0 ? Number(customer.totalRevenue) / Number(customer.payment_count) : 0,
+        Number(customer.payment_count) > 0 ? Number(customer.total_revenue) / Number(customer.payment_count) : 0,
     }))
 
     // Format payment methods
     const paymentMethods = paymentMethodResult.map((method) => ({
-      method: method.payment_method || "Unknown",
+      method: method.payment_method || "cash",
       revenue: Number(method.revenue),
       transactionCount: Number(method.transaction_count),
       avgAmount: Number(method.avg_amount),
@@ -234,9 +242,17 @@ export async function POST(request: NextRequest) {
       },
     }
 
+    console.log("[v0] Formatted data - topCustomers:", topCustomers.length, "paymentMethods:", paymentMethods.length)
+
+    console.log("[v0] Final response summary:", {
+      totalRevenue: responseData.summary.totalRevenue,
+      topCustomersCount: responseData.topCustomers.length,
+      paymentMethodsCount: responseData.paymentMethods.length,
+    })
+
     return NextResponse.json(responseData)
   } catch (error) {
-    console.error("Revenue tracking error:", error)
+    console.error("[v0] Revenue tracking error:", error)
     return NextResponse.json({ error: "Failed to fetch revenue data" }, { status: 500 })
   }
 }

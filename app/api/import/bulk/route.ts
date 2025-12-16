@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
           await sql`
             INSERT INTO customers (
-              account_number, first_name, last_name, email, phone, id_number,
+              account_number, first_name, last_name, email, phone, national_id,
               customer_type, business_name, business_type, tax_number,
               address, city, state, postal_code, country,
               installation_address, billing_address, gps_coordinates,
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
               ${row.last_name || ""},
               ${row.email || null},
               ${row.phone || ""},
-              ${row.id_number || null},
+              ${row.national_id || null},
               ${row.customer_type || "individual"},
               ${row.business_name || null},
               ${row.business_type || null},

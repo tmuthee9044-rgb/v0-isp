@@ -313,352 +313,354 @@ function AddServiceModal({
           </div>
         )}
 
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="plans">Service Plans</TabsTrigger>
-            <TabsTrigger value="configuration">Network Config</TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-          </TabsList>
+        <form onSubmit={handleSubmit}>
+          <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="plans">Service Plans</TabsTrigger>
+              <TabsTrigger value="configuration">Network Config</TabsTrigger>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="plans" className="space-y-4">
-            {loadingPlans ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                <p className="mt-2 text-sm text-muted-foreground">Loading service plans...</p>
-              </div>
-            ) : servicePlans.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">No service plans available. Please contact administrator.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {servicePlans.map((plan) => (
-                  <Card
-                    key={plan.id}
-                    className={`cursor-pointer transition-all ${
-                      selectedPlan === plan.id.toString() ? "ring-2 ring-primary border-primary" : "hover:shadow-md"
-                    } ${plan.popular ? "border-primary" : ""}`}
-                    onClick={() => setSelectedPlan(plan.id.toString())}
-                  >
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{plan.name}</CardTitle>
-                        {plan.popular && <Badge>Most Popular</Badge>}
-                      </div>
-                      <CardDescription>{plan.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="text-center">
-                          <div className="text-3xl font-bold">KSh {plan.price.toLocaleString()}</div>
-                          <div className="text-sm text-muted-foreground">per month</div>
+            <TabsContent value="plans" className="space-y-4">
+              {loadingPlans ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-sm text-muted-foreground">Loading service plans...</p>
+                </div>
+              ) : servicePlans.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No service plans available. Please contact administrator.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {servicePlans.map((plan) => (
+                    <Card
+                      key={plan.id}
+                      className={`cursor-pointer transition-all ${
+                        selectedPlan === plan.id.toString() ? "ring-2 ring-primary border-primary" : "hover:shadow-md"
+                      } ${plan.popular ? "border-primary" : ""}`}
+                      onClick={() => setSelectedPlan(plan.id.toString())}
+                    >
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg">{plan.name}</CardTitle>
+                          {plan.popular && <Badge>Most Popular</Badge>}
                         </div>
-                        <div className="flex items-center justify-center gap-4 text-sm">
+                        <CardDescription>{plan.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
                           <div className="text-center">
-                            <div className="font-semibold">{plan.speed_down} Mbps</div>
-                            <div className="text-muted-foreground">Download</div>
+                            <div className="text-3xl font-bold">KSh {plan.price.toLocaleString()}</div>
+                            <div className="text-sm text-muted-foreground">per month</div>
                           </div>
-                          <Separator orientation="vertical" className="h-8" />
-                          <div className="text-center">
-                            <div className="font-semibold">{plan.speed_up} Mbps</div>
-                            <div className="text-muted-foreground">Upload</div>
-                          </div>
-                        </div>
-                        <ul className="space-y-1 text-sm">
-                          {plan.features.map((feature, index) => (
-                            <li key={index} className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                              {feature}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="configuration" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Network className="w-5 h-5" />
-                    Connection Configuration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>Connection Type</Label>
-                    <RadioGroup value={connectionType} onValueChange={setConnectionType}>
-                      {connectionTypes.map((type) => (
-                        <div key={type.value} className="flex items-center space-x-2">
-                          <RadioGroupItem value={type.value} id={type.value} />
-                          <Label htmlFor={type.value} className="flex items-center gap-2 cursor-pointer">
-                            <type.icon className="w-4 h-4" />
-                            <div>
-                              <div className="font-medium">{type.label}</div>
-                              <div className="text-sm text-muted-foreground">{type.description}</div>
+                          <div className="flex items-center justify-center gap-4 text-sm">
+                            <div className="text-center">
+                              <div className="font-semibold">{plan.speed_down} Mbps</div>
+                              <div className="text-muted-foreground">Download</div>
                             </div>
-                          </Label>
+                            <Separator orientation="vertical" className="h-8" />
+                            <div className="text-center">
+                              <div className="font-semibold">{plan.speed_up} Mbps</div>
+                              <div className="text-muted-foreground">Upload</div>
+                            </div>
+                          </div>
+                          <ul className="space-y-1 text-sm">
+                            {plan.features.map((feature, index) => (
+                              <li key={index} className="flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-green-500" />
+                                {feature}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
 
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="auto-renew"
-                      checked={autoRenew}
-                      onCheckedChange={(checked) => setAutoRenew(checked as boolean)}
-                    />
-                    <Label htmlFor="auto-renew">Enable automatic renewal</Label>
-                  </div>
+            <TabsContent value="configuration" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Network className="w-5 h-5" />
+                      Connection Configuration
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label>Connection Type</Label>
+                      <RadioGroup value={connectionType} onValueChange={setConnectionType}>
+                        {connectionTypes.map((type) => (
+                          <div key={type.value} className="flex items-center space-x-2">
+                            <RadioGroupItem value={type.value} id={type.value} />
+                            <Label htmlFor={type.value} className="flex items-center gap-2 cursor-pointer">
+                              <type.icon className="w-4 h-4" />
+                              <div>
+                                <div className="font-medium">{type.label}</div>
+                                <div className="text-sm text-muted-foreground">{type.description}</div>
+                              </div>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
 
-                  <div className="border-t pt-4">
                     <div className="flex items-center space-x-2">
                       <Checkbox
-                        id="admin-override"
-                        checked={adminOverride}
-                        onCheckedChange={(checked) => setAdminOverride(checked as boolean)}
+                        id="auto-renew"
+                        checked={autoRenew}
+                        onCheckedChange={(checked) => setAutoRenew(checked as boolean)}
                       />
-                      <Label htmlFor="admin-override" className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-500" />
-                        Admin Override - Activate without payment
-                      </Label>
+                      <Label htmlFor="auto-renew">Enable automatic renewal</Label>
                     </div>
-                    {adminOverride && (
-                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                        <p className="text-sm text-amber-800">
-                          <strong>Warning:</strong> This will activate the service immediately without payment. If no
-                          payment is received by midnight, the service will be automatically suspended.
-                        </p>
+
+                    <div className="border-t pt-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="admin-override"
+                          checked={adminOverride}
+                          onCheckedChange={(checked) => setAdminOverride(checked as boolean)}
+                        />
+                        <Label htmlFor="admin-override" className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-500" />
+                          Admin Override - Activate without payment
+                        </Label>
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                      {adminOverride && (
+                        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <strong>Warning:</strong> This will activate the service immediately without payment. If no
+                            payment is received by midnight, the service will be automatically suspended.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Globe className="w-5 h-5" />
+                      IP Address Configuration
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label htmlFor="ip-address">IP Address</Label>
+                      <Select value={selectedIpAddress} onValueChange={setSelectedIpAddress}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select IP address from pool" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto-assign from pool</SelectItem>
+                          {ipPools.map((pool) => (
+                            <SelectItem key={pool.id} value={pool.ip_address}>
+                              <div className="flex items-center justify-between w-full">
+                                <span>{pool.ip_address}</span>
+                                <div className="flex gap-1">
+                                  {pool.version && (
+                                    <Badge variant="outline" className="ml-2">
+                                      {pool.version}
+                                    </Badge>
+                                  )}
+                                  <Badge variant="outline" className="ml-2">
+                                    {pool.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground mt-1">{ipPools.length} IP addresses available</p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="mac-address">MAC Address</Label>
+                      <Input
+                        id="mac-address"
+                        value={macAddress}
+                        onChange={(e) => setMacAddress(e.target.value)}
+                        placeholder="00:11:22:33:44:55"
+                        pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="lock-to-mac"
+                        checked={lockToMac}
+                        onCheckedChange={(checked) => setLockToMac(checked as boolean)}
+                      />
+                      <Label htmlFor="lock-to-mac">Lock service to MAC address</Label>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
 
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Globe className="w-5 h-5" />
-                    IP Address Configuration
+                    <Shield className="w-5 h-5" />
+                    PPPoE Configuration
                   </CardTitle>
+                  <CardDescription>Point-to-Point Protocol over Ethernet for authenticated connections</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="ip-address">IP Address</Label>
-                    <Select value={selectedIpAddress} onValueChange={setSelectedIpAddress}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select IP address from pool" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Auto-assign from pool</SelectItem>
-                        {ipPools.map((pool) => (
-                          <SelectItem key={pool.id} value={pool.ip_address}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>{pool.ip_address}</span>
-                              <div className="flex gap-1">
-                                {pool.version && (
-                                  <Badge variant="outline" className="ml-2">
-                                    {pool.version}
-                                  </Badge>
-                                )}
-                                <Badge variant="outline" className="ml-2">
-                                  {pool.status}
-                                </Badge>
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-muted-foreground mt-1">{ipPools.length} IP addresses available</p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="mac-address">MAC Address</Label>
-                    <Input
-                      id="mac-address"
-                      value={macAddress}
-                      onChange={(e) => setMacAddress(e.target.value)}
-                      placeholder="00:11:22:33:44:55"
-                      pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
-                    />
-                  </div>
-
                   <div className="flex items-center space-x-2">
                     <Checkbox
-                      id="lock-to-mac"
-                      checked={lockToMac}
-                      onCheckedChange={(checked) => setLockToMac(checked as boolean)}
+                      id="pppoe-enabled"
+                      checked={pppoeEnabled}
+                      onCheckedChange={(checked) => setPppoeEnabled(checked as boolean)}
                     />
-                    <Label htmlFor="lock-to-mac">Lock service to MAC address</Label>
+                    <Label htmlFor="pppoe-enabled">Enable PPPoE Authentication</Label>
+                  </div>
+
+                  {pppoeEnabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <Label htmlFor="pppoe-username">PPPoE Username</Label>
+                        <Input
+                          id="pppoe-username"
+                          value={pppoeUsername}
+                          onChange={(e) => setPppoeUsername(e.target.value)}
+                          placeholder="Enter PPPoE username"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Account number: {customerAccountNumber}</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="pppoe-password">PPPoE Password</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="pppoe-password"
+                            type="password"
+                            value={pppoePassword}
+                            onChange={(e) => setPppoePassword(e.target.value)}
+                            placeholder="Enter PPPoE password"
+                          />
+                          <Button type="button" variant="outline" onClick={generatePppoeCredentials} size="sm">
+                            Generate
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Click Generate for a secure password</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="summary" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Service Configuration Summary</CardTitle>
+                  <CardDescription>Review the service configuration before adding</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {selectedPlanData && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <h4 className="font-medium">Service Plan</h4>
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium">{selectedPlanData.name}</div>
+                          <div className="text-sm text-muted-foreground">{selectedPlanData.description}</div>
+                          <div className="text-sm text-muted-foreground mt-2">
+                            {selectedPlanData.speed_down}Mbps / {selectedPlanData.speed_up}Mbps
+                          </div>
+                          <div className="text-lg font-semibold mt-2">
+                            KSh {selectedPlanData.price.toLocaleString()}/month
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h4 className="font-medium">Configuration</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Connection Type:</span>
+                            <span className="capitalize">{connectionType}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Auto Renew:</span>
+                            <span>{autoRenew ? "Yes" : "No"}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Admin Override:</span>
+                            <span className={adminOverride ? "text-amber-600 font-medium" : ""}>
+                              {adminOverride ? "Yes - Immediate Activation" : "No"}
+                            </span>
+                          </div>
+                          {selectedIpAddress && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">IP Address:</span>
+                              <span>{selectedIpAddress}</span>
+                            </div>
+                          )}
+                          {macAddress && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">MAC Address:</span>
+                              <span>{macAddress}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">MAC Locked:</span>
+                            <span>{lockToMac ? "Yes" : "No"}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">PPPoE Enabled:</span>
+                            <span>{pppoeEnabled ? "Yes" : "No"}</span>
+                          </div>
+                          {pppoeEnabled && pppoeUsername && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">PPPoE Username:</span>
+                              <span>{pppoeUsername}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {adminOverride && (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-amber-800">Admin Override Active</h4>
+                          <p className="text-sm text-amber-700 mt-1">
+                            Service will be activated immediately without payment. A midnight check will suspend the
+                            service if no payment is received by end of day.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-4">
+                    <Button type="submit" disabled={!selectedPlan || !connectionType || isLoading} size="lg">
+                      {isLoading ? (
+                        <>
+                          <Clock className="w-4 h-4 mr-2 animate-spin" />
+                          {editMode ? "Updating Service..." : "Adding Service..."}
+                        </>
+                      ) : (
+                        <>
+                          {editMode ? <Edit className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                          {editMode ? "Update Service" : adminOverride ? "Activate Service Now" : "Add Service"}
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  PPPoE Configuration
-                </CardTitle>
-                <CardDescription>Point-to-Point Protocol over Ethernet for authenticated connections</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="pppoe-enabled"
-                    checked={pppoeEnabled}
-                    onCheckedChange={(checked) => setPppoeEnabled(checked as boolean)}
-                  />
-                  <Label htmlFor="pppoe-enabled">Enable PPPoE Authentication</Label>
-                </div>
-
-                {pppoeEnabled && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <Label htmlFor="pppoe-username">PPPoE Username</Label>
-                      <Input
-                        id="pppoe-username"
-                        value={pppoeUsername}
-                        onChange={(e) => setPppoeUsername(e.target.value)}
-                        placeholder="Enter PPPoE username"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">Account number: {customerAccountNumber}</p>
-                    </div>
-                    <div>
-                      <Label htmlFor="pppoe-password">PPPoE Password</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="pppoe-password"
-                          type="password"
-                          value={pppoePassword}
-                          onChange={(e) => setPppoePassword(e.target.value)}
-                          placeholder="Enter PPPoE password"
-                        />
-                        <Button type="button" variant="outline" onClick={generatePppoeCredentials} size="sm">
-                          Generate
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Click Generate for a secure password</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="summary" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Service Configuration Summary</CardTitle>
-                <CardDescription>Review the service configuration before adding</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {selectedPlanData && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                      <h4 className="font-medium">Service Plan</h4>
-                      <div className="p-3 border rounded-lg">
-                        <div className="font-medium">{selectedPlanData.name}</div>
-                        <div className="text-sm text-muted-foreground">{selectedPlanData.description}</div>
-                        <div className="text-sm text-muted-foreground mt-2">
-                          {selectedPlanData.speed_down}Mbps / {selectedPlanData.speed_up}Mbps
-                        </div>
-                        <div className="text-lg font-semibold mt-2">
-                          KSh {selectedPlanData.price.toLocaleString()}/month
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h4 className="font-medium">Configuration</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Connection Type:</span>
-                          <span className="capitalize">{connectionType}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Auto Renew:</span>
-                          <span>{autoRenew ? "Yes" : "No"}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Admin Override:</span>
-                          <span className={adminOverride ? "text-amber-600 font-medium" : ""}>
-                            {adminOverride ? "Yes - Immediate Activation" : "No"}
-                          </span>
-                        </div>
-                        {selectedIpAddress && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">IP Address:</span>
-                            <span>{selectedIpAddress}</span>
-                          </div>
-                        )}
-                        {macAddress && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">MAC Address:</span>
-                            <span>{macAddress}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">MAC Locked:</span>
-                          <span>{lockToMac ? "Yes" : "No"}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">PPPoE Enabled:</span>
-                          <span>{pppoeEnabled ? "Yes" : "No"}</span>
-                        </div>
-                        {pppoeEnabled && pppoeUsername && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">PPPoE Username:</span>
-                            <span>{pppoeUsername}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {adminOverride && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-amber-800">Admin Override Active</h4>
-                        <p className="text-sm text-amber-700 mt-1">
-                          Service will be activated immediately without payment. A midnight check will suspend the
-                          service if no payment is received by end of day.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end pt-4">
-                  <Button type="submit" disabled={!selectedPlan || !connectionType || isLoading} size="lg">
-                    {isLoading ? (
-                      <>
-                        <Clock className="w-4 h-4 mr-2 animate-spin" />
-                        {editMode ? "Updating Service..." : "Adding Service..."}
-                      </>
-                    ) : (
-                      <>
-                        {editMode ? <Edit className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                        {editMode ? "Update Service" : adminOverride ? "Activate Service Now" : "Add Service"}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
+        </form>
       </DialogContent>
     </Dialog>
   )

@@ -354,20 +354,9 @@ export class MikroTikAPI {
    */
   async getLogs(topics?: string[], limit = 100): Promise<any[]> {
     try {
-      let path = "/log"
+      const path = "/log/print"
 
-      // Build query parameters for filtering
-      const queryParams: string[] = []
-      if (topics && topics.length > 0) {
-        queryParams.push(`topics=${topics.join(",")}`)
-      }
-      if (limit) {
-        queryParams.push(`count=${limit}`)
-      }
-
-      if (queryParams.length > 0) {
-        path += `?${queryParams.join("&")}`
-      }
+      console.log(`[v0] Fetching logs from path: ${path}`)
 
       const result = await this.execute(path)
 
@@ -379,15 +368,32 @@ export class MikroTikAPI {
       // Parse the logs from MikroTik format
       const logs = Array.isArray(result.data) ? result.data : [result.data]
 
+      console.log(`[v0] Received ${logs.length} log entries from MikroTik`)
+
       // Transform MikroTik log format to our application format
-      return logs.map((log: any) => ({
-        id: log[".id"] || Math.random().toString(36).substring(7),
+      let transformedLogs = logs.map((log: any, index: number) => ({
+        id: log[".id"] || `log-${index}`,
         time: log.time || new Date().toISOString(),
         topics: log.topics || "system",
         message: log.message || "",
         level: this.mapLogLevel(log.topics),
         source: "mikrotik",
       }))
+
+      if (topics && topics.length > 0) {
+        transformedLogs = transformedLogs.filter((log) => {
+          const logTopics = log.topics.toLowerCase()
+          return topics.some((topic) => logTopics.includes(topic.toLowerCase()))
+        })
+      }
+
+      if (limit && limit > 0) {
+        transformedLogs = transformedLogs.slice(0, limit)
+      }
+
+      console.log(`[v0] Returning ${transformedLogs.length} filtered logs`)
+
+      return transformedLogs
     } catch (error) {
       console.error("[v0] Error fetching logs:", error)
       return []

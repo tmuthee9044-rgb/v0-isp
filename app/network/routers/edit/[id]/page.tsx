@@ -20,7 +20,6 @@ import {
   Save,
   RefreshCw,
   Database,
-  Users,
   RouterIcon,
   BarChart3,
   FileText,
@@ -29,6 +28,10 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
+  Info,
+  Signal,
+  Network,
+  Terminal,
 } from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
@@ -132,6 +135,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
   const [isTroubleshooting, setIsTroubleshooting] = useState(false)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
 
+  const [routerDetails, setRouterDetails] = useState<any>(null)
+
   useEffect(() => {
     fetchRouter()
     fetchLocations()
@@ -139,6 +144,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
     fetchBlockingRules()
     fetchInterfaces()
     fetchLogs()
+    // Fetch router details on mount
+    fetchRouterDetails()
   }, [routerId])
 
   useEffect(() => {
@@ -301,6 +308,20 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
       }
     } catch (error) {
       console.error("Error fetching logs:", error)
+    }
+  }
+
+  const fetchRouterDetails = async () => {
+    try {
+      const response = await fetch(`/api/network/routers/${routerId}/test-connection`, {
+        method: "POST",
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setRouterDetails(data)
+      }
+    } catch (error) {
+      console.error("Error fetching router details:", error)
     }
   }
 
@@ -587,9 +608,9 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
             <Database className="w-4 h-4" />
             Data & Configuration
           </TabsTrigger>
-          <TabsTrigger value="blocking" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Blocking Pages
+          <TabsTrigger value="router-details" className="flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Router Details
           </TabsTrigger>
           <TabsTrigger value="mikrotik" className="flex items-center gap-2">
             <RouterIcon className="w-4 h-4" />
@@ -839,6 +860,198 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
               height="400px"
             />
           </div>
+        </TabsContent>
+
+        <TabsContent value="router-details" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Connection Status */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Signal className="w-5 h-5" />
+                  Connection Status
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={fetchRouterDetails}>
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                  Refresh
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          routerData?.status === "connected" ? "bg-green-500 animate-pulse" : "bg-red-500"
+                        }`}
+                      />
+                      <p className="font-medium capitalize">{routerData?.status || "Unknown"}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Connection Type</p>
+                    <p className="font-medium mt-1">{routerData?.connection_type || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Router Type</p>
+                    <p className="font-medium mt-1 capitalize">{routerData?.type || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">API Port</p>
+                    <p className="font-medium mt-1">{routerData?.api_port || "N/A"}</p>
+                  </div>
+                </div>
+
+                {routerDetails?.success && (
+                  <div className="pt-4 border-t">
+                    <p className="text-sm font-medium text-green-600 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {routerDetails.message}
+                    </p>
+                    {routerDetails.details?.ping?.latency && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Latency: {routerDetails.details.ping.latency}ms
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* System Resources */}
+            {routerDetails?.details?.system_resources && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    System Resources
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">CPU Load</p>
+                      <p className="font-medium mt-1">{routerDetails.details.system_resources["cpu-load"] || "N/A"}%</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Free Memory</p>
+                      <p className="font-medium mt-1">
+                        {routerDetails.details.system_resources["free-memory"]
+                          ? `${(routerDetails.details.system_resources["free-memory"] / 1024 / 1024).toFixed(0)} MB`
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Memory</p>
+                      <p className="font-medium mt-1">
+                        {routerDetails.details.system_resources["total-memory"]
+                          ? `${(routerDetails.details.system_resources["total-memory"] / 1024 / 1024).toFixed(0)} MB`
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Free HDD Space</p>
+                      <p className="font-medium mt-1">
+                        {routerDetails.details.system_resources["free-hdd-space"]
+                          ? `${(routerDetails.details.system_resources["free-hdd-space"] / 1024 / 1024).toFixed(0)} MB`
+                          : "N/A"}
+                      </p>
+                    </div>
+                  </div>
+                  {routerDetails.details.system_resources.uptime && (
+                    <div className="pt-3 border-t">
+                      <p className="text-sm text-muted-foreground">Uptime</p>
+                      <p className="font-medium mt-1">{routerDetails.details.system_resources.uptime}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Router Identity & Version */}
+            {routerDetails?.details?.identity && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <RouterIcon className="w-5 h-5" />
+                    Router Identity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Identity Name</p>
+                    <p className="font-medium mt-1">{routerDetails.details.identity.name || routerData?.name}</p>
+                  </div>
+                  {routerDetails.details.system_resources?.version && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">RouterOS Version</p>
+                      <p className="font-medium mt-1">{routerDetails.details.system_resources.version}</p>
+                    </div>
+                  )}
+                  {routerDetails.details.system_resources?.["board-name"] && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Board Name</p>
+                      <p className="font-medium mt-1">{routerDetails.details.system_resources["board-name"]}</p>
+                    </div>
+                  )}
+                  {routerDetails.details.system_resources?.["architecture-name"] && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Architecture</p>
+                      <p className="font-medium mt-1">{routerDetails.details.system_resources["architecture-name"]}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Network Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Network className="w-5 h-5" />
+                  Network Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Hostname</p>
+                  <p className="font-medium mt-1 font-mono text-blue-600">{routerData?.hostname || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">SSH Port</p>
+                  <p className="font-medium mt-1">{routerData?.ssh_port || "22"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Username</p>
+                  <p className="font-medium mt-1">{routerData?.username || "N/A"}</p>
+                </div>
+                {routerData?.radius_nas_ip && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">RADIUS NAS IP</p>
+                    <p className="font-medium mt-1 font-mono">{routerData.radius_nas_ip}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Full System Info Card */}
+          {routerDetails?.details && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Terminal className="w-5 h-5" />
+                  Raw System Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
+                  {JSON.stringify(routerDetails.details, null, 2)}
+                </pre>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="blocking" className="space-y-6">

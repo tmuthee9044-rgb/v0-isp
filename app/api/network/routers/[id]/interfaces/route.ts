@@ -62,13 +62,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         txDrops: Number.parseInt(iface["tx-drop"] || "0"),
       }))
 
-      const trafficMonitorResult = await client.monitorInterfaceTraffic()
+      const trafficData: any[] = []
+
+      // Monitor each interface that is running
+      for (const iface of formattedInterfaces) {
+        if (iface.running && !iface.disabled) {
+          const trafficResult = await client.monitorInterfaceTraffic(iface.name)
+          if (trafficResult.success && trafficResult.data) {
+            trafficData.push(...trafficResult.data)
+          }
+        }
+      }
 
       let trafficHistory = []
 
-      if (trafficMonitorResult.success && trafficMonitorResult.data) {
+      if (trafficData.length > 0) {
         // Convert real-time bps to Mbps for each interface
-        trafficHistory = trafficMonitorResult.data.map((traffic: any) => {
+        trafficHistory = trafficData.map((traffic: any) => {
           const now = new Date()
           const history = []
 
@@ -101,7 +111,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         })
 
         try {
-          for (const traffic of trafficMonitorResult.data) {
+          for (const traffic of trafficData) {
             await sql`
               INSERT INTO router_traffic_history (
                 router_id, 
@@ -120,8 +130,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                 ${traffic.txBps},
                 ${traffic.rxPps},
                 ${traffic.txPps},
-                ${traffic.rxByte},
-                ${traffic.txByte},
+                ${traffic.rxByte || 0},
+                ${traffic.txByte || 0},
                 NOW()
               )
             `

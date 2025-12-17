@@ -21,7 +21,10 @@ interface Router {
   api_port: number
   ssh_port: number
   username: string
-  status: "connected" | "disconnected"
+  status: "active" | "inactive"
+  display_status: "connected" | "disconnected"
+  connection_status?: string
+  last_connection_test?: string
   created_at: string
   updated_at: string
 }
@@ -125,15 +128,22 @@ export default function RoutersPage() {
         const result = await response.json()
         if (result.success) {
           toast.success("Connection successful!")
-          // Update router status
-          setRouters((prev) => prev.map((r) => (r.id === router.id ? { ...r, status: "connected" } : r)))
+          setRouters((prev) =>
+            prev.map((r) => (r.id === router.id ? { ...r, display_status: "connected", status: "active" } : r)),
+          )
         } else {
           toast.error(`Connection failed: ${result.message}`)
+          setRouters((prev) =>
+            prev.map((r) => (r.id === router.id ? { ...r, display_status: "disconnected", status: "inactive" } : r)),
+          )
         }
       }
     } catch (error) {
       console.error("Error testing connection:", error)
       toast.error("Failed to test connection")
+      setRouters((prev) =>
+        prev.map((r) => (r.id === router.id ? { ...r, display_status: "disconnected", status: "inactive" } : r)),
+      )
     } finally {
       setTestingConnection(null)
     }
@@ -175,7 +185,6 @@ export default function RoutersPage() {
   }
 
   const handleAddRouter = () => {
-    // Navigate to add router page or open modal
     window.location.href = "/network/routers/add"
   }
 
@@ -183,15 +192,17 @@ export default function RoutersPage() {
     window.location.href = `/network/routers/edit/${router.id}`
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: "connected" | "disconnected") => {
     return status === "connected" ? (
-      <Badge variant="default" className="bg-green-100 text-green-800">
-        <Wifi className="w-3 h-3 mr-1" />
+      <Badge variant="default" className="bg-green-100 text-green-800 flex items-center gap-1.5">
+        <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
+        <Wifi className="w-3 h-3" />
         Connected
       </Badge>
     ) : (
-      <Badge variant="secondary" className="bg-red-100 text-red-800">
-        <WifiOff className="w-3 h-3 mr-1" />
+      <Badge variant="secondary" className="bg-red-100 text-red-800 flex items-center gap-1.5">
+        <span className="w-2 h-2 bg-red-600 rounded-full"></span>
+        <WifiOff className="w-3 h-3" />
         Disconnected
       </Badge>
     )
@@ -269,7 +280,7 @@ export default function RoutersPage() {
                       {router.connection_type ? router.connection_type.replace("_", " ") : "Unknown"}
                     </Badge>
                   </TableCell>
-                  <TableCell>{getStatusBadge(router.status)}</TableCell>
+                  <TableCell>{getStatusBadge(router.display_status)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button

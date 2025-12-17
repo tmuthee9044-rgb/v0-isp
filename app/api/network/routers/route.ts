@@ -19,9 +19,17 @@ export async function GET() {
         l.name as location_name,
         l.city as location_city,
         l.address as location_address,
-        (SELECT COUNT(DISTINCT s.id) FROM ip_subnets s WHERE s.router_id = r.id) as subnet_count
+        (SELECT COUNT(DISTINCT s.id) FROM ip_subnets s WHERE s.router_id = r.id) as subnet_count,
+        rss.sync_status as connection_status,
+        rss.last_sync as last_connection_test,
+        CASE 
+          WHEN r.status = 'active' AND rss.sync_status = 'success' THEN 'connected'
+          WHEN r.status = 'active' THEN 'connected'
+          ELSE 'disconnected'
+        END as display_status
       FROM network_devices r
       LEFT JOIN locations l ON r.location = l.name
+      LEFT JOIN router_sync_status rss ON rss.router_id = r.id
       WHERE r.type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other')
         OR r.type ILIKE '%router%'
       ORDER BY r.id, l.id

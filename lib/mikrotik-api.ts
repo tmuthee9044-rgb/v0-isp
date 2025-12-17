@@ -299,10 +299,105 @@ export class MikroTikAPI {
   }
 
   /**
-   * Get system logs
+   * Monitor interface traffic in real-time
+   * Returns current traffic rates for all interfaces
    */
-  async getLogs(): Promise<MikroTikResponse> {
-    return await this.execute("/log")
+  async monitorInterfaceTraffic(interfaceName?: string): Promise<MikroTikResponse> {
+    try {
+      // MikroTik REST API endpoint for monitoring interface traffic
+      const path = interfaceName
+        ? `/interface/monitor-traffic?interface=${encodeURIComponent(interfaceName)}&once=`
+        : `/interface/monitor-traffic?once=`
+
+      const result = await this.execute(path)
+
+      if (!result.success || !result.data) {
+        return result
+      }
+
+      // Transform the monitoring data to a consistent format
+      const interfaces = Array.isArray(result.data) ? result.data : [result.data]
+
+      const trafficData = interfaces.map((iface: any) => ({
+        name: iface.name || interfaceName || "unknown",
+        rxBps: Number.parseInt(iface["rx-bits-per-second"] || "0"),
+        txBps: Number.parseInt(iface["tx-bits-per-second"] || "0"),
+        rxPps: Number.parseInt(iface["rx-packets-per-second"] || "0"),
+        txPps: Number.parseInt(iface["tx-packets-per-second"] || "0"),
+        rxByte: Number.parseInt(iface["rx-byte"] || "0"),
+        txByte: Number.parseInt(iface["tx-byte"] || "0"),
+        timestamp: new Date().toISOString(),
+      }))
+
+      return {
+        success: true,
+        data: trafficData,
+      }
+    } catch (error: any) {
+      console.error("[v0] Error monitoring interface traffic:", error)
+      return {
+        success: false,
+        error: error.message,
+      }
+    }
+  }
+
+  /**
+   * Get system logs with proper filtering and parsing
+   */
+  async getLogs(topics?: string[], limit = 100): Promise<any[]> {
+    try {
+      let path = "/log"
+
+      // Build query parameters for filtering
+      const queryParams: string[] = []
+      if (topics && topics.length > 0) {
+        queryParams.push(`topics=${topics.join(",")}`)
+      }
+      if (limit) {
+        queryParams.push(`count=${limit}`)
+      }
+
+      if (queryParams.length > 0) {
+        path += `?${queryParams.join("&")}`
+      }
+
+      const result = await this.execute(path)
+
+      if (!result.success || !result.data) {
+        console.error("[v0] Failed to fetch logs:", result.error)
+        return []
+      }
+
+      // Parse the logs from MikroTik format
+      const logs = Array.isArray(result.data) ? result.data : [result.data]
+
+      // Transform MikroTik log format to our application format
+      return logs.map((log: any) => ({
+        id: log[".id"] || Math.random().toString(36).substring(7),
+        time: log.time || new Date().toISOString(),
+        topics: log.topics || "system",
+        message: log.message || "",
+        level: this.mapLogLevel(log.topics),
+        source: "mikrotik",
+      }))
+    } catch (error) {
+      console.error("[v0] Error fetching logs:", error)
+      return []
+    }
+  }
+
+  /**
+   * Map MikroTik log topics to severity levels
+   */
+  private mapLogLevel(topics: string): string {
+    if (!topics) return "info"
+
+    const topicsLower = topics.toLowerCase()
+    if (topicsLower.includes("error") || topicsLower.includes("critical")) return "error"
+    if (topicsLower.includes("warning")) return "warning"
+    if (topicsLower.includes("info") || topicsLower.includes("system")) return "info"
+    return "debug"
   }
 
   /**
@@ -320,6 +415,12 @@ export class MikroTikAPI {
 export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null> {
   try {
     const sql = await getSql()
+
+    if (typeof routerId !== "number" || isNaN(routerId)) {
+      throw new Error(
+        `Invalid routerId parameter. Expected number, got: ${typeof routerId}. Value: ${JSON.stringify(routerId).substring(0, 100)}`,
+      )
+    }
 
     console.log(`[v0] Creating MikroTik client for router ID: ${routerId}`)
 

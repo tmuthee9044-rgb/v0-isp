@@ -202,10 +202,30 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
 
   const fetchTrafficData = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/traffic-history`)
+      const response = await fetch(`/api/network/routers/${routerId}/monitor`)
       if (response.ok) {
         const data = await response.json()
-        setTrafficData(data.history || [])
+        // Convert monitor data to traffic chart format
+        if (data.realtime && data.performance) {
+          const trafficPoints = data.performance
+            .slice(0, 20)
+            .reverse()
+            .map((point: any) => ({
+              time: new Date(point.timestamp).toLocaleTimeString(),
+              tx: point.bandwidth_out || 0,
+              rx: point.bandwidth_in || 0,
+            }))
+          setTrafficData(trafficPoints)
+        } else {
+          // If no historical data, create single current point
+          setTrafficData([
+            {
+              time: new Date().toLocaleTimeString(),
+              tx: 0,
+              rx: 0,
+            },
+          ])
+        }
       } else {
         setTrafficData([])
       }
@@ -810,8 +830,7 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
             </Card>
           </div>
 
-          {/* GPS Location Picker */}
-          <div className="grid grid-cols-1 gap-6">
+          <div className="w-full">
             <MapPicker
               title="Router GPS Location"
               onLocationSelect={handleLocationSelect}

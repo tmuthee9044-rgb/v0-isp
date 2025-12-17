@@ -11,6 +11,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid router ID" }, { status: 400 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const isLive = searchParams.get("live") === "true"
+    const range = searchParams.get("range") || "24h"
+
     const routers = await sql`
       SELECT * FROM network_devices WHERE id = ${routerId}
     `
@@ -58,49 +62,98 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         txDrops: Number.parseInt(iface["tx-drop"] || "0"),
       }))
 
-      // Generate traffic history from recent stats
-      const trafficHistory = formattedInterfaces.map((iface: any) => {
-        const history = []
-        const now = new Date()
+      const trafficMonitorResult = await client.monitorInterfaceTraffic()
 
-        // Get recent traffic data (last 24 points)
-        for (let i = 23; i >= 0; i--) {
-          const time = new Date(now.getTime() - i * 60 * 60 * 1000)
-          // Calculate Mbps from bytes (rough estimation)
-          const rxMbps = iface.rxBytes / (1024 * 1024 * 8) / 24
-          const txMbps = iface.txBytes / (1024 * 1024 * 8) / 24
+      let trafficHistory = []
 
-          history.push({
-            time: time.toISOString(),
-            rxMbps: Math.max(0, rxMbps + (Math.random() - 0.5) * rxMbps * 0.3),
-            txMbps: Math.max(0, txMbps + (Math.random() - 0.5) * txMbps * 0.3),
-          })
+      if (trafficMonitorResult.success && trafficMonitorResult.data) {
+        // Convert real-time bps to Mbps for each interface
+        trafficHistory = trafficMonitorResult.data.map((traffic: any) => {
+          const now = new Date()
+          const history = []
+
+          // For live data, get actual current traffic rates
+          if (isLive) {
+            // Get last 20 data points from database or create current point
+            history.push({
+              time: now.toISOString(),
+              rxMbps: (traffic.rxBps / 1000000).toFixed(2), // Convert bps to Mbps
+              txMbps: (traffic.txBps / 1000000).toFixed(2),
+            })
+          } else {
+            // For historical data, fetch from database
+            // For now, create a single current point (you can expand this to fetch from DB)
+            history.push({
+              time: now.toISOString(),
+              rxMbps: (traffic.rxBps / 1000000).toFixed(2),
+              txMbps: (traffic.txBps / 1000000).toFixed(2),
+            })
+          }
+
+          return {
+            interface: traffic.name,
+            history,
+            currentRxMbps: (traffic.rxBps / 1000000).toFixed(2),
+            currentTxMbps: (traffic.txBps / 1000000).toFixed(2),
+            currentRxPps: traffic.rxPps,
+            currentTxPps: traffic.txPps,
+          }
+        })
+
+        try {
+          for (const traffic of trafficMonitorResult.data) {
+            await sql`
+              INSERT INTO router_traffic_history (
+                router_id, 
+                interface_name, 
+                rx_bps, 
+                tx_bps, 
+                rx_pps, 
+                tx_pps,
+                rx_bytes,
+                tx_bytes,
+                recorded_at
+              ) VALUES (
+                ${routerId},
+                ${traffic.name},
+                ${traffic.rxBps},
+                ${traffic.txBps},
+                ${traffic.rxPps},
+                ${traffic.txPps},
+                ${traffic.rxByte},
+                ${traffic.txByte},
+                NOW()
+              )
+            `
+          }
+        } catch (dbError) {
+          console.error("[v0] Error storing traffic history:", dbError)
+          // Continue even if DB insert fails
         }
-
-        return {
-          interface: iface.name,
-          history,
-        }
-      })
+      }
 
       await client.disconnect()
 
-      console.log("[v0] Fetched real MikroTik interface data:", formattedInterfaces.length, "interfaces")
+      console.log(
+        "[v0] Fetched real MikroTik interface data:",
+        formattedInterfaces.length,
+        "interfaces with live traffic",
+      )
 
       return NextResponse.json({
         success: true,
         interfaces: formattedInterfaces,
         trafficHistory,
+        isLive: isLive,
       })
     } catch (mikrotikError: any) {
       console.error("[v0] MikroTik API error:", mikrotikError)
       await client.disconnect()
 
-      // Return error with helpful message
       return NextResponse.json(
         {
           error: `Failed to connect to MikroTik router: ${mikrotikError.message}`,
-          details: "Check router IP, credentials, and API access",
+          details: "Check router IP, credentials, and API access. Ensure REST API is enabled on the router.",
         },
         { status: 500 },
       )

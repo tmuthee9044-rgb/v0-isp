@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { releaseIPAddress } from "@/lib/ip-management"
+import { provisionServiceToRouter } from "@/lib/router-provisioning"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -88,6 +89,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const pppoePassword = formData.get("pppoe_password") as string
     const inventoryItems = formData.get("inventory_items") as string
     const adminOverride = formData.get("admin_override") === "on"
+    const routerId = formData.get("router_id") as string
 
     console.log("[v0] Checking for existing service...")
     const existingService = await sql`
@@ -126,9 +128,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     const initialStatus = adminOverride ? "active" : "pending"
 
-    console.log("[v0] Creating new service with status:", initialStatus) // Debug log
+    console.log("[v0] Creating new service with status:", initialStatus)
 
-    // Execute queries sequentially instead
     const result = await sql`
       INSERT INTO customer_services (
         customer_id, 
@@ -137,6 +138,9 @@ export async function addCustomerService(customerId: number, formData: FormData)
         monthly_fee, 
         start_date,
         connection_type,
+        router_id,
+        pppoe_username,
+        pppoe_password,
         created_at
       ) VALUES (
         ${customerId},
@@ -145,6 +149,9 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlan[0].price},
         NOW(),
         ${connectionType},
+        ${routerId ? Number.parseInt(routerId) : null},
+        ${pppoeUsername || null},
+        ${pppoePassword || null},
         NOW()
       ) RETURNING *
     `
@@ -235,6 +242,28 @@ export async function addCustomerService(customerId: number, formData: FormData)
           NOW()
         )
       `
+
+      if (routerId && (pppoeEnabled || allocatedIpAddress)) {
+        console.log("[v0] Auto-provisioning service to router...")
+
+        const provisionResult = await provisionServiceToRouter({
+          serviceId,
+          customerId,
+          routerId: Number.parseInt(routerId),
+          ipAddress: allocatedIpAddress || undefined,
+          connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
+          pppoeUsername: pppoeUsername || undefined,
+          pppoePassword: pppoePassword || undefined,
+          downloadSpeed: servicePlan[0].speed_download,
+          uploadSpeed: servicePlan[0].speed_upload,
+        })
+
+        if (!provisionResult.success) {
+          console.log("[v0] Warning: Auto-provision failed:", provisionResult.error)
+        } else {
+          console.log("[v0] Service auto-provisioned successfully")
+        }
+      }
     }
 
     if (inventoryItems) {

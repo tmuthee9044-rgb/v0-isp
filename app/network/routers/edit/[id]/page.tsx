@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,7 +13,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Switch } from "@/components/ui/switch"
-import { Eye, EyeOff, ArrowLeft, Save, RefreshCw, Database, Users, RouterIcon, BarChart3, FileText } from "lucide-react"
+import {
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Save,
+  RefreshCw,
+  Database,
+  Users,
+  RouterIcon,
+  BarChart3,
+  FileText,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { MapPicker } from "@/components/ui/map-picker"
@@ -34,6 +50,12 @@ interface Router {
   updated_at: string
   gps_latitude?: number
   gps_longitude?: number
+  mikrotik_user?: string
+  trafficking_record?: string
+  speed_control?: string
+  save_visited_ips?: boolean
+  radius_secret?: string
+  radius_nas_ip?: string
 }
 
 interface Location {
@@ -67,6 +89,7 @@ interface RouterInterface {
   rxPackets: number
   txPackets: number
   rxErrors: number
+  txErrors: number // Added txErrors based on usage in formattedBytes
   txDrops: number
 }
 
@@ -86,9 +109,8 @@ interface LogEntry {
   message: string
 }
 
-export default function EditRouterPage() {
+export default function EditRouterPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const params = useParams()
   const routerId = params.id as string
 
   const [routerData, setRouterData] = useState<Router | null>(null)
@@ -105,6 +127,10 @@ export default function EditRouterPage() {
   const [logFilter, setLogFilter] = useState<string>("")
   const [liveTraffic, setLiveTraffic] = useState<InterfaceTraffic[]>([])
   const [historicalRange, setHistoricalRange] = useState<"24h" | "7d" | "30d">("24h")
+
+  const [troubleshootResults, setTroubleshootResults] = useState<any>(null)
+  const [isTroubleshooting, setIsTroubleshooting] = useState(false)
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false)
 
   useEffect(() => {
     fetchRouter()
@@ -149,10 +175,14 @@ export default function EditRouterPage() {
           gps_latitude: data.gps_latitude || -1.2921,
           gps_longitude: data.gps_longitude || 36.8219,
         })
+      } else {
+        // Handle cases where router is not found
+        setRouterData(null)
       }
     } catch (error) {
       console.error("Error fetching router:", error)
       toast.error("Failed to fetch router data")
+      setRouterData(null) // Ensure routerData is null on error
     } finally {
       setLoading(false)
     }
@@ -272,7 +302,12 @@ export default function EditRouterPage() {
   }
 
   const formatBytes = (bytes: number) => {
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB"
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const dm = 2
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
   }
 
   const formatLogTime = (isoString: string) => {
@@ -341,9 +376,40 @@ export default function EditRouterPage() {
     }))
   }
 
+  const handleTroubleshoot = async () => {
+    setIsTroubleshooting(true)
+    setShowTroubleshoot(true)
+    setTroubleshootResults(null)
+
+    try {
+      const response = await fetch(`/api/network/routers/${routerId}/troubleshoot`, {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error("Troubleshooting request failed")
+      }
+
+      const data = await response.json()
+      setTroubleshootResults(data)
+    } catch (error) {
+      console.error("[v0] Troubleshooting error:", error)
+      toast.error("Troubleshooting Failed: Could not complete router diagnostics")
+    } finally {
+      setIsTroubleshooting(false)
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    if (status === "success") return <CheckCircle2 className="w-5 h-5 text-green-500" />
+    if (status === "failed") return <XCircle className="w-5 h-5 text-red-500" />
+    if (status === "running") return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+    return <AlertTriangle className="w-5 h-5 text-yellow-500" />
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
     )
@@ -352,7 +418,7 @@ export default function EditRouterPage() {
   if (!routerData) {
     return (
       <div className="text-center py-8">
-        <p className="text-muted-foreground">Router not found</p>
+        <p className="text-muted-foreground">Router not found or failed to load.</p>
       </div>
     )
   }
@@ -367,25 +433,132 @@ export default function EditRouterPage() {
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Router Configuration</h1>
+            <h1 className="text-2xl font-bold">Router Configuration: {routerData.name}</h1>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Start</span>
+              <span>Network</span>
               <span>/</span>
-              <span>Lista Routers</span>
+              <span>Routers</span>
               <span>/</span>
-              <span className="text-blue-600">Edit router</span>
+              <span className="text-blue-600">Edit {routerData.name}</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={fetchRouter}>
             <RefreshCw className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => router.push("/network/routers")}>
             ✕
           </Button>
         </div>
       </div>
+
+      {/* Troubleshooting Section */}
+      <Card className="border-2 border-primary/20">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              <CardTitle>Connection Troubleshooting</CardTitle>
+            </div>
+            <Button onClick={handleTroubleshoot} disabled={isTroubleshooting}>
+              {isTroubleshooting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Running Diagnostics...
+                </>
+              ) : (
+                <>
+                  <Activity className="w-4 h-4 mr-2" />
+                  Run Diagnostics
+                </>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+
+        {showTroubleshoot && (
+          <CardContent className="space-y-4">
+            {troubleshootResults ? (
+              <>
+                {/* Overall Status */}
+                <div className="flex items-center gap-4 p-4 rounded-lg bg-muted">
+                  <div className="flex-1">
+                    <div className="text-sm text-muted-foreground">Overall Status</div>
+                    <div className="text-lg font-semibold">
+                      {troubleshootResults.overallStatus === "healthy" && (
+                        <span className="text-green-500">✓ All Systems Operational</span>
+                      )}
+                      {troubleshootResults.overallStatus === "partial" && (
+                        <span className="text-yellow-500">⚠ Partial Connectivity</span>
+                      )}
+                      {troubleshootResults.overallStatus === "failed" && (
+                        <span className="text-red-500">✗ Connection Failed</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold">
+                      {troubleshootResults.summary.passed}/{troubleshootResults.summary.total}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Tests Passed</div>
+                  </div>
+                </div>
+
+                {/* Diagnostic Tests */}
+                <div className="space-y-3">
+                  {troubleshootResults.tests.map((test: any, index: number) => (
+                    <div
+                      key={index}
+                      className={`p-4 rounded-lg border ${
+                        test.status === "success"
+                          ? "border-green-200 bg-green-50"
+                          : test.status === "failed"
+                            ? "border-red-200 bg-red-50"
+                            : "border-yellow-200 bg-yellow-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {getStatusIcon(test.status)}
+                        <div className="flex-1">
+                          <div className="font-semibold">{test.name}</div>
+                          {test.error && <div className="text-sm text-red-600 mt-1">{test.error}</div>}
+                          {test.details && (
+                            <div className="mt-2 space-y-1">
+                              {Object.entries(test.details).map(([key, value]: any) => (
+                                <div key={key} className="text-sm">
+                                  <span className="font-medium">{key}:</span>{" "}
+                                  <span className="text-muted-foreground">
+                                    {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Timestamp */}
+                <div className="text-xs text-muted-foreground text-right">
+                  Completed at {new Date(troubleshootResults.timestamp).toLocaleString()}
+                </div>
+              </>
+            ) : isTroubleshooting ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <span className="ml-3 text-muted-foreground">Running diagnostic tests...</span>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Click "Run Diagnostics" to test router connectivity.
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       {/* Main Content */}
       <Tabs defaultValue="data-config" className="space-y-6">
@@ -423,9 +596,9 @@ export default function EditRouterPage() {
                 <form onSubmit={handleSubmit}>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="router-number">Router Number</Label>
+                      <Label htmlFor="router-name">Router Name</Label>
                       <Input
-                        id="router-number"
+                        id="router-name"
                         value={formData.name}
                         onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                         placeholder="Router Demo"
@@ -480,19 +653,78 @@ export default function EditRouterPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="security">Security</Label>
-                      <Select value="ppp_accounting_radius" onValueChange={() => {}}>
+                      <Label htmlFor="connection-type">Connection Type</Label>
+                      <Select
+                        value={formData.connection_type}
+                        onValueChange={(value: any) => setFormData((prev) => ({ ...prev, connection_type: value }))}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none_accounting_api">None / Accounting API</SelectItem>
-                          <SelectItem value="ppp_accounting_api">PPP / Accounting API</SelectItem>
-                          <SelectItem value="hotspot_accounting_api">Hotspot / Accounting API</SelectItem>
-                          <SelectItem value="ppp_accounting_radius">PPP / Accounting Radius</SelectItem>
-                          <SelectItem value="hotspot_accounting_radius">Hotspot / Accounting Radius</SelectItem>
+                          <SelectItem value="public_ip">Public IP</SelectItem>
+                          <SelectItem value="private_ip">Private IP</SelectItem>
+                          <SelectItem value="vpn">VPN</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="api-port">API Port</Label>
+                      <Input
+                        id="api-port"
+                        type="number"
+                        value={formData.api_port}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, api_port: Number.parseInt(e.target.value, 10) }))
+                        }
+                        placeholder="8728"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="ssh-port">SSH Port</Label>
+                      <Input
+                        id="ssh-port"
+                        type="number"
+                        value={formData.ssh_port}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, ssh_port: Number.parseInt(e.target.value, 10) }))
+                        }
+                        placeholder="22"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, username: e.target.value }))}
+                        placeholder="admin"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          value={formData.password}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                          placeholder="••••"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-2 top-1/2 -translate-y-1/2"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Radius Configuration */}
@@ -531,12 +763,17 @@ export default function EditRouterPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <Select defaultValue="all-interfaces">
+                  <Select value={selectedInterface} onValueChange={setSelectedInterface}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select Interface" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all-interfaces">Select Interface</SelectItem>
+                      <SelectItem value="all">All Interfaces</SelectItem>
+                      {interfaces.map((iface) => (
+                        <SelectItem key={iface.name} value={iface.name}>
+                          {iface.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
 
@@ -545,7 +782,7 @@ export default function EditRouterPage() {
                       <LineChart data={trafficData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="time" />
-                        <YAxis domain={[0, 1.0]} tickFormatter={(value) => `${value.toFixed(1)} Mbps`} />
+                        <YAxis tickFormatter={(value) => `${value.toFixed(1)} Mbps`} />
                         <Tooltip
                           formatter={(value: number, name: string) => [
                             `${value.toFixed(2)} Mbps`,
@@ -561,11 +798,11 @@ export default function EditRouterPage() {
                   <div className="flex justify-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-red-500"></div>
-                      <span>TX: 0 Mbps</span>
+                      <span>TX: {trafficData[trafficData.length - 1]?.tx.toFixed(2) || "0.00"} Mbps</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-blue-500"></div>
-                      <span>RX: 0 Mbps</span>
+                      <span>RX: {trafficData[trafficData.length - 1]?.rx.toFixed(2) || "0.00"} Mbps</span>
                     </div>
                   </div>
                 </div>
@@ -952,8 +1189,8 @@ export default function EditRouterPage() {
                           <TableCell>{iface.rxPackets.toLocaleString()}</TableCell>
                           <TableCell>{iface.txPackets.toLocaleString()}</TableCell>
                           <TableCell>
-                            {iface.rxErrors + iface.txErrors > 0 ? (
-                              <span className="text-red-600">{iface.rxErrors + iface.txErrors}</span>
+                            {(iface.rxErrors || 0) + (iface.txErrors || 0) > 0 ? (
+                              <span className="text-red-600">{(iface.rxErrors || 0) + (iface.txErrors || 0)}</span>
                             ) : (
                               <span className="text-green-600">0</span>
                             )}

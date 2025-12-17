@@ -1,5 +1,6 @@
-import { RouterOSAPI } from "node-routeros"
 import { getSql } from "@/lib/db"
+import { fetch } from "node-fetch"
+import { AbortSignal } from "abort-controller"
 
 export interface MikroTikConfig {
   host: string
@@ -7,6 +8,7 @@ export interface MikroTikConfig {
   username: string
   password: string
   timeout?: number
+  useSSL?: boolean
 }
 
 export interface MikroTikCommand {
@@ -21,27 +23,38 @@ export interface MikroTikResponse {
 }
 
 /**
- * MikroTik RouterOS API Client
- * Implements the RouterOS API protocol for managing MikroTik routers
+ * MikroTik RouterOS API Client using HTTP/REST API
+ * Implements the RouterOS REST API protocol for managing MikroTik routers
  */
 export class MikroTikAPI {
   private config: MikroTikConfig
   private connected = false
-  private client: RouterOSAPI | null = null
+  private baseUrl: string
+  private authHeader: string
 
   constructor(config: MikroTikConfig) {
     this.config = {
       ...config,
       timeout: config.timeout || 10000,
+      useSSL: config.useSSL || false,
     }
+
+    // MikroTik REST API is available on the web port (80/443 by default)
+    const protocol = this.config.useSSL ? "https" : "http"
+    const webPort = this.config.useSSL ? 443 : 80
+    this.baseUrl = `${protocol}://${this.config.host}:${webPort}/rest`
+
+    // Create Basic Auth header
+    const credentials = Buffer.from(`${this.config.username}:${this.config.password}`).toString("base64")
+    this.authHeader = `Basic ${credentials}`
   }
 
   /**
-   * Connect to the MikroTik router
+   * Connect to the MikroTik router (test connection)
    */
   async connect(): Promise<boolean> {
     try {
-      console.log(`[v0] Connecting to MikroTik router at ${this.config.host}:${this.config.port}`)
+      console.log(`[v0] Connecting to MikroTik router at ${this.config.host}`)
 
       if (!this.config.host) {
         throw new Error("Missing required parameter: host")
@@ -55,50 +68,59 @@ export class MikroTikAPI {
         )
       }
 
-      this.client = new RouterOSAPI({
-        host: this.config.host,
-        user: this.config.username,
-        password: this.config.password,
-        port: this.config.port,
-        timeout: this.config.timeout,
-      })
+      // Test connection by fetching system identity
+      const result = await this.execute("/system/identity")
 
-      await this.client.connect()
-      this.connected = true
-
-      console.log(`[v0] Successfully connected to MikroTik router at ${this.config.host}:${this.config.port}`)
-      return true
+      if (result.success) {
+        this.connected = true
+        console.log(`[v0] Successfully connected to MikroTik router at ${this.config.host}`)
+        return true
+      } else {
+        throw new Error(result.error || "Connection test failed")
+      }
     } catch (error) {
       console.error(`[v0] MikroTik connection error:`, error)
       this.connected = false
-      this.client = null
       throw error
     }
   }
 
   /**
-   * Execute a command on the MikroTik router
+   * Execute a REST API command on the MikroTik router
    */
-  async execute(command: string, params?: Record<string, string>): Promise<MikroTikResponse> {
-    if (!this.connected || !this.client) {
-      return {
-        success: false,
-        error: "Not connected to router",
-      }
-    }
-
+  async execute(path: string, method = "GET", params?: Record<string, any>): Promise<MikroTikResponse> {
     try {
-      console.log(`[v0] Executing MikroTik command: ${command}`, params)
+      console.log(`[v0] Executing MikroTik ${method} ${path}`, params)
 
-      const result = await this.client.write(command, params || {})
+      const url = `${this.baseUrl}${path}`
+      const options: RequestInit = {
+        method,
+        headers: {
+          Authorization: this.authHeader,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(this.config.timeout || 10000),
+      }
 
-      console.log(`[v0] MikroTik command result:`, result)
+      if (method !== "GET" && params) {
+        options.body = JSON.stringify(params)
+      }
+
+      const response = await fetch(url, options)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const data = await response.json()
+      console.log(`[v0] MikroTik command result:`, data)
 
       return {
         success: true,
-        data: result,
+        data: data,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[v0] MikroTik command execution error:`, error)
       return {
         success: false,
@@ -111,7 +133,6 @@ export class MikroTikAPI {
    * Assign IP address to customer
    */
   async assignIP(ipAddress: string, macAddress: string, customerId: number): Promise<MikroTikResponse> {
-    const command = "/ip/dhcp-server/lease/add"
     const params = {
       address: ipAddress,
       "mac-address": macAddress,
@@ -119,19 +140,14 @@ export class MikroTikAPI {
       server: "dhcp1",
     }
 
-    return await this.execute(command, params)
+    return await this.execute("/ip/dhcp-server/lease", "PUT", params)
   }
 
   /**
    * Release IP address from customer
    */
   async releaseIP(ipAddress: string): Promise<MikroTikResponse> {
-    const command = "/ip/dhcp-server/lease/remove"
-    const params = {
-      address: ipAddress,
-    }
-
-    return await this.execute(command, params)
+    return await this.execute(`/ip/dhcp-server/lease/${ipAddress}`, "DELETE")
   }
 
   /**
@@ -143,7 +159,6 @@ export class MikroTikAPI {
     ipAddress: string,
     profile: string,
   ): Promise<MikroTikResponse> {
-    const command = "/ppp/secret/add"
     const params = {
       name: username,
       password: password,
@@ -151,163 +166,144 @@ export class MikroTikAPI {
       profile: profile,
     }
 
-    return await this.execute(command, params)
+    return await this.execute("/ppp/secret", "PUT", params)
   }
 
   /**
    * Remove PPPoE secret
    */
   async removePPPoESecret(username: string): Promise<MikroTikResponse> {
-    const command = "/ppp/secret/remove"
-    const params = {
-      numbers: username,
-    }
-
-    return await this.execute(command, params)
+    return await this.execute(`/ppp/secret/${username}`, "DELETE")
   }
 
   /**
    * Suspend PPPoE service
    */
   async suspendPPPoE(username: string): Promise<MikroTikResponse> {
-    const command = "/ppp/secret/set"
     const params = {
-      numbers: username,
       disabled: "yes",
     }
 
-    return await this.execute(command, params)
+    return await this.execute(`/ppp/secret/${username}`, "PATCH", params)
   }
 
   /**
    * Reactivate PPPoE service
    */
   async reactivatePPPoE(username: string, profile: string): Promise<MikroTikResponse> {
-    const command = "/ppp/secret/set"
     const params = {
-      numbers: username,
       disabled: "no",
       profile: profile,
     }
 
-    return await this.execute(command, params)
+    return await this.execute(`/ppp/secret/${username}`, "PATCH", params)
   }
 
   /**
    * Get router system resources
    */
   async getSystemResources(): Promise<MikroTikResponse> {
-    const command = "/system/resource/print"
-    return await this.execute(command)
+    return await this.execute("/system/resource")
   }
 
   /**
    * Get active PPPoE sessions
    */
   async getActivePPPoESessions(): Promise<MikroTikResponse> {
-    const command = "/ppp/active/print"
-    return await this.execute(command)
+    return await this.execute("/ppp/active")
   }
 
   /**
    * Get IP address pool information
    */
   async getIPPool(poolName: string): Promise<MikroTikResponse> {
-    const command = "/ip/pool/print"
-    const params = {
-      name: poolName,
-    }
-    return await this.execute(command, params)
+    return await this.execute(`/ip/pool?name=${poolName}`)
   }
 
   /**
    * Add firewall rule for customer
    */
   async addFirewallRule(ipAddress: string, action = "accept", comment?: string): Promise<MikroTikResponse> {
-    const command = "/ip/firewall/filter/add"
     const params = {
       chain: "forward",
       "src-address": ipAddress,
       action: action,
       comment: comment || `Rule for ${ipAddress}`,
     }
-    return await this.execute(command, params)
+    return await this.execute("/ip/firewall/filter", "PUT", params)
   }
 
   /**
    * Remove firewall rule by comment
    */
   async removeFirewallRule(comment: string): Promise<MikroTikResponse> {
-    const command = "/ip/firewall/filter/remove"
-    const params = {
-      comment: comment,
+    // First find the rule by comment
+    const rules = await this.execute(`/ip/firewall/filter?comment=${encodeURIComponent(comment)}`)
+    if (rules.success && rules.data && rules.data.length > 0) {
+      const ruleId = rules.data[0][".id"]
+      return await this.execute(`/ip/firewall/filter/${ruleId}`, "DELETE")
     }
-    return await this.execute(command, params)
+    return { success: false, error: "Rule not found" }
   }
 
   /**
    * Get router interface statistics
    */
   async getInterfaceStats(): Promise<MikroTikResponse> {
-    const command = "/interface/print"
-    const params = {
-      stats: "yes",
-    }
-    return await this.execute(command, params)
+    return await this.execute("/interface")
   }
 
   /**
    * Add address to router
    */
   async addAddress(ipAddress: string, networkInterface: string): Promise<MikroTikResponse> {
-    const command = "/ip/address/add"
     const params = {
       address: ipAddress,
       interface: networkInterface,
     }
-    return await this.execute(command, params)
+    return await this.execute("/ip/address", "PUT", params)
   }
 
   /**
    * Remove address from router
    */
   async removeAddress(ipAddress: string): Promise<MikroTikResponse> {
-    const command = "/ip/address/remove"
-    const params = {
-      address: ipAddress,
-    }
-    return await this.execute(command, params)
+    return await this.execute(`/ip/address/${ipAddress}`, "DELETE")
   }
 
   /**
    * Get DHCP leases
    */
   async getDHCPLeases(): Promise<MikroTikResponse> {
-    const command = "/ip/dhcp-server/lease/print"
-    return await this.execute(command)
+    return await this.execute("/ip/dhcp-server/lease")
   }
 
   /**
    * Get router identity
    */
   async getIdentity(): Promise<MikroTikResponse> {
-    const command = "/system/identity/print"
-    return await this.execute(command)
+    return await this.execute("/system/identity")
   }
 
   /**
-   * Disconnect the API connection
+   * Get interface list
+   */
+  async getInterfaces(): Promise<MikroTikResponse> {
+    return await this.execute("/interface")
+  }
+
+  /**
+   * Get system logs
+   */
+  async getLogs(): Promise<MikroTikResponse> {
+    return await this.execute("/log")
+  }
+
+  /**
+   * Disconnect the API connection (cleanup)
    */
   async disconnect(): Promise<void> {
     console.log(`[v0] Disconnecting from MikroTik router`)
-    if (this.client) {
-      try {
-        await this.client.close()
-      } catch (error) {
-        console.error(`[v0] Error closing MikroTik connection:`, error)
-      }
-      this.client = null
-    }
     this.connected = false
   }
 }

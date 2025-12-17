@@ -30,7 +30,7 @@ export async function GET(request: Request) {
             i.due_date as "dueDate",
             CASE 
               WHEN i.due_date < CURRENT_DATE AND i.status NOT IN ('paid', 'cancelled') 
-              THEN EXTRACT(days FROM CURRENT_DATE - i.due_date)::integer
+              THEN EXTRACT(day FROM (CURRENT_DATE - i.due_date))::integer
               ELSE 0
             END as "daysOverdue"
           FROM invoices i
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
             i.due_date as "dueDate",
             CASE 
               WHEN i.due_date < CURRENT_DATE AND i.status NOT IN ('paid', 'cancelled') 
-              THEN EXTRACT(days FROM CURRENT_DATE - i.due_date)::integer
+              THEN EXTRACT(day FROM (CURRENT_DATE - i.due_date))::integer
               ELSE 0
             END as "daysOverdue"
           FROM invoices i
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
             i.due_date as "dueDate",
             CASE 
               WHEN i.due_date < CURRENT_DATE AND i.status NOT IN ('paid', 'cancelled') 
-              THEN EXTRACT(days FROM CURRENT_DATE - i.due_date)::integer
+              THEN EXTRACT(day FROM (CURRENT_DATE - i.due_date))::integer
               ELSE 0
             END as "daysOverdue"
           FROM invoices i
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
             i.due_date as "dueDate",
             CASE 
               WHEN i.due_date < CURRENT_DATE AND i.status NOT IN ('paid', 'cancelled') 
-              THEN EXTRACT(days FROM CURRENT_DATE - i.due_date)::integer
+              THEN EXTRACT(day FROM (CURRENT_DATE - i.due_date))::integer
               ELSE 0
             END as "daysOverdue"
           FROM invoices i

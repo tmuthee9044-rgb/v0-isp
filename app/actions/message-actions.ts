@@ -227,27 +227,29 @@ export async function createMessageTemplate(data: FormData | any) {
   try {
     const sql = await getSql()
 
-    let name: string, type: "email" | "sms", subject: string, content: string
+    let name: string, type: "email" | "sms", subject: string, content: string, category: string
 
     if (data instanceof FormData) {
       name = data.get("name") as string
       type = data.get("type") as "email" | "sms"
       subject = data.get("subject") as string
       content = data.get("content") as string
+      category = (data.get("category") as string) || "General"
     } else {
       name = data.name
       type = data.type
       subject = data.subject
       content = data.content
+      category = data.category || "General"
     }
 
     // Extract variables from content
     const variables = Array.from(content.matchAll(/\{\{(\w+)\}\}/g), (m) => m[1])
 
     const result = await sql`
-      INSERT INTO message_templates (name, template_type, subject, content, variables)
-      VALUES (${name}, ${type}, ${type === "email" ? subject : null}, ${content}, ${JSON.stringify(variables)})
-      RETURNING id, name, template_type as type, subject, content, variables, is_active as active, created_at, updated_at
+      INSERT INTO message_templates (name, type, category, subject, content, variables)
+      VALUES (${name}, ${type}, ${category}, ${type === "email" ? subject : null}, ${content}, ${JSON.stringify(variables)})
+      RETURNING id, name, type, category, subject, content, variables, active, created_at, updated_at
     `
 
     revalidatePath("/messages")
@@ -262,18 +264,20 @@ export async function updateMessageTemplate(id: number, data: FormData | any) {
   try {
     const sql = await getSql()
 
-    let name: string, type: "email" | "sms", subject: string, content: string
+    let name: string, type: "email" | "sms", subject: string, content: string, category: string
 
     if (data instanceof FormData) {
       name = data.get("name") as string
       type = data.get("type") as "email" | "sms"
       subject = data.get("subject") as string
       content = data.get("content") as string
+      category = (data.get("category") as string) || "General"
     } else {
       name = data.name
       type = data.type
       subject = data.subject
       content = data.content
+      category = data.category || "General"
     }
 
     // Extract variables from content
@@ -281,7 +285,7 @@ export async function updateMessageTemplate(id: number, data: FormData | any) {
 
     await sql`
       UPDATE message_templates 
-      SET name = ${name}, template_type = ${type}, 
+      SET name = ${name}, type = ${type}, category = ${category},
           subject = ${type === "email" ? subject : null}, content = ${content}, 
           variables = ${JSON.stringify(variables)}, updated_at = NOW()
       WHERE id = ${id}

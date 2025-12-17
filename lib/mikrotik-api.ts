@@ -323,7 +323,7 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
         nd.*,
         nd.configuration->>'mikrotik_user' as mikrotik_user,
         nd.configuration->>'mikrotik_password' as mikrotik_password,
-        nd.configuration->>'api_port' as api_port
+        nd.configuration->>'api_port' as config_api_port
       FROM network_devices nd
       WHERE nd.id = ${routerId}
         AND nd.type = 'mikrotik'
@@ -334,19 +334,30 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
       return null
     }
 
-    if (!router.mikrotik_user) {
-      throw new Error("MikroTik username not configured. Please set 'mikrotik_user' in router configuration.")
+    const mikrotikUser = router.mikrotik_user || router.api_username || router.username || "admin"
+    const mikrotikPassword = router.mikrotik_password || router.api_password || router.password
+
+    if (!mikrotikUser) {
+      throw new Error("MikroTik username not configured. Please set API username in router configuration.")
     }
-    if (!router.mikrotik_password) {
-      throw new Error("MikroTik password not configured. Please set 'mikrotik_password' in router configuration.")
+    if (!mikrotikPassword) {
+      throw new Error("MikroTik password not configured. Please set API password in router configuration.")
     }
+
+    const apiPort = router.config_api_port
+      ? Number.parseInt(router.config_api_port)
+      : router.api_port || router.port || 8728
 
     const config: MikroTikConfig = {
       host: router.ip_address,
-      port: router.api_port ? Number.parseInt(router.api_port) : 8728,
-      username: router.mikrotik_user,
-      password: router.mikrotik_password,
+      port: apiPort,
+      username: mikrotikUser,
+      password: mikrotikPassword,
     }
+
+    console.log(
+      `[v0] Creating MikroTik client for router ${routerId} with host ${config.host}:${config.port}, user: ${config.username}`,
+    )
 
     const client = new MikroTikAPI(config)
     const connected = await client.connect()

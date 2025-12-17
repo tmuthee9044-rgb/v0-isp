@@ -7,45 +7,7 @@ import { revalidatePath } from "next/cache"
 export async function updateCompanyProfile(data: any) {
   try {
     const result = await db.query(
-      `
-      UPDATE company_profiles 
-      SET 
-        name = $1,
-        trading_name = $2,
-        registration_number = $3,
-        tax_number = $4,
-        description = $5,
-        industry = $6,
-        company_size = $7,
-        founded_year = $8,
-        primary_color = $9,
-        secondary_color = $10,
-        slogan = $11,
-        physical_address = $12,
-        postal_address = $13,
-        city = $14,
-        country = $15,
-        postal_code = $16,
-        timezone = $17,
-        main_phone = $18,
-        support_phone = $19,
-        main_email = $20,
-        support_email = $21,
-        website = $22,
-        fax = $23,
-        language = $24,
-        currency = $25,
-        date_format = $26,
-        time_format = $27,
-        decimal_separator = $28,
-        thousand_separator = $29,
-        currency_position = $30,
-        fiscal_year_start = $31,
-        week_start = $32,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = (SELECT id FROM company_profiles LIMIT 1)
-      RETURNING *
-    `,
+      "UPDATE company_profiles SET name = $1, trading_name = $2, registration_number = $3, tax_number = $4, description = $5, industry = $6, company_size = $7, founded_year = $8, primary_color = $9, secondary_color = $10, slogan = $11, physical_address = $12, postal_address = $13, city = $14, country = $15, postal_code = $16, timezone = $17, main_phone = $18, support_phone = $19, main_email = $20, support_email = $21, website = $22, fax = $23, language = $24, currency = $25, date_format = $26, time_format = $27, decimal_separator = $28, thousand_separator = $29, currency_position = $30, fiscal_year_start = $31, week_start = $32, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM company_profiles LIMIT 1) RETURNING *",
       [
         data.name,
         data.tradingName,

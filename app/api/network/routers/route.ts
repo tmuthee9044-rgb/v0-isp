@@ -103,7 +103,18 @@ export async function POST(request: NextRequest) {
       locationName = location[0].name
     }
 
-    console.log("[v0] Inserting router with all fields into database...")
+    const configuration = {
+      mikrotik_user: api_username || username || "admin",
+      mikrotik_password: api_password || password || "",
+      api_port: api_port || port || 8728,
+      enable_traffic_recording: enable_traffic_recording !== undefined ? enable_traffic_recording : true,
+      enable_speed_control: enable_speed_control !== undefined ? enable_speed_control : true,
+      blocking_page_url: blocking_page_url || null,
+      radius_secret: radius_secret || null,
+      nas_ip_address: nas_ip_address || null,
+    }
+
+    console.log("[v0] Inserting router with configuration:", configuration)
 
     const result = await sql`
       INSERT INTO network_devices (
@@ -132,6 +143,7 @@ export async function POST(request: NextRequest) {
         longitude,
         notes,
         status,
+        configuration,
         created_at
       ) VALUES (
         ${locationName}, 
@@ -159,6 +171,7 @@ export async function POST(request: NextRequest) {
         ${longitude || null},
         ${notes || null},
         ${status || "active"},
+        ${JSON.stringify(configuration)},
         NOW()
       )
       RETURNING *

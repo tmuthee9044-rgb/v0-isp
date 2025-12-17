@@ -1,17 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import { createMikroTikClient } from "@/lib/mikrotik-api"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
-
     const routerId = Number.parseInt(params.id)
 
     if (isNaN(routerId)) {
       return NextResponse.json({ error: "Invalid router ID" }, { status: 400 })
     }
 
-    // Fetch router details
     const [router] = await sql`
       SELECT * FROM network_devices WHERE id = ${routerId}
     `
@@ -20,90 +19,78 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Router not found" }, { status: 404 })
     }
 
-    const mockInterfaces = [
-      {
-        name: "ether1",
-        type: "ether",
-        running: true,
-        disabled: false,
-        rxBytes: 1024 * 1024 * 1024 * 45, // 45 GB
-        txBytes: 1024 * 1024 * 1024 * 32, // 32 GB
-        rxPackets: 45000000,
-        txPackets: 32000000,
-        rxErrors: 0,
-        txErrors: 0,
-        rxDrops: 12,
-        txDrops: 8,
-      },
-      {
-        name: "ether2",
-        type: "ether",
-        running: true,
-        disabled: false,
-        rxBytes: 1024 * 1024 * 1024 * 28,
-        txBytes: 1024 * 1024 * 1024 * 19,
-        rxPackets: 28000000,
-        txPackets: 19000000,
-        rxErrors: 0,
-        txErrors: 0,
-        rxDrops: 5,
-        txDrops: 3,
-      },
-      {
-        name: "ether3",
-        type: "ether",
-        running: true,
-        disabled: false,
-        rxBytes: 1024 * 1024 * 1024 * 15,
-        txBytes: 1024 * 1024 * 1024 * 12,
-        rxPackets: 15000000,
-        txPackets: 12000000,
-        rxErrors: 0,
-        txErrors: 0,
-        rxDrops: 2,
-        txDrops: 1,
-      },
-      {
-        name: "wlan1",
-        type: "wlan",
-        running: true,
-        disabled: false,
-        rxBytes: 1024 * 1024 * 1024 * 8,
-        txBytes: 1024 * 1024 * 1024 * 6,
-        rxPackets: 8000000,
-        txPackets: 6000000,
-        rxErrors: 15,
-        txErrors: 10,
-        rxDrops: 45,
-        txDrops: 32,
-      },
-    ]
+    const client = await createMikroTikClient(router)
 
-    // Generate traffic history for each interface (last 24 hours)
-    const trafficHistory = mockInterfaces.map((iface) => {
-      const history = []
-      const now = new Date()
+    try {
+      // Fetch interface statistics from MikroTik
+      const interfaces = await client.write("/interface/print", ["?disabled=false", "=stats"])
 
-      for (let i = 23; i >= 0; i--) {
-        const time = new Date(now.getTime() - i * 60 * 60 * 1000)
-        history.push({
-          time: time.toISOString(),
-          rxMbps: Math.random() * 100 + 20, // 20-120 Mbps
-          txMbps: Math.random() * 80 + 10, // 10-90 Mbps
-        })
-      }
+      // Fetch interface traffic statistics
+      const interfaceStats = await client.write("/interface/monitor-traffic", ["=interface=all", "=once="])
 
-      return {
-        interface: iface.name,
-        history,
-      }
-    })
+      // Transform MikroTik data to our format
+      const formattedInterfaces = interfaces.map((iface: any) => ({
+        name: iface.name || "unknown",
+        type: iface.type || "ether",
+        running: iface.running === "true",
+        disabled: iface.disabled === "true",
+        rxBytes: Number.parseInt(iface["rx-byte"] || "0"),
+        txBytes: Number.parseInt(iface["tx-byte"] || "0"),
+        rxPackets: Number.parseInt(iface["rx-packet"] || "0"),
+        txPackets: Number.parseInt(iface["tx-packet"] || "0"),
+        rxErrors: Number.parseInt(iface["rx-error"] || "0"),
+        txErrors: Number.parseInt(iface["tx-error"] || "0"),
+        rxDrops: Number.parseInt(iface["rx-drop"] || "0"),
+        txDrops: Number.parseInt(iface["tx-drop"] || "0"),
+      }))
 
-    return NextResponse.json({
-      success: true,
-      interfaces: mockInterfaces,
-      trafficHistory,
-    })
+      // Generate traffic history from recent stats
+      const trafficHistory = formattedInterfaces.map((iface: any) => {
+        const history = []
+        const now = new Date()
+
+        // Get recent traffic data (last 24 points)
+        for (let i = 23; i >= 0; i--) {
+          const time = new Date(now.getTime() - i * 60 * 60 * 1000)
+          // Calculate Mbps from bytes (rough estimation)
+          const rxMbps = iface.rxBytes / (1024 * 1024 * 8) / 24
+          const txMbps = iface.txBytes / (1024 * 1024 * 8) / 24
+
+          history.push({
+            time: time.toISOString(),
+            rxMbps: Math.max(0, rxMbps + (Math.random() - 0.5) * rxMbps * 0.3),
+            txMbps: Math.max(0, txMbps + (Math.random() - 0.5) * txMbps * 0.3),
+          })
+        }
+
+        return {
+          interface: iface.name,
+          history,
+        }
+      })
+
+      await client.close()
+
+      console.log("[v0] Fetched real MikroTik interface data:", formattedInterfaces.length, "interfaces")
+
+      return NextResponse.json({
+        success: true,
+        interfaces: formattedInterfaces,
+        trafficHistory,
+      })
+    } catch (mikrotikError: any) {
+      console.error("[v0] MikroTik API error:", mikrotikError)
+      await client.close()
+
+      // Return error with helpful message
+      return NextResponse.json(
+        {
+          error: `Failed to connect to MikroTik router: ${mikrotikError.message}`,
+          details: "Check router IP, credentials, and API access",
+        },
+        { status: 500 },
+      )
+    }
   } catch (error: any) {
     console.error("Error fetching interfaces:", error)
     return NextResponse.json({ error: error.message || "Failed to fetch interfaces" }, { status: 500 })

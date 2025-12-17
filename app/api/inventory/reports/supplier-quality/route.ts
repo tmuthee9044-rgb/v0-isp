@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       FROM suppliers s
       LEFT JOIN inventory_items ii ON ii.supplier_id = s.id
       LEFT JOIN equipment_returns er ON er.supplier_id = s.id
-        ${startDate && endDate ? sql`AND er.return_date BETWEEN ${startDate}::date AND ${endDate}::date` : sql``}
+      ${startDate && endDate ? sql`WHERE er.return_date BETWEEN ${startDate}::date AND ${endDate}::date` : sql``}
       GROUP BY s.id, s.company_name, s.contact_name, s.email, s.phone
       HAVING COUNT(DISTINCT ii.id) > 0
       ORDER BY fault_rate ASC NULLS LAST, total_returns DESC

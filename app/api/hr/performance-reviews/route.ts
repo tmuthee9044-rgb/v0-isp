@@ -81,12 +81,15 @@ export async function POST(request: Request) {
       RETURNING id
     `
 
-    // Update employee's performance rating
-    await sql`
-      UPDATE employees
-      SET performance_rating = ${rating}
-      WHERE employee_id = ${employeeId}
-    `
+    try {
+      await sql`
+        UPDATE employees
+        SET performance_rating = ${rating}
+        WHERE employee_id = ${employeeId}
+      `
+    } catch (updateError) {
+      console.log("[v0] Note: performance_rating column not available yet. Run migration script to add it.")
+    }
 
     // Log activity
     await sql`

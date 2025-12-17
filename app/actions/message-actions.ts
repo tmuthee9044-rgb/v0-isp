@@ -188,16 +188,28 @@ export async function getMessageTemplates(type?: "email" | "sms") {
     let templates
     if (type) {
       templates = await sql`
-        SELECT id, name, template_type as type, subject, content, variables, 
-               is_active as active, created_at, updated_at
+        SELECT id, name, 
+               COALESCE(template_type, 'email') as type, 
+               subject, content, 
+               COALESCE(variables, '[]'::jsonb) as variables, 
+               is_active as active, 
+               created_at, updated_at,
+               COALESCE(usage_count, 0) as usage_count,
+               COALESCE(category, 'General') as category
         FROM message_templates 
         WHERE is_active = true AND template_type = ${type}
         ORDER BY created_at DESC
       `
     } else {
       templates = await sql`
-        SELECT id, name, template_type as type, subject, content, variables, 
-               is_active as active, created_at, updated_at
+        SELECT id, name, 
+               COALESCE(template_type, 'email') as type, 
+               subject, content, 
+               COALESCE(variables, '[]'::jsonb) as variables, 
+               is_active as active, 
+               created_at, updated_at,
+               COALESCE(usage_count, 0) as usage_count,
+               COALESCE(category, 'General') as category
         FROM message_templates 
         WHERE is_active = true
         ORDER BY created_at DESC

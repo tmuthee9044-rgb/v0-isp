@@ -16,7 +16,7 @@ export async function POST(request: Request) {
         leave_type, 
         start_date, 
         end_date, 
-        days, 
+        days_requested, 
         reason, 
         status,
         created_at
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         'pending',
         CURRENT_TIMESTAMP
       )
-      RETURNING id, employee_id, leave_type, start_date, end_date, days, status
+      RETURNING id, employee_id, leave_type, start_date, end_date, days_requested as days, status
     `
 
     console.log("[v0] Leave request created successfully:", result[0])

@@ -21,7 +21,7 @@ export async function GET() {
         l.address as location_address,
         (SELECT COUNT(DISTINCT s.id) FROM ip_subnets s WHERE s.router_id = r.id) as subnet_count,
         rss.sync_status as connection_status,
-        rss.last_sync as last_connection_test,
+        rss.last_synced as last_connection_test,
         CASE 
           WHEN r.status = 'active' AND rss.sync_status = 'success' THEN 'connected'
           WHEN r.status = 'active' THEN 'connected'

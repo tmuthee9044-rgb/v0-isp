@@ -306,8 +306,8 @@ export class MikroTikAPI {
     try {
       // MikroTik REST API endpoint for monitoring interface traffic
       const path = interfaceName
-        ? `/interface/monitor-traffic?interface=${encodeURIComponent(interfaceName)}&once=`
-        : `/interface/monitor-traffic?once=`
+        ? `/interface/monitor-traffic?interface=${encodeURIComponent(interfaceName)}&once=yes`
+        : `/interface/monitor-traffic?once=yes`
 
       const result = await this.execute(path)
 

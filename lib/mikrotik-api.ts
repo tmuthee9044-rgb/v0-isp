@@ -304,12 +304,19 @@ export class MikroTikAPI {
    */
   async monitorInterfaceTraffic(interfaceName?: string): Promise<MikroTikResponse> {
     try {
-      // MikroTik REST API endpoint for monitoring interface traffic
-      const path = interfaceName
-        ? `/interface/monitor-traffic?interface=${encodeURIComponent(interfaceName)}&once=yes`
-        : `/interface/monitor-traffic?once=yes`
+      // MikroTik REST API for monitor-traffic works better with POST
+      const path = "/interface/monitor-traffic"
 
-      const result = await this.execute(path)
+      const params: any = {
+        once: true,
+      }
+
+      if (interfaceName) {
+        params.interface = interfaceName
+      }
+
+      console.log(`[v0] Monitoring interface traffic with params:`, params)
+      const result = await this.execute(path, "POST", params)
 
       if (!result.success || !result.data) {
         return result

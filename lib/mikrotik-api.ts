@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db"
-import { fetch } from "node-fetch"
-import { AbortController } from "abort-controller"
+// import { fetch } from "node-fetch"
+// import { AbortController } from "abort-controller"
 
 export interface MikroTikConfig {
   host: string

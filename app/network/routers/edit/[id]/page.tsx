@@ -1278,15 +1278,17 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                                   minute: "2-digit",
                                   second: "2-digit",
                                 }),
-                                rx: h.rxMbps,
-                                tx: h.txMbps,
+                                rx: typeof h.rxMbps === "number" ? h.rxMbps : 0,
+                                tx: typeof h.txMbps === "number" ? h.txMbps : 0,
                               })) || []
                           }
                         >
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="time" />
                           <YAxis label={{ value: "Mbps", angle: -90, position: "insideLeft" }} />
-                          <Tooltip formatter={(value: number) => `${value.toFixed(2)} Mbps`} />
+                          <Tooltip
+                            formatter={(value: any) => `${typeof value === "number" ? value.toFixed(2) : "0.00"} Mbps`}
+                          />
                           <Legend />
                           <Line
                             type="monotone"
@@ -1326,14 +1328,18 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                                     minute: "2-digit",
                                     second: "2-digit",
                                   }),
-                                  rx: h.rxMbps,
-                                  tx: h.txMbps,
+                                  rx: typeof h.rxMbps === "number" ? h.rxMbps : 0,
+                                  tx: typeof h.txMbps === "number" ? h.txMbps : 0,
                                 }))}
                               >
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="time" fontSize={10} />
                                 <YAxis fontSize={10} />
-                                <Tooltip formatter={(value: number) => `${value.toFixed(1)} Mbps`} />
+                                <Tooltip
+                                  formatter={(value: any) =>
+                                    `${typeof value === "number" ? value.toFixed(1) : "0.0"} Mbps`
+                                  }
+                                />
                                 <Line type="monotone" dataKey="rx" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
                                 <Line type="monotone" dataKey="tx" stroke="#ef4444" strokeWidth={1.5} dot={false} />
                               </LineChart>

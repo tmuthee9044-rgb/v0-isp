@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
-import { db } from "@/lib/db"
+import { getSql } from "@/lib/db"
 import { exec } from "child_process"
 import { promisify } from "util"
 
@@ -8,34 +8,34 @@ const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const routerId = params.id
+    const routerId = Number.parseInt(params.id)
     console.log(`[v0] Starting troubleshooting for router ${routerId}`)
 
-    // Fetch router details from database
-    const result = await db.query(`SELECT * FROM network_devices WHERE id = $1`, [routerId])
+    const sql = await getSql()
+    const routers = await sql`SELECT * FROM network_devices WHERE id = ${routerId}`
 
-    if (result.rows.length === 0) {
+    if (!routers || routers.length === 0) {
       return NextResponse.json({ error: "Router not found" }, { status: 404 })
     }
 
-    const router = result.rows[0]
+    const router = routers[0]
     const diagnostics: any = {
       routerId: router.id,
       routerName: router.name,
-      hostname: router.hostname,
+      hostname: router.ip_address,
       timestamp: new Date().toISOString(),
       tests: [],
     }
 
     // Test 1: Network Connectivity (Ping)
-    console.log(`[v0] Test 1: Pinging ${router.hostname}`)
+    console.log(`[v0] Test 1: Pinging ${router.ip_address}`)
     const pingTest: any = {
       name: "Network Connectivity (ICMP Ping)",
       status: "running",
     }
 
     try {
-      const { stdout: pingOutput } = await execAsync(`ping -c 4 -W 2 ${router.hostname}`)
+      const { stdout: pingOutput } = await execAsync(`ping -c 4 -W 2 ${router.ip_address}`)
       const packetLossMatch = pingOutput.match(/(\d+)% packet loss/)
       const timeMatch = pingOutput.match(/time=([0-9.]+) ms/)
 
@@ -65,11 +65,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-      const httpUrl = `http://${router.hostname}/rest/system/resource`
+      const mikrotikUser = router.configuration?.mikrotik_user || router.api_username || router.username || "admin"
+      const mikrotikPassword = router.configuration?.mikrotik_password || router.api_password || router.password
+
+      const httpUrl = `http://${router.ip_address}/rest/system/resource`
       const response = await fetch(httpUrl, {
         method: "GET",
         headers: {
-          Authorization: `Basic ${Buffer.from(`${router.api_username || router.mikrotik_user}:${router.api_password || router.mikrotik_password}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(`${mikrotikUser}:${mikrotikPassword}`).toString("base64")}`,
         },
         signal: controller.signal,
       })
@@ -102,12 +105,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     try {
-      const client = await createMikroTikClient(router)
-      await client.connect()
+      const client = await createMikroTikClient(routerId)
+
+      if (!client) {
+        throw new Error("Failed to create MikroTik client")
+      }
 
       authTest.status = "success"
       authTest.details = {
-        username: router.api_username || router.mikrotik_user,
+        username: router.api_username || router.configuration?.mikrotik_user,
         authenticated: true,
         connectionType: "REST API",
       }
@@ -119,7 +125,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       authTest.error = "Authentication failed"
       authTest.details = {
         error: error.message,
-        username: router.api_username || router.mikrotik_user,
+        username: router.api_username || router.configuration?.mikrotik_user,
         suggestion: "Verify username and password are correct in MikroTik user database",
       }
       authTest.success = false
@@ -134,18 +140,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     try {
-      const client = await createMikroTikClient(router)
-      await client.connect()
+      const client = await createMikroTikClient(routerId)
+
+      if (!client) {
+        throw new Error("Failed to create MikroTik client")
+      }
+
       const resources = await client.getSystemResources()
 
+      if (!resources.success) {
+        throw new Error(resources.error || "Failed to get system resources")
+      }
+
+      const data = resources.data || {}
       resourceTest.status = "success"
       resourceTest.details = {
-        routerBoard: resources.board || "Unknown",
-        version: resources.version || "Unknown",
-        uptime: resources.uptime || "Unknown",
-        cpuLoad: resources["cpu-load"] || "Unknown",
-        freeMemory: resources["free-memory"] || "Unknown",
-        totalMemory: resources["total-memory"] || "Unknown",
+        boardName: data["board-name"] || "Unknown",
+        version: data.version || "Unknown",
+        uptime: data.uptime || "Unknown",
+        cpuLoad: data["cpu-load"] || "Unknown",
+        freeMemory: data["free-memory"] || "Unknown",
+        totalMemory: data["total-memory"] || "Unknown",
       }
       resourceTest.success = true
 
@@ -166,14 +181,23 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     try {
-      const client = await createMikroTikClient(router)
-      await client.connect()
+      const client = await createMikroTikClient(routerId)
+
+      if (!client) {
+        throw new Error("Failed to create MikroTik client")
+      }
+
       const identity = await client.getIdentity()
 
+      if (!identity.success) {
+        throw new Error(identity.error || "Failed to get identity")
+      }
+
+      const data = identity.data || {}
       identityTest.status = "success"
       identityTest.details = {
-        identity: identity.name || "Unknown",
-        matches: identity.name === router.name,
+        identity: data.name || "Unknown",
+        matches: data.name === router.name,
       }
       identityTest.success = true
 
@@ -199,12 +223,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     console.log(`[v0] Troubleshooting complete: ${diagnostics.overallStatus}`)
 
-    // Log diagnostic results to database
-    await db.query(
-      `INSERT INTO activity_logs (entity_type, entity_id, action, details, created_at) 
-       VALUES ($1, $2, $3, $4, NOW())`,
-      ["router", routerId, "troubleshoot", JSON.stringify(diagnostics)],
-    )
+    await sql`
+      INSERT INTO activity_logs (entity_type, entity_id, action, details, created_at) 
+      VALUES ('router', ${routerId}, 'troubleshoot', ${JSON.stringify(diagnostics)}, NOW())
+    `
 
     return NextResponse.json(diagnostics)
   } catch (error: any) {

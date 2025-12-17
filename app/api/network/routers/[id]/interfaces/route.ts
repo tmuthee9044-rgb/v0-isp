@@ -11,29 +11,43 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid router ID" }, { status: 400 })
     }
 
-    const [router] = await sql`
+    const routers = await sql`
       SELECT * FROM network_devices WHERE id = ${routerId}
     `
 
-    if (!router) {
+    if (!routers || routers.length === 0) {
       return NextResponse.json({ error: "Router not found" }, { status: 404 })
     }
 
-    const client = await createMikroTikClient(router)
+    const router = routers[0]
+
+    const client = await createMikroTikClient(routerId)
+
+    if (!client) {
+      return NextResponse.json(
+        {
+          error: "Failed to connect to MikroTik router",
+          details: "Could not create MikroTik client. Check router configuration.",
+        },
+        { status: 500 },
+      )
+    }
 
     try {
-      // Fetch interface statistics from MikroTik
-      const interfaces = await client.write("/interface/print", ["?disabled=false", "=stats"])
+      const interfacesResult = await client.getInterfaces()
 
-      // Fetch interface traffic statistics
-      const interfaceStats = await client.write("/interface/monitor-traffic", ["=interface=all", "=once="])
+      if (!interfacesResult.success) {
+        throw new Error(interfacesResult.error || "Failed to fetch interfaces")
+      }
+
+      const interfaces = interfacesResult.data || []
 
       // Transform MikroTik data to our format
       const formattedInterfaces = interfaces.map((iface: any) => ({
         name: iface.name || "unknown",
         type: iface.type || "ether",
-        running: iface.running === "true",
-        disabled: iface.disabled === "true",
+        running: iface.running === true || iface.running === "true",
+        disabled: iface.disabled === true || iface.disabled === "true",
         rxBytes: Number.parseInt(iface["rx-byte"] || "0"),
         txBytes: Number.parseInt(iface["tx-byte"] || "0"),
         rxPackets: Number.parseInt(iface["rx-packet"] || "0"),
@@ -69,7 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         }
       })
 
-      await client.close()
+      await client.disconnect()
 
       console.log("[v0] Fetched real MikroTik interface data:", formattedInterfaces.length, "interfaces")
 
@@ -80,7 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
     } catch (mikrotikError: any) {
       console.error("[v0] MikroTik API error:", mikrotikError)
-      await client.close()
+      await client.disconnect()
 
       // Return error with helpful message
       return NextResponse.json(

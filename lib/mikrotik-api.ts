@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db"
 import { fetch } from "node-fetch"
-import { AbortSignal } from "abort-controller"
+import { AbortController } from "abort-controller"
 
 export interface MikroTikConfig {
   host: string
@@ -93,13 +93,17 @@ export class MikroTikAPI {
       console.log(`[v0] Executing MikroTik ${method} ${path}`, params)
 
       const url = `${this.baseUrl}${path}`
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout || 10000)
+
       const options: RequestInit = {
         method,
         headers: {
           Authorization: this.authHeader,
           "Content-Type": "application/json",
         },
-        signal: AbortSignal.timeout(this.config.timeout || 10000),
+        signal: controller.signal,
       }
 
       if (method !== "GET" && params) {
@@ -107,6 +111,8 @@ export class MikroTikAPI {
       }
 
       const response = await fetch(url, options)
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -315,8 +321,10 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
   try {
     const sql = await getSql()
 
+    console.log(`[v0] Creating MikroTik client for router ID: ${routerId}`)
+
     // Fetch router configuration from database
-    const [router] = await sql`
+    const routers = await sql`
       SELECT 
         nd.*,
         nd.configuration->>'mikrotik_user' as mikrotik_user,
@@ -327,10 +335,12 @@ export async function createMikroTikClient(routerId: number): Promise<MikroTikAP
         AND nd.type = 'mikrotik'
     `
 
-    if (!router) {
+    if (!routers || routers.length === 0) {
       console.error(`[v0] Router ${routerId} not found or not a MikroTik router`)
       return null
     }
+
+    const router = routers[0]
 
     const mikrotikUser = router.mikrotik_user || router.api_username || router.username || "admin"
     const mikrotikPassword = router.mikrotik_password || router.api_password || router.password

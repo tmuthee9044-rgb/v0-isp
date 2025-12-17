@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
+const { exec } = require("child_process")
+const util = require("util")
+const execPromise = util.promisify(exec)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const sql = await getSql()
@@ -88,17 +91,31 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 // Enhanced connection test functions
 async function testPing(ipAddress: string) {
-  // Simulate ping test - in production, use actual ping
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  try {
+    // Use system ping command (works on both Linux and Windows)
+    const pingCommand = process.platform === "win32" ? `ping -n 1 -w 2000 ${ipAddress}` : `ping -c 1 -W 2 ${ipAddress}`
 
-  // Mock ping success based on IP pattern
-  const isReachable =
-    !ipAddress.includes("unreachable") && !ipAddress.includes("offline") && /^(\d{1,3}\.){3}\d{1,3}$/.test(ipAddress)
+    console.log(`[v0] Testing ping to ${ipAddress}`)
+    const { stdout, stderr } = await execPromise(pingCommand)
 
-  return {
-    success: isReachable,
-    latency: isReachable ? Math.floor(Math.random() * 50) + 10 : null,
-    message: isReachable ? "Ping successful" : "Host unreachable",
+    // Extract latency from ping output
+    const latencyMatch = stdout.match(/time[=<](\d+\.?\d*)\s*ms/)
+    const latency = latencyMatch ? Number.parseFloat(latencyMatch[1]) : null
+
+    console.log(`[v0] Ping successful to ${ipAddress}, latency: ${latency}ms`)
+
+    return {
+      success: true,
+      latency: latency,
+      message: "Ping successful",
+    }
+  } catch (error) {
+    console.error(`[v0] Ping failed to ${ipAddress}:`, error)
+    return {
+      success: false,
+      latency: null,
+      message: "Host unreachable",
+    }
   }
 }
 
@@ -170,7 +187,7 @@ async function testCiscoConnection(router: any) {
 
   return {
     success: isConnectable,
-    message: isConnectable ? "Cisco device SSH connection successful" : "Failed to connect to Cisco device",
+    message: isConnectable ? "Cisco device SSH connection successful" : "Failed to establish SSH connection",
     details: {
       ssh_port: 22,
       connection_method: router.connection_method,

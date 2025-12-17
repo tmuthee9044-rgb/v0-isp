@@ -1,3 +1,4 @@
+import { RouterOSAPI } from "node-routeros"
 import { getSql } from "@/lib/db"
 
 export interface MikroTikConfig {
@@ -26,6 +27,7 @@ export interface MikroTikResponse {
 export class MikroTikAPI {
   private config: MikroTikConfig
   private connected = false
+  private client: RouterOSAPI | null = null
 
   constructor(config: MikroTikConfig) {
     this.config = {
@@ -53,23 +55,24 @@ export class MikroTikAPI {
         )
       }
 
-      // Simulate connection delay
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      this.client = new RouterOSAPI({
+        host: this.config.host,
+        user: this.config.username,
+        password: this.config.password,
+        port: this.config.port,
+        timeout: this.config.timeout,
+      })
 
-      // Simulate 90% success rate for testing
-      this.connected = Math.random() > 0.1
+      await this.client.connect()
+      this.connected = true
 
-      if (this.connected) {
-        console.log(`[v0] Successfully connected to MikroTik router`)
-      } else {
-        console.log(`[v0] Failed to connect to MikroTik router`)
-      }
-
-      return this.connected
+      console.log(`[v0] Successfully connected to MikroTik router at ${this.config.host}:${this.config.port}`)
+      return true
     } catch (error) {
       console.error(`[v0] MikroTik connection error:`, error)
       this.connected = false
-      throw error // Rethrow error so caller can see the specific message
+      this.client = null
+      throw error
     }
   }
 
@@ -77,7 +80,7 @@ export class MikroTikAPI {
    * Execute a command on the MikroTik router
    */
   async execute(command: string, params?: Record<string, string>): Promise<MikroTikResponse> {
-    if (!this.connected) {
+    if (!this.connected || !this.client) {
       return {
         success: false,
         error: "Not connected to router",
@@ -87,22 +90,13 @@ export class MikroTikAPI {
     try {
       console.log(`[v0] Executing MikroTik command: ${command}`, params)
 
-      // For now, simulate command execution
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      const result = await this.client.write(command, params || {})
 
-      // Simulate 95% success rate
-      const success = Math.random() > 0.05
+      console.log(`[v0] MikroTik command result:`, result)
 
-      if (success) {
-        return {
-          success: true,
-          data: { message: "Command executed successfully" },
-        }
-      } else {
-        return {
-          success: false,
-          error: "Command execution failed",
-        }
+      return {
+        success: true,
+        data: result,
       }
     } catch (error) {
       console.error(`[v0] MikroTik command execution error:`, error)
@@ -306,6 +300,14 @@ export class MikroTikAPI {
    */
   async disconnect(): Promise<void> {
     console.log(`[v0] Disconnecting from MikroTik router`)
+    if (this.client) {
+      try {
+        await this.client.close()
+      } catch (error) {
+        console.error(`[v0] Error closing MikroTik connection:`, error)
+      }
+      this.client = null
+    }
     this.connected = false
   }
 }

@@ -35,8 +35,13 @@ export async function GET(request: NextRequest) {
         c.phone,
         c.city,
         c.status,
-        c.created_at
+        c.created_at,
+        COUNT(DISTINCT cs.id) as service_count,
+        MAX(sp.name) as service_plan_name,
+        MAX(cs.monthly_fee) as monthly_fee
       FROM customers c
+      LEFT JOIN customer_services cs ON c.id = cs.customer_id
+      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
     `
     const values: Array<string> = []
 
@@ -60,7 +65,7 @@ export async function GET(request: NextRequest) {
       values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
-    query += ` ORDER BY c.created_at DESC LIMIT 1000`
+    query += ` GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, c.customer_type, c.email, c.phone, c.city, c.status, c.created_at ORDER BY c.created_at DESC LIMIT 1000`
 
     const customers = await sql.unsafe(query, values)
 
@@ -68,7 +73,7 @@ export async function GET(request: NextRequest) {
       ...customer,
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
-      service_count: 0,
+      service_count: Number.parseInt(customer.service_count) || 0,
       total_payments: 0,
       total_in_stock: 0,
       outstanding_balance: 0,

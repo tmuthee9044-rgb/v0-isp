@@ -193,7 +193,6 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
         })
 
         try {
-          // Added source column to fix NOT NULL constraint violation
           await sql`
             INSERT INTO system_logs (
               level,
@@ -205,7 +204,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
               updated_at
             )
             VALUES (
-              'info',
+              'INFO',
               'payment_system',
               'service_activation',
               ${`Service ${service.service_name} automatically activated after payment`},

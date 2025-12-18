@@ -38,10 +38,14 @@ export async function GET(request: NextRequest) {
         c.created_at,
         COUNT(DISTINCT cs.id) as service_count,
         MAX(sp.name) as service_plan_name,
-        MAX(cs.monthly_fee) as monthly_fee
+        MAX(cs.monthly_fee) as monthly_fee,
+        COALESCE(SUM(DISTINCT i.total_amount), 0) - COALESCE(SUM(DISTINCT p.amount), 0) as actual_balance,
+        COALESCE(SUM(CASE WHEN i.status = 'unpaid' OR i.status = 'overdue' THEN i.total_amount ELSE 0 END), 0) as outstanding_balance
       FROM customers c
       LEFT JOIN customer_services cs ON c.id = cs.customer_id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN invoices i ON c.id = i.customer_id
+      LEFT JOIN payments p ON c.id = p.customer_id AND p.status = 'completed'
     `
     const values: Array<string> = []
 
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest) {
       values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
-    query += ` GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, c.customer_type, c.email, c.phone, c.city, c.status, c.created_at ORDER BY c.created_at DESC LIMIT 1000`
+    query += ` GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, c.customer_type, c.email, c.phone, c.city, c.status, c.created_at ORDER BY c.created_at DESC LIMIT 100`
 
     const customers = await sql.unsafe(query, values)
 
@@ -74,9 +78,10 @@ export async function GET(request: NextRequest) {
       name: customer.business_name || `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "No Name",
       location_name: customer.city || "Not Set",
       service_count: Number.parseInt(customer.service_count) || 0,
+      actual_balance: Number.parseFloat(customer.actual_balance) || 0,
+      outstanding_balance: Number.parseFloat(customer.outstanding_balance) || 0,
       total_payments: 0,
       total_in_stock: 0,
-      outstanding_balance: 0,
       open_tickets: 0,
     }))
 

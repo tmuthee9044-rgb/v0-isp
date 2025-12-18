@@ -55,13 +55,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       if (connectionResult.success) {
         await sql`
-          INSERT INTO router_sync_status (router_id, last_synced, sync_status, details)
-          VALUES (${routerId}, NOW(), 'success', ${JSON.stringify(connectionResult.details)})
+          INSERT INTO router_sync_status (router_id, last_synced, sync_status)
+          VALUES (${routerId}, NOW(), 'success')
           ON CONFLICT (router_id) 
           DO UPDATE SET 
             last_synced = NOW(),
             sync_status = 'success',
-            details = ${JSON.stringify(connectionResult.details)},
             updated_at = NOW()
         `
       }

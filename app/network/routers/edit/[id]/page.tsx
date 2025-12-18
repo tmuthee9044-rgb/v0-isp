@@ -1463,15 +1463,17 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 }),
-                                rx: h.rxMbps,
-                                tx: h.txMbps,
+                                rx: typeof h.rxMbps === "number" ? h.rxMbps : 0,
+                                tx: typeof h.txMbps === "number" ? h.txMbps : 0,
                               })) || []
                           }
                         >
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="time" />
                           <YAxis label={{ value: "Mbps", angle: -90, position: "insideLeft" }} />
-                          <Tooltip formatter={(value: number) => `${value.toFixed(2)} Mbps`} />
+                          <Tooltip
+                            formatter={(value: any) => `${typeof value === "number" ? value.toFixed(2) : "0.00"} Mbps`}
+                          />
                           <Legend />
                           <Line type="monotone" dataKey="rx" stroke="#3b82f6" strokeWidth={2} name="RX (Download)" />
                           <Line type="monotone" dataKey="tx" stroke="#ef4444" strokeWidth={2} name="TX (Upload)" />
@@ -1494,8 +1496,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                               <LineChart
                                 data={traffic.history.map((h) => ({
                                   time: new Date(h.time).toLocaleTimeString([], { hour: "2-digit" }),
-                                  rx: h.rxMbps,
-                                  tx: h.txMbps,
+                                  rx: typeof h.rxMbps === "number" ? h.rxMbps : 0,
+                                  tx: typeof h.txMbps === "number" ? h.txMbps : 0,
                                 }))}
                               >
                                 <CartesianGrid strokeDasharray="3 3" />

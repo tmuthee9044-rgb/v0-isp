@@ -54,7 +54,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
                 'id', cs.id,
                 'service_plan_id', cs.service_plan_id,
                 'status', cs.status,
-                'start_date', cs.start_date,
+                'start_date', cs.activated_at,
                 'activated_at', cs.activated_at,
                 'plan_name', sp.name,
                 'service_name', sp.name,

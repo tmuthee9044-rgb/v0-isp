@@ -66,10 +66,8 @@ export async function GET(request: NextRequest) {
     const countQuery = `
       SELECT COUNT(*) as total
       FROM ip_addresses ia
-      LEFT JOIN customer_services cs ON 
-        ia.ip_address::text = cs.ip_address::text
-        AND cs.status != 'terminated'
-      LEFT JOIN customers c ON cs.customer_id = c.id
+      LEFT JOIN customers c ON ia.customer_id = c.id
+      LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status != 'terminated'
       WHERE ${whereClause}
     `
 
@@ -83,18 +81,16 @@ export async function GET(request: NextRequest) {
         ia.subnet_id,
         ia.status,
         ia.created_at,
-        ia.assigned_at,
+        ia.assigned_date,
         cs.id as service_id,
         cs.customer_id,
         c.first_name,
         c.last_name,
         c.business_name,
-        cs.activated_at as assigned_date
+        cs.activation_date as assigned_date
       FROM ip_addresses ia
-      LEFT JOIN customer_services cs ON 
-        ia.ip_address::text = cs.ip_address::text
-        AND cs.status != 'terminated'
-      LEFT JOIN customers c ON cs.customer_id = c.id
+      LEFT JOIN customers c ON ia.customer_id = c.id
+      LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status != 'terminated'
       WHERE ${whereClause}
       ORDER BY ia.id
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}

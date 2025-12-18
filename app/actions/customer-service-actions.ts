@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { releaseIPAddress } from "@/lib/ip-management"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
+import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -258,6 +259,26 @@ export async function addCustomerService(customerId: number, formData: FormData)
           console.log("[v0] Service auto-provisioned successfully")
         }
       }
+
+      // Provision to RADIUS
+      const radiusUsername = pppoeUsername || `customer_${customerId}`
+      const radiusPassword = pppoePassword || `customer_${customerId}`
+      const radiusResult = await provisionRadiusUser({
+        customerId,
+        serviceId,
+        username: radiusUsername,
+        password: radiusPassword,
+        ipAddress: allocatedIpAddress || undefined,
+        downloadSpeed: servicePlan[0].speed_download,
+        uploadSpeed: servicePlan[0].speed_upload,
+        nasId: routerId ? Number.parseInt(routerId) : undefined,
+      })
+
+      if (!radiusResult.success) {
+        console.log("[v0] Warning: RADIUS provisioning failed:", radiusResult.error)
+      } else {
+        console.log("[v0] RADIUS user provisioned successfully")
+      }
     }
 
     if (inventoryItems) {
@@ -463,53 +484,88 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       // Fire and forget - don't await
       Promise.resolve().then(async () => {
         try {
-          // Status changed from pending to active - ADD to router
+          // Status changed from pending to active - ADD to router AND RADIUS
           if (oldStatus === "pending" && status === "active") {
             console.log("[v0] Async provisioning: pending -> active")
 
-            await provisionServiceToRouter({
-              serviceId: service.id,
-              customerId: service.customer_id,
-              routerId: service.router_id,
-              ipAddress: service.ip_address,
-              connectionType: service.ip_address ? "static_ip" : "pppoe",
-              pppoeUsername: service.portal_username,
-              pppoePassword: service.portal_username, // Use portal username as default password
-              downloadSpeed: service.download_speed,
-              uploadSpeed: service.upload_speed,
-            })
+            const [routerResult, radiusResult] = await Promise.all([
+              provisionServiceToRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                ipAddress: service.ip_address,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                pppoeUsername: service.portal_username,
+                pppoePassword: service.portal_username,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
+              }),
+              provisionRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                password: service.portal_username || `customer_${service.customer_id}`,
+                ipAddress: service.ip_address,
+                downloadSpeed: service.download_speed || 10,
+                uploadSpeed: service.upload_speed || 10,
+                nasId: service.router_id,
+              }),
+            ])
+
+            console.log("[v0] Router result:", routerResult.success ? "OK" : routerResult.error)
+            console.log("[v0] RADIUS result:", radiusResult.success ? "OK" : radiusResult.error)
           }
 
-          // Status changed to suspended - REMOVE from router
+          // Status changed to suspended - REMOVE from router AND RADIUS
           if (status === "suspended" && oldStatus !== "suspended") {
             console.log("[v0] Async deprovisioning: -> suspended")
 
-            await deprovisionServiceFromRouter({
-              serviceId: service.id,
-              customerId: service.customer_id,
-              routerId: service.router_id,
-              connectionType: service.ip_address ? "static_ip" : "pppoe",
-              ipAddress: service.ip_address,
-              pppoeUsername: service.portal_username,
-              reason: "Service suspended",
-            })
+            await Promise.all([
+              deprovisionServiceFromRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                ipAddress: service.ip_address,
+                pppoeUsername: service.portal_username,
+                reason: "Service suspended",
+              }),
+              suspendRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                reason: "Service suspended",
+              }),
+            ])
           }
 
-          // Status changed from suspended to active - RE-ADD to router
+          // Status changed from suspended to active - RE-ADD to router AND RADIUS
           if (status === "active" && oldStatus === "suspended") {
             console.log("[v0] Async re-provisioning: suspended -> active")
 
-            await provisionServiceToRouter({
-              serviceId: service.id,
-              customerId: service.customer_id,
-              routerId: service.router_id,
-              ipAddress: service.ip_address,
-              connectionType: service.ip_address ? "static_ip" : "pppoe",
-              pppoeUsername: service.portal_username,
-              pppoePassword: service.portal_username,
-              downloadSpeed: service.download_speed,
-              uploadSpeed: service.upload_speed,
-            })
+            await Promise.all([
+              provisionServiceToRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                ipAddress: service.ip_address,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                pppoeUsername: service.portal_username,
+                pppoePassword: service.portal_username,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
+              }),
+              provisionRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                password: service.portal_username || `customer_${service.customer_id}`,
+                ipAddress: service.ip_address,
+                downloadSpeed: service.download_speed || 10,
+                uploadSpeed: service.upload_speed || 10,
+                nasId: service.router_id,
+              }),
+            ])
           }
         } catch (provisionError) {
           console.error("[v0] Async router provisioning error:", provisionError)
@@ -545,31 +601,32 @@ export async function deleteCustomerService(serviceId: number) {
 
     const service = serviceData[0]
 
+    if (service.portal_username) {
+      await deprovisionRadiusUser({
+        customerId: service.customer_id,
+        serviceId,
+        username: service.portal_username,
+        reason: "Service deleted",
+      }).catch((err) => console.error("[v0] RADIUS deprovision error:", err))
+    }
+
+    // Deprovision from router if provisioned
+    if (service.router_id && (service.ip_address || service.portal_username)) {
+      await deprovisionServiceFromRouter({
+        serviceId,
+        customerId: service.customer_id,
+        routerId: service.router_id,
+        connectionType: service.ip_address ? "static_ip" : "pppoe",
+        ipAddress: service.ip_address,
+        pppoeUsername: service.portal_username,
+        reason: "Service deleted",
+      }).catch((err) => console.error("[v0] Router deprovision error:", err))
+    }
+
     await sql`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
     `
-
-    if (service.router_id) {
-      // Fire and forget - don't await
-      Promise.resolve().then(async () => {
-        try {
-          console.log("[v0] Async deprovisioning before deletion")
-
-          await deprovisionServiceFromRouter({
-            serviceId: service.id,
-            customerId: service.customer_id,
-            routerId: service.router_id,
-            connectionType: service.ip_address ? "static_ip" : "pppoe",
-            ipAddress: service.ip_address,
-            pppoeUsername: service.portal_username,
-            reason: "Service deleted",
-          })
-        } catch (provisionError) {
-          console.error("[v0] Async router deprovisioning error:", provisionError)
-        }
-      })
-    }
 
     revalidatePath(`/customers`)
     return { success: true }

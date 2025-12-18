@@ -1,6 +1,6 @@
 "use server"
 
-import { sql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 
 export interface PayrollCalculation {
@@ -105,19 +105,20 @@ export async function generatePayroll(
   try {
     console.log("[v0] Generating payroll for period:", period, "employees:", employeeIds.length)
 
+    const sql = await getSql()
+
     const employees = await sql`
       SELECT 
         employee_id,
         first_name,
         last_name,
-        basic_salary,
+        salary as basic_salary,
         allowances
       FROM employees 
       WHERE employee_id = ANY(${employeeIds}) 
       AND status = 'active'
     `
 
-    // Handle both array and object with rows property
     const employeeList = Array.isArray(employees) ? employees : employees.rows || []
 
     console.log("[v0] Found active employees:", employeeList.length)
@@ -137,7 +138,6 @@ export async function generatePayroll(
     let totalNssf = 0
     let totalSha = 0
 
-    // Calculate payroll for each employee
     for (const employee of employeeList) {
       const basicSalary = Number.parseFloat(employee.basic_salary) || 0
       const allowances = Number.parseFloat(employee.allowances) || 0
@@ -171,25 +171,29 @@ export async function generatePayroll(
 
       await sql`
         INSERT INTO payroll_records (
-          employee_id, period, basic_salary, 
-          allowances, gross_pay, paye, nssf, sha,
-          total_deductions, net_pay, status, created_at
+          employee_id, employee_name, period, basic_salary, 
+          allowances, overtime, gross_pay, paye, nssf, sha,
+          other_deductions, total_deductions, net_pay, status, created_at
         ) VALUES (
-          ${employee.employee_id}, ${period}, ${basicSalary},
-          ${allowances}, ${grossPay}, ${paye}, ${nssf}, ${sha},
-          ${totalEmployeeDeductions}, ${netPay}, 'calculated', NOW()
+          ${employee.employee_id}, ${calculation.employeeName}, ${period}, ${basicSalary},
+          ${allowances}, ${overtime}, ${grossPay}, ${paye}, ${nssf}, ${sha},
+          ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
         )
         ON CONFLICT (employee_id, period) 
         DO UPDATE SET
+          employee_name = EXCLUDED.employee_name,
           basic_salary = EXCLUDED.basic_salary,
           allowances = EXCLUDED.allowances,
+          overtime = EXCLUDED.overtime,
           gross_pay = EXCLUDED.gross_pay,
           paye = EXCLUDED.paye,
           nssf = EXCLUDED.nssf,
           sha = EXCLUDED.sha,
+          other_deductions = EXCLUDED.other_deductions,
           total_deductions = EXCLUDED.total_deductions,
           net_pay = EXCLUDED.net_pay,
-          status = EXCLUDED.status
+          status = EXCLUDED.status,
+          updated_at = NOW()
       `
 
       totalGrossPay += grossPay
@@ -240,11 +244,14 @@ export async function processPayroll(
   try {
     console.log("[v0] Processing payroll for period:", period, "employees:", employeeIds.length)
 
+    const sql = await getSql()
+
     await sql`
       UPDATE payroll_records 
       SET 
         status = 'processed',
-        processed_at = NOW()
+        processed_at = NOW(),
+        updated_at = NOW()
       WHERE period = ${period}
       AND employee_id = ANY(${employeeIds})
     `
@@ -272,6 +279,8 @@ export async function getPayrollHistory(): Promise<{
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     const result = await sql`
       SELECT 
         period,
@@ -287,9 +296,11 @@ export async function getPayrollHistory(): Promise<{
       LIMIT 12
     `
 
+    const payrollHistory = Array.isArray(result) ? result : result.rows || []
+
     return {
       success: true,
-      data: result.rows,
+      data: payrollHistory,
     }
   } catch (error) {
     console.error("Error fetching payroll history:", error)
@@ -306,13 +317,15 @@ export async function getEmployeesForPayroll(): Promise<{
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     const result = await sql`
       SELECT 
         employee_id,
         first_name,
         last_name,
         position,
-        basic_salary,
+        salary as basic_salary,
         allowances,
         status
       FROM employees 
@@ -320,7 +333,6 @@ export async function getEmployeesForPayroll(): Promise<{
       ORDER BY employee_id
     `
 
-    // Handle both array and object with rows property
     const employees = Array.isArray(result) ? result : result.rows || []
 
     const employeesWithName = employees.map((employee: any) => ({
@@ -345,7 +357,6 @@ export async function getEmployeesForPayroll(): Promise<{
 
 export async function createEmployee(formData: FormData) {
   try {
-    // This ensures all form fields are properly saved per rule 8
     console.warn("createEmployee action deprecated - use /api/employees POST endpoint")
     return { success: false, error: "Please use the API endpoint instead" }
   } catch (error) {

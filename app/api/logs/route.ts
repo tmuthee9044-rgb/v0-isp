@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,29 +12,28 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    const whereConditions = []
-    const queryParams: any[] = []
+    const conditions = []
 
     if (category && category !== "all") {
-      whereConditions.push(`category = '${category}'`)
+      conditions.push(`category = '${category}'`)
     }
 
     if (level && level !== "all") {
-      whereConditions.push(`level = '${level}'`)
+      conditions.push(`level = '${level}'`)
     }
 
     if (search) {
       const searchTerm = search.replace(/'/g, "''") // Escape single quotes
-      whereConditions.push(`(
+      conditions.push(`(
         message ILIKE '%${searchTerm}%' OR 
         source ILIKE '%${searchTerm}%' OR 
         CAST(ip_address AS TEXT) ILIKE '%${searchTerm}%'
       )`)
     }
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(" AND ")}` : ""
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
-    const logs = await sql`
+    const logsQuery = `
       SELECT 
         id,
         timestamp,
@@ -49,18 +48,21 @@ export async function GET(request: NextRequest) {
         session_id,
         user_agent
       FROM system_logs
-      ${sql.unsafe(whereClause)}
+      ${whereClause}
       ORDER BY timestamp DESC 
       LIMIT ${limit} 
       OFFSET ${offset}
     `
 
+    const logs = await sql.unsafe(logsQuery)
+
     // Get total count for pagination
-    const countResult = await sql`
+    const countQuery = `
       SELECT COUNT(*) as total 
       FROM system_logs
-      ${sql.unsafe(whereClause)}
+      ${whereClause}
     `
+    const countResult = await sql.unsafe(countQuery)
     const total = countResult[0].total
 
     // Get category statistics

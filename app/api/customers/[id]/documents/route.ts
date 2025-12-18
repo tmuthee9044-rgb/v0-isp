@@ -94,11 +94,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           .filter(Boolean)
       : []
 
+    // Generate file path for storage reference
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
+    const filePath = `/uploads/documents/customer_${customerId}/${sanitizedFileName}`
+
     const [document] = await sql`
       INSERT INTO customer_documents (
         customer_id,
         document_name,
         document_type,
+        file_path,
         file_name,
         file_size,
         mime_type,
@@ -111,7 +116,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${customerId},
         ${file.name},
         ${documentType},
-        ${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")},
+        ${filePath},
+        ${sanitizedFileName},
         ${file.size},
         ${file.type},
         ${description},
@@ -120,7 +126,29 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         1,
         ${fileBuffer}
       )
-      RETURNING id, customer_id, document_name, document_type, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, created_at
+      RETURNING id, customer_id, document_name, document_type, file_path, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, created_at
+    `
+
+    await sql`
+      INSERT INTO system_logs (
+        level,
+        source,
+        category,
+        message,
+        metadata
+      ) VALUES (
+        'INFO',
+        'document-upload',
+        'customer',
+        ${`Document uploaded for customer ${customerId}: ${file.name}`},
+        ${JSON.stringify({
+          documentId: document.id,
+          customerId,
+          fileName: file.name,
+          fileSize: file.size,
+          documentType,
+        })}
+      )
     `
 
     // Log the upload action
@@ -144,7 +172,38 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       document,
     })
   } catch (error) {
-    console.error("Error uploading document:", error)
-    return NextResponse.json({ error: "Failed to upload document" }, { status: 500 })
+    console.error("[v0] Error uploading document:", error)
+
+    try {
+      const sql = await getSql()
+      await sql`
+        INSERT INTO system_logs (
+          level,
+          source,
+          category,
+          message,
+          metadata
+        ) VALUES (
+          'ERROR',
+          'document-upload',
+          'customer',
+          'Failed to upload customer document',
+          ${JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            customerId: params.id,
+          })}
+        )
+      `
+    } catch (logError) {
+      console.error("[v0] Failed to log error:", logError)
+    }
+
+    return NextResponse.json(
+      {
+        error: "Failed to upload document",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
   }
 }

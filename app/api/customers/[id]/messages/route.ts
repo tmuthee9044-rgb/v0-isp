@@ -9,11 +9,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const messages = await sql`
       SELECT 
         m.*,
-        COALESCE(u.username, 'System') as sender_name
+        c.full_name as recipient_name
       FROM messages m
-      LEFT JOIN users u ON m.sender_id = u.id
-      WHERE m.recipient_id = ${customerId} 
-        AND m.recipient_type = 'customer'
+      LEFT JOIN customers c ON m.customer_id = c.id
+      WHERE m.customer_id = ${customerId}
       ORDER BY m.created_at DESC
     `
 
@@ -31,28 +30,42 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const sql = await getSql()
   try {
     const customerId = Number.parseInt(params.id)
-    const { type, subject, content, template_id } = await request.json()
+    const { messageType, subject, content, template_id } = await request.json()
 
-    // Create message record
+    const [customer] = await sql`
+      SELECT email, phone, full_name 
+      FROM customers 
+      WHERE id = ${customerId}
+      LIMIT 1
+    `
+
+    if (!customer) {
+      return NextResponse.json({ success: false, error: "Customer not found" }, { status: 404 })
+    }
+
+    const recipient = messageType === "email" ? customer.email : customer.phone
+
+    if (!recipient) {
+      return NextResponse.json({ success: false, error: `Customer has no ${messageType} on file` }, { status: 400 })
+    }
+
     const [message] = await sql`
       INSERT INTO messages (
-        recipient_id,
-        recipient_type,
-        sender_id,
-        message_type,
+        type,
+        recipient,
         subject,
         content,
         template_id,
+        customer_id,
         status,
         created_at
       ) VALUES (
-        ${customerId},
-        'customer',
-        1, -- Default admin user, should be from session
-        ${type},
+        ${messageType || "sms"},
+        ${recipient},
         ${subject || null},
         ${content},
         ${template_id || null},
+        ${customerId},
         'sent',
         NOW()
       )

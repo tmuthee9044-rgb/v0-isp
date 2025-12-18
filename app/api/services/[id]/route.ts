@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
@@ -26,8 +26,20 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     const result = await sql`
-      SELECT * FROM service_plans 
+      SELECT 
+        id, name, description, category, status,
+        speed_download, speed_upload, priority_level,
+        price, billing_cycle, currency, setup_fee,
+        data_limit, fup_enabled, action_after_limit,
+        bandwidth_allocation, static_ip, port_forwarding,
+        vpn_access, priority_support, device_limit,
+        concurrent_connections, contract_period,
+        promo_price, promo_duration, tax_included, tax_rate,
+        fup_speed, reset_day, exempt_hours, exempt_days, warning_threshold,
+        limit_type, created_at, updated_at
+      FROM service_plans 
       WHERE id = ${serviceId}
+      LIMIT 1
     `
 
     if (result.length === 0) {

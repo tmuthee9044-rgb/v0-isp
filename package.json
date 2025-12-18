@@ -66,6 +66,7 @@
     "next-themes": "latest",
     "node-fetch": "3.3.2",
     "node-routeros": "1.6.9",
+    "nodemailer": "7.0.11",
     "os": "latest",
     "path": "latest",
     "pdfkit": "0.17.2",

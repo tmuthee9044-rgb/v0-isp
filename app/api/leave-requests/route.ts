@@ -10,6 +10,20 @@ export async function POST(request: Request) {
 
     console.log("[v0] Creating leave request:", { employeeId, leaveType, days })
 
+    const employeeResult = await sql`
+      SELECT id FROM employees WHERE employee_id = ${employeeId}
+    `
+
+    if (employeeResult.length === 0) {
+      return NextResponse.json(
+        { error: "Employee not found", details: `No employee with ID ${employeeId}` },
+        { status: 404 },
+      )
+    }
+
+    const numericEmployeeId = employeeResult[0].id
+    console.log("[v0] Found employee numeric ID:", numericEmployeeId)
+
     const result = await sql`
       INSERT INTO leave_requests (
         employee_id, 
@@ -22,7 +36,7 @@ export async function POST(request: Request) {
         created_at
       )
       VALUES (
-        ${employeeId},
+        ${numericEmployeeId},
         ${leaveType},
         ${startDate},
         ${endDate},
@@ -48,7 +62,7 @@ export async function POST(request: Request) {
           created_at
         )
         VALUES (
-          ${employeeId},
+          ${numericEmployeeId},
           'create',
           'leave_request',
           ${result[0].id},

@@ -390,7 +390,7 @@ export class MikroTikAPI {
    */
   async getLogs(topics?: string[], limit = 100): Promise<any[]> {
     try {
-      const path = "/log/print"
+      const path = "/log"
 
       console.log(`[v0] Fetching logs from path: ${path}`)
 
@@ -401,12 +401,10 @@ export class MikroTikAPI {
         return []
       }
 
-      // Parse the logs from MikroTik format
       const logs = Array.isArray(result.data) ? result.data : [result.data]
 
       console.log(`[v0] Received ${logs.length} log entries from MikroTik`)
 
-      // Transform MikroTik log format to our application format
       let transformedLogs = logs.map((log: any, index: number) => ({
         id: log[".id"] || `log-${index}`,
         time: log.time || new Date().toISOString(),

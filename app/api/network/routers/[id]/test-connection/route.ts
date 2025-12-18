@@ -64,9 +64,32 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               sync_status = 'success',
               updated_at = NOW()
           `
-        } catch (syncError) {
-          console.log("[v0] Router sync status update failed (table may need unique constraint):", syncError)
-          // Don't fail the whole request if sync status update fails
+        } catch (syncError: any) {
+          if (syncError?.code === "42P10") {
+            console.log("[v0] Router sync status table missing unique constraint, using fallback method")
+            try {
+              const existing = await sql`
+                SELECT id FROM router_sync_status WHERE router_id = ${routerId}
+              `
+
+              if (existing.length > 0) {
+                await sql`
+                  UPDATE router_sync_status 
+                  SET last_synced = NOW(), sync_status = 'success', updated_at = NOW()
+                  WHERE router_id = ${routerId}
+                `
+              } else {
+                await sql`
+                  INSERT INTO router_sync_status (router_id, last_synced, sync_status)
+                  VALUES (${routerId}, NOW(), 'success')
+                `
+              }
+            } catch (fallbackError) {
+              console.error("[v0] Fallback router sync status update also failed:", fallbackError)
+            }
+          } else {
+            console.error("[v0] Router sync status update failed:", syncError)
+          }
         }
       }
 

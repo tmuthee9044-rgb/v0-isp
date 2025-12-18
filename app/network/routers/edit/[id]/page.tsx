@@ -338,17 +338,42 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
 
   const fetchLogs = async () => {
     try {
+      console.log("[v0] Fetching logs from API...")
       const response = await fetch(`/api/network/routers/${routerId}/logs`)
+
+      console.log("[v0] Logs API response status:", response.status)
+
       if (response.ok) {
         const data = await response.json()
-        setLogs(data.logs || [])
+        console.log("[v0] Logs API response data:", {
+          success: data.success,
+          logsCount: data.logs?.length || 0,
+          error: data.error,
+          details: data.details,
+        })
+
+        if (data.logs && data.logs.length > 0) {
+          console.log("[v0] Setting logs state with", data.logs.length, "entries")
+          console.log("[v0] First log entry:", data.logs[0])
+          setLogs(data.logs)
+        } else {
+          console.warn("[v0] No logs returned from API")
+          setLogs([])
+
+          if (data.error) {
+            toast.error(data.error)
+          } else {
+            toast.info("No logs available from the MikroTik router")
+          }
+        }
       } else {
-        // If logs are not found or there's an error, clear logs
+        console.error("[v0] Logs API returned error status:", response.status)
         setLogs([])
+        toast.error("Failed to fetch router logs")
       }
     } catch (error) {
-      console.error("Error fetching logs:", error)
-      setLogs([]) // Ensure logs are cleared on error
+      console.error("[v0] Error fetching logs:", error)
+      setLogs([])
       toast.error("Failed to fetch router logs")
     }
   }

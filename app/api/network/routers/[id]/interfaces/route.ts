@@ -80,66 +80,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         // Convert real-time bps to Mbps for each interface
         trafficHistory = trafficData.map((traffic: any) => {
           const now = new Date()
-          const history = []
 
-          // For live data, get actual current traffic rates
-          if (isLive) {
-            // Get last 20 data points from database or create current point
-            history.push({
-              time: now.toISOString(),
-              rxMbps: (traffic.rxBps / 1000000).toFixed(2), // Convert bps to Mbps
-              txMbps: (traffic.txBps / 1000000).toFixed(2),
-            })
-          } else {
-            // For historical data, fetch from database
-            // For now, create a single current point (you can expand this to fetch from DB)
-            history.push({
-              time: now.toISOString(),
-              rxMbps: (traffic.rxBps / 1000000).toFixed(2),
-              txMbps: (traffic.txBps / 1000000).toFixed(2),
-            })
+          // Create current live data point
+          const currentPoint = {
+            time: now.toISOString(),
+            rxMbps: Number(traffic.rxBps) / 1000000, // Keep as number
+            txMbps: Number(traffic.txBps) / 1000000, // Keep as number
           }
 
           return {
             interface: traffic.name,
-            history,
-            currentRxMbps: (traffic.rxBps / 1000000).toFixed(2),
-            currentTxMbps: (traffic.txBps / 1000000).toFixed(2),
+            history: [currentPoint], // Single current point for now
+            currentRxMbps: Number((traffic.rxBps / 1000000).toFixed(2)),
+            currentTxMbps: Number((traffic.txBps / 1000000).toFixed(2)),
             currentRxPps: traffic.rxPps,
             currentTxPps: traffic.txPps,
           }
         })
-
-        try {
-          for (const traffic of trafficData) {
-            await sql`
-              INSERT INTO router_traffic_history (
-                router_id, 
-                interface_name, 
-                rx_bps, 
-                tx_bps, 
-                rx_pps, 
-                tx_pps,
-                rx_bytes,
-                tx_bytes,
-                recorded_at
-              ) VALUES (
-                ${routerId},
-                ${traffic.name},
-                ${traffic.rxBps},
-                ${traffic.txBps},
-                ${traffic.rxPps},
-                ${traffic.txPps},
-                ${traffic.rxByte || 0},
-                ${traffic.txByte || 0},
-                NOW()
-              )
-            `
-          }
-        } catch (dbError) {
-          console.error("[v0] Error storing traffic history:", dbError)
-          // Continue even if DB insert fails
-        }
       }
 
       await client.disconnect()

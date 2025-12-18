@@ -22,9 +22,10 @@ export async function POST(request: NextRequest) {
       }
 
       await sql`
-        INSERT INTO system_logs (level, category, message, details, created_at)
+        INSERT INTO system_logs (level, source, category, message, details, created_at)
         VALUES (
           'info',
+          'RADIUS Server',
           'server_config',
           'RADIUS connection test performed',
           ${JSON.stringify(testResult)},
@@ -49,9 +50,10 @@ export async function POST(request: NextRequest) {
       }
 
       await sql`
-        INSERT INTO system_logs (level, category, message, details, created_at)
+        INSERT INTO system_logs (level, source, category, message, details, created_at)
         VALUES (
           'info',
+          'OpenVPN Server',
           'server_config',
           'OpenVPN configuration test performed',
           ${JSON.stringify(testResult)},

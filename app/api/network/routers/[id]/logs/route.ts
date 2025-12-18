@@ -24,30 +24,39 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Router not found" }, { status: 404 })
     }
 
-    console.log(`[v0] Fetching logs from MikroTik router ${routerId}`)
+    console.log(`[v0] Fetching logs from MikroTik router ${routerId} (${router.ip_address})`)
 
     const client = await createMikroTikClient(routerId)
 
     if (!client) {
+      console.error(`[v0] Failed to create MikroTik client for router ${routerId}`)
       return NextResponse.json(
         {
           error: "Failed to create MikroTik client",
           details: "Check router configuration and credentials",
+          success: false,
+          logs: [],
         },
-        { status: 500 },
+        { status: 200 }, // Return 200 with empty logs instead of 500 to avoid error toasts
       )
     }
 
     try {
+      console.log(`[v0] Calling client.getLogs() with topics:`, topics, `limit:`, limit)
       const logs = await client.getLogs(topics, limit)
 
       await client.disconnect()
 
-      console.log(`[v0] Fetched ${logs.length} logs from MikroTik router`)
+      console.log(`[v0] Successfully fetched ${logs.length} logs from MikroTik router ${routerId}`)
+
+      if (logs.length > 0) {
+        console.log(`[v0] Sample log entry:`, JSON.stringify(logs[0]))
+      }
 
       return NextResponse.json({
         success: true,
         logs: logs,
+        count: logs.length,
         router: {
           id: router.id,
           name: router.name,
@@ -62,12 +71,21 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         {
           error: `Failed to fetch logs from MikroTik router: ${mikrotikError.message}`,
           details: "Ensure REST API is enabled on the router. Go to IP > Services and enable www or www-ssl.",
+          success: false,
+          logs: [],
         },
-        { status: 500 },
+        { status: 200 }, // Return 200 with empty logs to show helpful message instead of error
       )
     }
   } catch (error: any) {
     console.error("[v0] Error fetching logs:", error)
-    return NextResponse.json({ error: error.message || "Failed to fetch logs" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: error.message || "Failed to fetch logs",
+        success: false,
+        logs: [],
+      },
+      { status: 200 }, // Return 200 with empty logs
+    )
   }
 }

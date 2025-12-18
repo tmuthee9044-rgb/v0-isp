@@ -10,67 +10,107 @@ export async function GET(request: NextRequest) {
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
     // Fetch finance audit trail data with better null handling
-    const auditLogs = await sql`
-      SELECT 
-        fat.id,
-        fat.created_at,
-        fat.action,
-        fat.table_name as resource,
-        fat.record_id,
-        fat.old_values,
-        fat.new_values,
-        fat.ip_address,
-        COALESCE(u.email, 'System') as user_email,
-        COALESCE(u.username, 'System') as user_name
-      FROM finance_audit_trail fat
-      LEFT JOIN users u ON fat.user_id = u.id
-      ORDER BY fat.created_at DESC
-      LIMIT ${limit}
-      OFFSET ${offset}
-    `
+    let auditLogs: any[] = []
+    try {
+      auditLogs = await sql`
+        SELECT 
+          fat.id,
+          fat.created_at,
+          fat.action,
+          fat.table_name as resource,
+          fat.record_id,
+          fat.old_values,
+          fat.new_values,
+          fat.ip_address,
+          COALESCE(u.email, 'System') as user_email,
+          COALESCE(u.username, 'System') as user_name
+        FROM finance_audit_trail fat
+        LEFT JOIN users u ON fat.user_id = u.id
+        ORDER BY fat.created_at DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `
+    } catch (error) {
+      console.log("[v0] finance_audit_trail query failed:", error)
+    }
 
     // Fetch admin logs related to finance with better null handling
-    const adminLogs = await sql`
-      SELECT 
-        al.id,
-        al.created_at,
-        al.action,
-        al.resource_type as resource,
-        al.resource_id,
-        al.old_values,
-        al.new_values,
-        al.ip_address,
-        COALESCE(u.email, 'Admin') as user_email,
-        COALESCE(u.username, 'Admin') as user_name
-      FROM admin_logs al
-      LEFT JOIN users u ON al.admin_id = u.id
-      WHERE al.resource_type IN ('invoice', 'payment', 'expense', 'customer', 'financial_adjustment')
-      ORDER BY al.created_at DESC
-      LIMIT ${Math.min(limit, 25)}
-      OFFSET ${offset}
-    `
+    let adminLogs: any[] = []
+    try {
+      adminLogs = await sql`
+        SELECT 
+          al.id,
+          al.created_at,
+          al.action,
+          al.resource_type as resource,
+          al.resource_id,
+          al.old_values,
+          al.new_values,
+          al.ip_address,
+          COALESCE(u.email, 'Admin') as user_email,
+          COALESCE(u.username, 'Admin') as user_name
+        FROM admin_logs al
+        LEFT JOIN users u ON al.admin_id = u.id
+        WHERE al.resource_type IN ('invoice', 'payment', 'expense', 'customer', 'financial_adjustment')
+        ORDER BY al.created_at DESC
+        LIMIT ${Math.min(limit, 25)}
+        OFFSET ${offset}
+      `
+    } catch (error) {
+      console.log("[v0] admin_logs query failed:", error)
+    }
 
     // Fetch user activity logs related to finance with better filtering
-    const userActivityLogs = await sql`
-      SELECT 
-        ual.id,
-        ual.created_at,
-        ual.activity as action,
-        'user_activity' as resource,
-        ual.user_id as record_id,
-        NULL as old_values,
-        NULL as new_values,
-        ual.ip_address,
-        COALESCE(ual.description, 'User activity logged') as description,
-        COALESCE(u.email, 'User') as user_email,
-        COALESCE(u.username, 'User') as user_name
-      FROM user_activity_logs ual
-      LEFT JOIN users u ON ual.user_id = u.id
-      WHERE ual.activity ILIKE '%finance%' OR ual.activity ILIKE '%payment%' OR ual.activity ILIKE '%invoice%'
-      ORDER BY ual.created_at DESC
-      LIMIT ${Math.min(limit, 25)}
-      OFFSET ${offset}
-    `
+    let userActivityLogs: any[] = []
+    try {
+      userActivityLogs = await sql`
+        SELECT 
+          ual.id,
+          ual.created_at,
+          ual.activity as action,
+          'user_activity' as resource,
+          ual.user_id as record_id,
+          NULL as old_values,
+          NULL as new_values,
+          ual.ip_address,
+          COALESCE(ual.description, 'User activity logged') as description,
+          COALESCE(u.email, 'User') as user_email,
+          COALESCE(u.username, 'User') as user_name
+        FROM user_activity_logs ual
+        LEFT JOIN users u ON ual.user_id = u.id
+        WHERE ual.activity ILIKE '%finance%' OR ual.activity ILIKE '%payment%' OR ual.activity ILIKE '%invoice%'
+        ORDER BY ual.created_at DESC
+        LIMIT ${Math.min(limit, 25)}
+        OFFSET ${offset}
+      `
+    } catch (error) {
+      console.log("[v0] user_activity_logs query failed:", error)
+    }
+
+    let activityLogs: any[] = []
+    try {
+      activityLogs = await sql`
+        SELECT 
+          al.id,
+          al.created_at,
+          al.action,
+          al.entity_type as resource,
+          al.entity_id as record_id,
+          al.description as details,
+          al.ip_address,
+          COALESCE(u.email, u.username, 'System') as user_email
+        FROM activity_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE al.entity_type IN ('invoice', 'payment', 'expense', 'customer', 'transaction', 'financial_document')
+           OR al.action ILIKE '%finance%'
+           OR al.action ILIKE '%payment%'
+           OR al.action ILIKE '%invoice%'
+        ORDER BY al.created_at DESC
+        LIMIT ${limit}
+      `
+    } catch (error) {
+      console.log("[v0] activity_logs query failed:", error)
+    }
 
     // Combine and format all logs with better error handling
     const allLogs = [
@@ -113,6 +153,22 @@ export async function GET(request: NextRequest) {
         action: "ACTIVITY",
         resource: "User Activity",
         details: log.description || "User activity logged",
+        ip_address: log.ip_address || "N/A",
+        status: "Success",
+      })),
+      ...activityLogs.map((log) => ({
+        id: `log_${log.id}`,
+        timestamp: log.created_at,
+        user: log.user_email || "System",
+        action: (log.action || "VIEW").toUpperCase(),
+        resource: formatResourceName(log.resource || "unknown"),
+        details:
+          log.details ||
+          generateLogDetails({
+            action: log.action,
+            resource: log.resource,
+            record_id: log.record_id,
+          }),
         ip_address: log.ip_address || "N/A",
         status: "Success",
       })),
@@ -177,6 +233,8 @@ function formatResourceName(resource: string): string {
     tax_returns: "Tax Return",
     budget_line_items: "Budget",
     user_activity: "User Activity",
+    transaction: "Transaction",
+    financial_document: "Financial Document",
   }
 
   return resourceMap[resource] || resource.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())

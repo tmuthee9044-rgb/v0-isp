@@ -144,7 +144,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
-        ${initialStatus === "active" ? sql`NOW()` : sql`NULL`},
+        ${initialStatus === "active" ? sql`NOW()` : null},
         NOW(),
         NOW()
       ) RETURNING *

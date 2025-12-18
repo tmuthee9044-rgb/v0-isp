@@ -132,9 +132,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const timestamp = Date.now().toString(36).toUpperCase()
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase()
-    const accountNumber = `ACC-${timestamp}-${random}`
+    const accountNumber = data.account_number
+      ? data.account_number.trim().toUpperCase()
+      : `ACC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
 
     const firstName = data.first_name || data.contact_person?.split(" ")[0] || ""
     const lastName = data.last_name || data.contact_person?.split(" ").slice(1).join(" ") || ""

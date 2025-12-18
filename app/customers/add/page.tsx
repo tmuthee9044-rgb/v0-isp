@@ -34,6 +34,7 @@ interface CustomerFormData {
   date_of_birth?: string
   gender?: string
   national_id?: string
+  account_number?: string // Added account_number field for manual entry - used for MPESA payments and portal login
 
   // Business Information (for companies/schools)
   contact_person?: string
@@ -110,6 +111,7 @@ export default function AddCustomerPage() {
     auto_renewal: true,
     paperless_billing: false,
     sms_notifications: true,
+    account_number: "",
   })
 
   useEffect(() => {
@@ -150,6 +152,13 @@ export default function AddCustomerPage() {
       setFormData((prev) => ({
         ...prev,
         phone: value,
+      }))
+    }
+
+    if (field === "account_number") {
+      setFormData((prev) => ({
+        ...prev,
+        account_number: value.toUpperCase(),
       }))
     }
   }
@@ -321,6 +330,27 @@ export default function AddCustomerPage() {
                       onChange={(e) => handleInputChange("alternate_email", e.target.value)}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="account_number" className="flex items-center gap-2">
+                    Account Number *
+                    <span className="text-xs text-muted-foreground font-normal">
+                      (Used for MPESA payments and customer portal login)
+                    </span>
+                  </Label>
+                  <Input
+                    id="account_number"
+                    value={formData.account_number || ""}
+                    onChange={(e) => handleInputChange("account_number", e.target.value.toUpperCase())}
+                    placeholder="e.g., ACC-2024-001 or custom format"
+                    required
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter a unique account number that the customer will use for making MPESA payments and logging into
+                    their portal
+                  </p>
                 </div>
 
                 {formData.customer_type === "individual" && (

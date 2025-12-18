@@ -92,26 +92,29 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const adminOverride = formData.get("admin_override") === "on"
     const routerId = formData.get("router_id") as string
 
-    console.log("[v0] Checking for existing service...")
-    const existingService = await sql`
-      SELECT id FROM customer_services 
-      WHERE customer_id = ${customerId} 
-      AND service_plan_id = ${servicePlanId}
-      AND status IN ('active', 'pending')
-      LIMIT 1
-    `
+    if (ipAddress && ipAddress !== "auto") {
+      console.log("[v0] Checking for duplicate IP address...")
+      const existingIpAssignment = await sql`
+        SELECT cs.id, sp.name as service_name
+        FROM customer_services cs
+        LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.customer_id = ${customerId} 
+        AND cs.ip_address = ${ipAddress}
+        AND cs.status IN ('active', 'pending', 'suspended')
+        LIMIT 1
+      `
 
-    console.log("[v0] Existing service check result:", existingService)
-
-    if (existingService.length > 0) {
-      console.log("[v0] DUPLICATE DETECTED - Service already exists:", existingService[0].id)
-      return {
-        success: false,
-        error: "This customer already has an active or pending service with this plan.",
+      if (existingIpAssignment.length > 0) {
+        console.log("[v0] DUPLICATE IP DETECTED - IP already assigned:", ipAddress)
+        return {
+          success: false,
+          error: `This IP address (${ipAddress}) is already assigned to another service for this customer: ${existingIpAssignment[0].service_name || "Unknown Service"}. Please select a different IP address.`,
+        }
       }
+      console.log("[v0] IP address is available")
     }
 
-    console.log("[v0] No duplicate found, proceeding with insert...")
+    console.log("[v0] Proceeding with service creation...")
 
     const servicePlan = await sql`
       SELECT id, name, price, speed_download, speed_upload 

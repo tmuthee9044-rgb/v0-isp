@@ -16,11 +16,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         c.portal_username,
         ia.ip_address,
         ia.router_id,
-        r.host as router_host,
-        r.port as router_port,
-        r.username as router_username,
-        r.password as router_password,
-        r.use_ssl as router_use_ssl,
+        r.ip_address as router_host,
+        r.api_port as router_port,
+        r.api_username as router_username,
+        r.api_password as router_password,
+        r.connection_method as router_connection_method,
         r.name as router_name
       FROM customers c
       LEFT JOIN ip_addresses ia ON ia.customer_id = c.id AND ia.status = 'allocated'
@@ -41,10 +41,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const mikrotik = createMikroTikClient(
           customer.router_id,
           customer.router_host,
-          customer.router_port || 443,
+          customer.router_port || 8728,
           customer.router_username,
           customer.router_password,
-          customer.router_use_ssl !== false,
+          customer.router_connection_method === "api_ssl",
         )
 
         const activeSessions = await mikrotik.getPPPoEActiveSessions()

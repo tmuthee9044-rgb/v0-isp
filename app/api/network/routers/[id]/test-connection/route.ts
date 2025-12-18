@@ -57,11 +57,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         try {
           await sql`
             INSERT INTO router_sync_status (router_id, last_synced, sync_status)
-            VALUES (${routerId}, NOW(), 'success')
+            VALUES (${routerId}, NOW(), 'in_sync')
             ON CONFLICT (router_id) 
             DO UPDATE SET 
               last_synced = NOW(),
-              sync_status = 'success',
+              sync_status = 'in_sync',
               updated_at = NOW()
           `
         } catch (syncError: any) {
@@ -75,13 +75,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               if (existing.length > 0) {
                 await sql`
                   UPDATE router_sync_status 
-                  SET last_synced = NOW(), sync_status = 'success', updated_at = NOW()
+                  SET last_synced = NOW(), sync_status = 'in_sync', updated_at = NOW()
                   WHERE router_id = ${routerId}
                 `
               } else {
                 await sql`
                   INSERT INTO router_sync_status (router_id, last_synced, sync_status)
-                  VALUES (${routerId}, NOW(), 'success')
+                  VALUES (${routerId}, NOW(), 'in_sync')
                 `
               }
             } catch (fallbackError) {

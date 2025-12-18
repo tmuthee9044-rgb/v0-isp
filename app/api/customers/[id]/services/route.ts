@@ -14,6 +14,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const connectionType = serviceData.connection_type || serviceData.connectionType || "fiber"
     const deviceId = serviceData.device_id || serviceData.deviceId || null
 
+    if (ipAddress && ipAddress !== "auto") {
+      const existingIpAssignment = await sql`
+        SELECT cs.id, sp.name as service_name
+        FROM customer_services cs
+        LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.customer_id = ${customerId} 
+        AND cs.ip_address = ${ipAddress}
+        AND cs.status IN ('active', 'pending', 'suspended')
+        LIMIT 1
+      `
+
+      if (existingIpAssignment.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `This IP address (${ipAddress}) is already assigned to another service: ${existingIpAssignment[0].service_name || "Unknown Service"}`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+
     const [servicePlan] = await sql`
       SELECT price, name FROM service_plans WHERE id = ${servicePlanId}
     `

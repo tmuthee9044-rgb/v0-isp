@@ -1347,10 +1347,18 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                           </div>
                           <div className="mt-2 flex justify-between text-xs text-muted-foreground">
                             <span>
-                              RX: {traffic.history[traffic.history.length - 1]?.rxMbps.toFixed(2) || "0.00"} Mbps
+                              RX:{" "}
+                              {typeof traffic.history[traffic.history.length - 1]?.rxMbps === "number"
+                                ? traffic.history[traffic.history.length - 1].rxMbps.toFixed(2)
+                                : "0.00"}{" "}
+                              Mbps
                             </span>
                             <span>
-                              TX: {traffic.history[traffic.history.length - 1]?.txMbps.toFixed(2) || "0.00"} Mbps
+                              TX:{" "}
+                              {typeof traffic.history[traffic.history.length - 1]?.txMbps === "number"
+                                ? traffic.history[traffic.history.length - 1].txMbps.toFixed(2)
+                                : "0.00"}{" "}
+                              Mbps
                             </span>
                           </div>
                         </CardContent>

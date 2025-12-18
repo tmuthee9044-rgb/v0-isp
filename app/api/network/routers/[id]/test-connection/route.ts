@@ -54,15 +54,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       `
 
       if (connectionResult.success) {
-        await sql`
-          INSERT INTO router_sync_status (router_id, last_synced, sync_status)
-          VALUES (${routerId}, NOW(), 'success')
-          ON CONFLICT (router_id) 
-          DO UPDATE SET 
-            last_synced = NOW(),
-            sync_status = 'success',
-            updated_at = NOW()
-        `
+        try {
+          await sql`
+            INSERT INTO router_sync_status (router_id, last_synced, sync_status)
+            VALUES (${routerId}, NOW(), 'success')
+            ON CONFLICT (router_id) 
+            DO UPDATE SET 
+              last_synced = NOW(),
+              sync_status = 'success',
+              updated_at = NOW()
+          `
+        } catch (syncError) {
+          console.log("[v0] Router sync status update failed (table may need unique constraint):", syncError)
+          // Don't fail the whole request if sync status update fails
+        }
       }
 
       return NextResponse.json(connectionResult)

@@ -136,22 +136,16 @@ export async function addCustomerService(customerId: number, formData: FormData)
         service_plan_id, 
         status, 
         monthly_fee, 
-        start_date,
-        connection_type,
-        router_id,
-        pppoe_username,
-        pppoe_password,
-        created_at
+        activation_date,
+        created_at,
+        updated_at
       ) VALUES (
         ${customerId},
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
+        ${initialStatus === "active" ? sql`NOW()` : sql`NULL`},
         NOW(),
-        ${connectionType},
-        ${routerId ? Number.parseInt(routerId) : null},
-        ${pppoeUsername || null},
-        ${pppoePassword || null},
         NOW()
       ) RETURNING *
     `

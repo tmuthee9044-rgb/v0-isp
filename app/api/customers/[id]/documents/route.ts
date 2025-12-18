@@ -1,3 +1,5 @@
+// Customer Documents API - Handles document upload and retrieval
+// Last updated: 2025-01-19 - Fixed system_logs column from metadata to details
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 

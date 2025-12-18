@@ -38,8 +38,10 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
   try {
     console.log(`[v0] === Provisioning service ${params.serviceId} to router ${params.routerId} ===`)
 
-    // Get router client
-    const mikrotik = await createMikroTikClient(params.routerId)
+    const mikrotik = await Promise.race([
+      createMikroTikClient(params.routerId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timeout")), 5000)),
+    ])
 
     if (!mikrotik) {
       throw new Error(`Unable to connect to router ${params.routerId}`)
@@ -48,7 +50,6 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
     let provisionResult
 
     if (params.connectionType === "pppoe" && params.pppoeUsername && params.pppoePassword) {
-      // Provision PPPoE service
       console.log(`[v0] Provisioning PPPoE service for ${params.pppoeUsername}`)
 
       const profile = params.speedProfile || "default"
@@ -82,38 +83,35 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
       console.log(`[v0] Static IP provisioned successfully`)
     }
 
-    // Update database to track provisioning
-    await sql`
-      UPDATE customer_services
-      SET 
-        router_provisioned = true,
-        router_provisioned_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${params.serviceId}
-    `
-
-    // Log the activity
-    await sql`
-      INSERT INTO activity_logs (
-        user_id, action, entity_type, entity_id, description, created_at
-      ) VALUES (
-        1, 'provision', 'customer_service', ${params.serviceId},
-        ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
-
-    // Log to router logs
-    await sql`
-      INSERT INTO router_logs (router_id, action, status, message, created_at)
-      VALUES (
-        ${params.routerId},
-        'service_provisioned',
-        'success',
-        ${`Service ${params.serviceId} provisioned for customer ${params.customerId}${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
+    await Promise.all([
+      sql`
+        UPDATE customer_services
+        SET 
+          router_provisioned = true,
+          router_provisioned_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${params.serviceId}
+      `,
+      sql`
+        INSERT INTO activity_logs (
+          user_id, action, entity_type, entity_id, description, created_at
+        ) VALUES (
+          1, 'provision', 'customer_service', ${params.serviceId},
+          ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+      sql`
+        INSERT INTO router_logs (router_id, action, status, message, created_at)
+        VALUES (
+          ${params.routerId},
+          'service_provisioned',
+          'success',
+          ${`Service ${params.serviceId} provisioned for customer ${params.customerId}${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+    ])
 
     await mikrotik.disconnect()
 
@@ -126,19 +124,18 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
   } catch (error) {
     console.error(`[v0] Provisioning error:`, error)
 
-    // Log the failure
-    await sql`
-      INSERT INTO activity_logs (
-        user_id, action, entity_type, entity_id, description, created_at
-      ) VALUES (
-        1, 'provision_failed', 'customer_service', ${params.serviceId},
-        ${`Failed to provision service: ${error instanceof Error ? error.message : String(error)}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
-
-    if (params.routerId) {
-      await sql`
+    Promise.all([
+      sql`
+        INSERT INTO activity_logs (
+          user_id, action, entity_type, entity_id, description, created_at
+        ) VALUES (
+          1, 'provision_failed', 'customer_service', ${params.serviceId},
+          ${`Failed to provision service: ${error instanceof Error ? error.message : String(error)}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+      params.routerId
+        ? sql`
         INSERT INTO router_logs (router_id, action, status, message, created_at)
         VALUES (
           ${params.routerId},
@@ -148,7 +145,8 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
           NOW()
         ) ON CONFLICT DO NOTHING
       `
-    }
+        : Promise.resolve(),
+    ]).catch((err) => console.error("[v0] Failed to log provision error:", err))
 
     return {
       success: false,
@@ -178,8 +176,10 @@ export async function deprovisionServiceFromRouter(params: DeprovisionServicePar
       return { success: true, message: "No router to deprovision from" }
     }
 
-    // Get router client
-    const mikrotik = await createMikroTikClient(params.routerId)
+    const mikrotik = await Promise.race([
+      createMikroTikClient(params.routerId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timeout")), 5000)),
+    ])
 
     if (!mikrotik) {
       throw new Error(`Unable to connect to router ${params.routerId}`)
@@ -212,38 +212,35 @@ export async function deprovisionServiceFromRouter(params: DeprovisionServicePar
       }
     }
 
-    // Update database
-    await sql`
-      UPDATE customer_services
-      SET 
-        router_provisioned = false,
-        router_deprovisioned_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${params.serviceId}
-    `
-
-    // Log the activity
-    await sql`
-      INSERT INTO activity_logs (
-        user_id, action, entity_type, entity_id, description, created_at
-      ) VALUES (
-        1, 'deprovision', 'customer_service', ${params.serviceId},
-        ${`Deprovisioned service from router ${params.routerId}. Reason: ${params.reason}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
-
-    // Log to router logs
-    await sql`
-      INSERT INTO router_logs (router_id, action, status, message, created_at)
-      VALUES (
-        ${params.routerId},
-        'service_deprovisioned',
-        'success',
-        ${`Service ${params.serviceId} deprovisioned. Reason: ${params.reason}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
+    await Promise.all([
+      sql`
+        UPDATE customer_services
+        SET 
+          router_provisioned = false,
+          router_deprovisioned_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${params.serviceId}
+      `,
+      sql`
+        INSERT INTO activity_logs (
+          user_id, action, entity_type, entity_id, description, created_at
+        ) VALUES (
+          1, 'deprovision', 'customer_service', ${params.serviceId},
+          ${`Deprovisioned service from router ${params.routerId}. Reason: ${params.reason}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+      sql`
+        INSERT INTO router_logs (router_id, action, status, message, created_at)
+        VALUES (
+          ${params.routerId},
+          'service_deprovisioned',
+          'success',
+          ${`Service ${params.serviceId} deprovisioned. Reason: ${params.reason}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+    ])
 
     await mikrotik.disconnect()
 
@@ -256,16 +253,17 @@ export async function deprovisionServiceFromRouter(params: DeprovisionServicePar
   } catch (error) {
     console.error(`[v0] Deprovisioning error:`, error)
 
-    // Log the failure
-    await sql`
-      INSERT INTO activity_logs (
-        user_id, action, entity_type, entity_id, description, created_at
-      ) VALUES (
-        1, 'deprovision_failed', 'customer_service', ${params.serviceId},
-        ${`Failed to deprovision service: ${error instanceof Error ? error.message : String(error)}`},
-        NOW()
-      ) ON CONFLICT DO NOTHING
-    `
+    Promise.all([
+      sql`
+        INSERT INTO activity_logs (
+          user_id, action, entity_type, entity_id, description, created_at
+        ) VALUES (
+          1, 'deprovision_failed', 'customer_service', ${params.serviceId},
+          ${`Failed to deprovision service: ${error instanceof Error ? error.message : String(error)}`},
+          NOW()
+        ) ON CONFLICT DO NOTHING
+      `,
+    ]).catch((err) => console.error("[v0] Failed to log deprovision error:", err))
 
     return {
       success: false,

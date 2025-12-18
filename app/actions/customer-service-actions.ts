@@ -443,7 +443,6 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
     const service = serviceData[0]
 
-    // Update the service status
     const result = await sql`
       UPDATE customer_services 
       SET 
@@ -461,59 +460,61 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     }
 
     if (service.router_id && service.host && (service.portal_username || service.ip_address)) {
-      try {
-        // Status changed from pending to active - ADD to router
-        if (oldStatus === "pending" && status === "active") {
-          console.log("[v0] Provisioning service to router (pending -> active)")
+      // Fire and forget - don't await
+      Promise.resolve().then(async () => {
+        try {
+          // Status changed from pending to active - ADD to router
+          if (oldStatus === "pending" && status === "active") {
+            console.log("[v0] Async provisioning: pending -> active")
 
-          await provisionServiceToRouter({
-            serviceId: service.id,
-            customerId: service.customer_id,
-            routerId: service.router_id,
-            ipAddress: service.ip_address,
-            connectionType: service.ip_address ? "static_ip" : "pppoe",
-            pppoeUsername: service.portal_username,
-            pppoePassword: service.portal_username, // Use portal username as default password
-            downloadSpeed: service.download_speed,
-            uploadSpeed: service.upload_speed,
-          })
+            await provisionServiceToRouter({
+              serviceId: service.id,
+              customerId: service.customer_id,
+              routerId: service.router_id,
+              ipAddress: service.ip_address,
+              connectionType: service.ip_address ? "static_ip" : "pppoe",
+              pppoeUsername: service.portal_username,
+              pppoePassword: service.portal_username, // Use portal username as default password
+              downloadSpeed: service.download_speed,
+              uploadSpeed: service.upload_speed,
+            })
+          }
+
+          // Status changed to suspended - REMOVE from router
+          if (status === "suspended" && oldStatus !== "suspended") {
+            console.log("[v0] Async deprovisioning: -> suspended")
+
+            await deprovisionServiceFromRouter({
+              serviceId: service.id,
+              customerId: service.customer_id,
+              routerId: service.router_id,
+              connectionType: service.ip_address ? "static_ip" : "pppoe",
+              ipAddress: service.ip_address,
+              pppoeUsername: service.portal_username,
+              reason: "Service suspended",
+            })
+          }
+
+          // Status changed from suspended to active - RE-ADD to router
+          if (status === "active" && oldStatus === "suspended") {
+            console.log("[v0] Async re-provisioning: suspended -> active")
+
+            await provisionServiceToRouter({
+              serviceId: service.id,
+              customerId: service.customer_id,
+              routerId: service.router_id,
+              ipAddress: service.ip_address,
+              connectionType: service.ip_address ? "static_ip" : "pppoe",
+              pppoeUsername: service.portal_username,
+              pppoePassword: service.portal_username,
+              downloadSpeed: service.download_speed,
+              uploadSpeed: service.upload_speed,
+            })
+          }
+        } catch (provisionError) {
+          console.error("[v0] Async router provisioning error:", provisionError)
         }
-
-        // Status changed to suspended - REMOVE from router
-        if (status === "suspended" && oldStatus !== "suspended") {
-          console.log("[v0] Deprovisioning service from router (-> suspended)")
-
-          await deprovisionServiceFromRouter({
-            serviceId: service.id,
-            customerId: service.customer_id,
-            routerId: service.router_id,
-            connectionType: service.ip_address ? "static_ip" : "pppoe",
-            ipAddress: service.ip_address,
-            pppoeUsername: service.portal_username,
-            reason: "Service suspended",
-          })
-        }
-
-        // Status changed from suspended to active - RE-ADD to router
-        if (status === "active" && oldStatus === "suspended") {
-          console.log("[v0] Re-provisioning service to router (suspended -> active)")
-
-          await provisionServiceToRouter({
-            serviceId: service.id,
-            customerId: service.customer_id,
-            routerId: service.router_id,
-            ipAddress: service.ip_address,
-            connectionType: service.ip_address ? "static_ip" : "pppoe",
-            pppoeUsername: service.portal_username,
-            pppoePassword: service.portal_username,
-            downloadSpeed: service.download_speed,
-            uploadSpeed: service.upload_speed,
-          })
-        }
-      } catch (provisionError) {
-        console.error("[v0] Router provisioning error:", provisionError)
-        // Don't fail the status update if provisioning fails
-      }
+      })
     }
 
     revalidatePath(`/customers`)
@@ -544,29 +545,31 @@ export async function deleteCustomerService(serviceId: number) {
 
     const service = serviceData[0]
 
-    if (service.router_id) {
-      try {
-        console.log("[v0] Deprovisioning service before deletion")
-
-        await deprovisionServiceFromRouter({
-          serviceId: service.id,
-          customerId: service.customer_id,
-          routerId: service.router_id,
-          connectionType: service.ip_address ? "static_ip" : "pppoe",
-          ipAddress: service.ip_address,
-          pppoeUsername: service.portal_username,
-          reason: "Service deleted",
-        })
-      } catch (provisionError) {
-        console.error("[v0] Router deprovisioning error:", provisionError)
-        // Continue with deletion even if deprovisioning fails
-      }
-    }
-
     await sql`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
     `
+
+    if (service.router_id) {
+      // Fire and forget - don't await
+      Promise.resolve().then(async () => {
+        try {
+          console.log("[v0] Async deprovisioning before deletion")
+
+          await deprovisionServiceFromRouter({
+            serviceId: service.id,
+            customerId: service.customer_id,
+            routerId: service.router_id,
+            connectionType: service.ip_address ? "static_ip" : "pppoe",
+            ipAddress: service.ip_address,
+            pppoeUsername: service.portal_username,
+            reason: "Service deleted",
+          })
+        } catch (provisionError) {
+          console.error("[v0] Async router deprovisioning error:", provisionError)
+        }
+      })
+    }
 
     revalidatePath(`/customers`)
     return { success: true }

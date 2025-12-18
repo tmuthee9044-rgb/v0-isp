@@ -135,10 +135,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       trafficking_record: trafficking_record || existingConfig.trafficking_record || "",
       speed_control: speed_control || existingConfig.speed_control || "",
       save_visited_ips: save_visited_ips ?? existingConfig.save_visited_ips ?? true,
-      radius_secret: radius_secret || existingConfig.radius_secret || "",
-      nas_ip_address: radius_nas_ip || existingConfig.nas_ip_address || "",
-      gps_latitude: gps_latitude ?? existingConfig.gps_latitude ?? null,
-      gps_longitude: gps_longitude ?? existingConfig.gps_longitude ?? null,
+      radius_secret: radius_secret || "",
+      nas_ip_address: radius_nas_ip || "",
+      gps_latitude: gps_latitude ?? null,
+      gps_longitude: gps_longitude ?? null,
     }
 
     const result = await sql`
@@ -148,9 +148,28 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         location = ${locationName},
         ip_address = ${hostname || existingRouter[0].ip_address},
         status = ${status || "active"},
-        configuration = ${JSON.stringify(configuration)}
+        radius_secret = ${radius_secret || null},
+        nas_ip_address = ${radius_nas_ip || null},
+        latitude = ${gps_latitude ?? null},
+        longitude = ${gps_longitude ?? null},
+        configuration = ${JSON.stringify(configuration)},
+        updated_at = NOW()
       WHERE id = ${routerId}
       RETURNING *
+    `
+
+    await sql`
+      INSERT INTO activity_logs (
+        action, entity_type, entity_id, details, created_at
+      ) VALUES (
+        'update', 'router', ${routerId}, 
+        ${JSON.stringify({
+          name,
+          radius_enabled: !!radius_secret,
+          nas_ip: radius_nas_ip || "not set",
+        })}, 
+        NOW()
+      )
     `
 
     return NextResponse.json(result[0])

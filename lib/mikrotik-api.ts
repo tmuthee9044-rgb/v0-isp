@@ -220,6 +220,42 @@ export class MikroTikAPI {
   }
 
   /**
+   * Get active PPPoE sessions with parsed data
+   * Returns an array of active PPPoE sessions with user-friendly field names
+   */
+  async getPPPoEActiveSessions(): Promise<any[]> {
+    try {
+      const result = await this.execute("/ppp/active")
+
+      if (!result.success || !result.data) {
+        return []
+      }
+
+      const sessions = Array.isArray(result.data) ? result.data : [result.data]
+
+      return sessions.map((session: any) => ({
+        id: session[".id"],
+        name: session.name,
+        service: session.service,
+        caller_id: session["caller-id"],
+        address: session.address,
+        uptime: session.uptime,
+        encoding: session.encoding,
+        session_id: session["session-id"],
+        limit_bytes_in: session["limit-bytes-in"],
+        limit_bytes_out: session["limit-bytes-out"],
+        radius: session.radius,
+        // Data transfer stats
+        rx_bytes: Number.parseInt(session["rx-bytes"] || "0"),
+        tx_bytes: Number.parseInt(session["tx-bytes"] || "0"),
+      }))
+    } catch (error) {
+      console.error("[v0] Error getting PPPoE active sessions:", error)
+      return []
+    }
+  }
+
+  /**
    * Get IP address pool information
    */
   async getIPPool(poolName: string): Promise<MikroTikResponse> {
@@ -425,8 +461,39 @@ export class MikroTikAPI {
 /**
  * Create MikroTik API client from router configuration
  */
-export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null> {
+export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null>
+export async function createMikroTikClient(
+  routerId: number,
+  host: string,
+  port: number,
+  username: string,
+  password: string,
+  useSSL?: boolean,
+): Promise<MikroTikAPI>
+export async function createMikroTikClient(
+  routerId: number,
+  host?: string,
+  port?: number,
+  username?: string,
+  password?: string,
+  useSSL?: boolean,
+): Promise<MikroTikAPI | null> {
   try {
+    if (host && username && password) {
+      const config: MikroTikConfig = {
+        host,
+        port: port || 443,
+        username,
+        password,
+        useSSL: useSSL !== false,
+      }
+
+      console.log(`[v0] Creating MikroTik client with direct parameters for router ${routerId}`)
+      const client = new MikroTikAPI(config)
+      await client.connect()
+      return client
+    }
+
     const sql = await getSql()
 
     if (typeof routerId !== "number" || isNaN(routerId)) {

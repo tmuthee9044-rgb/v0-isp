@@ -144,14 +144,27 @@ export default function ServerConfigurationPage() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Shield className="h-5 w-5" />
-                <span>RADIUS Server Configuration</span>
+                <span>FreeRADIUS Server Configuration</span>
               </CardTitle>
-              <CardDescription>Configure RADIUS authentication and accounting settings</CardDescription>
+              <CardDescription>
+                AAA (Authentication, Authorization, Accounting) server for managing user access control
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                <h4 className="font-semibold text-blue-900 mb-2">FreeRADIUS Features</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• PPPoE, IPoE (DHCP), Hotspot, and Wireless authentication</li>
+                  <li>• Vendor-Specific Attributes (VSA) for MikroTik, Ubiquiti, Cisco, and more</li>
+                  <li>• Real-time speed control with bandwidth management</li>
+                  <li>• Usage tracking and accounting for billing integration</li>
+                  <li>• Failover support with backup RADIUS servers</li>
+                </ul>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label className="text-base">Enable RADIUS Server</Label>
+                  <Label className="text-base">Enable FreeRADIUS Server</Label>
                   <div className="text-sm text-muted-foreground">
                     Enable RADIUS authentication for network access control
                   </div>
@@ -169,62 +182,68 @@ export default function ServerConfigurationPage() {
 
               <Separator />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="radius-host">RADIUS Server Host *</Label>
-                  <Input
-                    id="radius-host"
-                    placeholder="Enter RADIUS server IP"
-                    value={serverConfig?.radius?.host || ""}
-                    onChange={(e) =>
-                      setServerConfig((prev) => ({
-                        ...prev,
-                        radius: { ...prev.radius, host: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="auth-port">Authentication Port</Label>
-                  <Input
-                    id="auth-port"
-                    placeholder="1812"
-                    value={serverConfig?.radius?.authPort || "1812"}
-                    onChange={(e) =>
-                      setServerConfig((prev) => ({
-                        ...prev,
-                        radius: { ...prev.radius, authPort: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="acct-port">Accounting Port</Label>
-                  <Input
-                    id="acct-port"
-                    placeholder="1813"
-                    value={serverConfig?.radius?.acctPort || "1813"}
-                    onChange={(e) =>
-                      setServerConfig((prev) => ({
-                        ...prev,
-                        radius: { ...prev.radius, acctPort: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="timeout">Timeout (seconds)</Label>
-                  <Input
-                    id="timeout"
-                    placeholder="30"
-                    value={serverConfig?.radius?.timeout || "30"}
-                    onChange={(e) =>
-                      setServerConfig((prev) => ({
-                        ...prev,
-                        radius: { ...prev.radius, timeout: e.target.value },
-                      }))
-                    }
-                  />
+              <div>
+                <h4 className="font-semibold mb-3">Server Connection</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="radius-host">RADIUS Server Host *</Label>
+                    <Input
+                      id="radius-host"
+                      placeholder="127.0.0.1 or radius.company.com"
+                      value={serverConfig?.radius?.host || ""}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: { ...prev.radius, host: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="auth-port">Authentication Port</Label>
+                    <Input
+                      id="auth-port"
+                      placeholder="1812"
+                      type="number"
+                      value={serverConfig?.radius?.authPort || "1812"}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: { ...prev.radius, authPort: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="acct-port">Accounting Port</Label>
+                    <Input
+                      id="acct-port"
+                      placeholder="1813"
+                      type="number"
+                      value={serverConfig?.radius?.acctPort || "1813"}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: { ...prev.radius, acctPort: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="timeout">Timeout (seconds)</Label>
+                    <Input
+                      id="timeout"
+                      placeholder="30"
+                      type="number"
+                      value={serverConfig?.radius?.timeout || "30"}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: { ...prev.radius, timeout: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -233,7 +252,7 @@ export default function ServerConfigurationPage() {
                 <Input
                   id="shared-secret"
                   type="password"
-                  placeholder="Enter RADIUS shared secret"
+                  placeholder="Enter strong RADIUS shared secret"
                   value={serverConfig?.radius?.sharedSecret || ""}
                   onChange={(e) =>
                     setServerConfig((prev) => ({
@@ -242,77 +261,509 @@ export default function ServerConfigurationPage() {
                     }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  Must match the secret configured on your network devices (MikroTik, Ubiquiti, etc.)
+                </p>
               </div>
 
-              <div className="space-y-4">
-                <Label className="text-base">Authentication Methods</Label>
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Protocol Support</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="pppoe-protocol"
+                      checked={serverConfig?.radius?.protocols?.pppoe ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            protocols: { ...prev.radius?.protocols, pppoe: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="pppoe-protocol" className="text-sm">
+                      PPPoE
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="ipoe-protocol"
+                      checked={serverConfig?.radius?.protocols?.ipoe ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            protocols: { ...prev.radius?.protocols, ipoe: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="ipoe-protocol" className="text-sm">
+                      IPoE (DHCP)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="hotspot-protocol"
+                      checked={serverConfig?.radius?.protocols?.hotspot ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            protocols: { ...prev.radius?.protocols, hotspot: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="hotspot-protocol" className="text-sm">
+                      Hotspot
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="wireless-protocol"
+                      checked={serverConfig?.radius?.protocols?.wireless ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            protocols: { ...prev.radius?.protocols, wireless: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="wireless-protocol" className="text-sm">
+                      Wireless
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Authentication Methods</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="pap"
-                      checked={serverConfig?.radius?.authMethods?.pap || false}
+                      checked={serverConfig?.radius?.authMethods?.pap ?? true}
                       onCheckedChange={(checked) =>
                         setServerConfig((prev) => ({
                           ...prev,
                           radius: {
                             ...prev.radius,
-                            authMethods: { ...prev.radius.authMethods, pap: checked },
+                            authMethods: { ...prev.radius?.authMethods, pap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="pap">PAP</Label>
+                    <Label htmlFor="pap" className="text-sm">
+                      PAP
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="chap"
-                      checked={serverConfig?.radius?.authMethods?.chap || false}
+                      checked={serverConfig?.radius?.authMethods?.chap ?? true}
                       onCheckedChange={(checked) =>
                         setServerConfig((prev) => ({
                           ...prev,
                           radius: {
                             ...prev.radius,
-                            authMethods: { ...prev.radius.authMethods, chap: checked },
+                            authMethods: { ...prev.radius?.authMethods, chap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="chap">CHAP</Label>
+                    <Label htmlFor="chap" className="text-sm">
+                      CHAP
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="mschap"
-                      checked={serverConfig?.radius?.authMethods?.mschap || false}
+                      checked={serverConfig?.radius?.authMethods?.mschap ?? true}
                       onCheckedChange={(checked) =>
                         setServerConfig((prev) => ({
                           ...prev,
                           radius: {
                             ...prev.radius,
-                            authMethods: { ...prev.radius.authMethods, mschap: checked },
+                            authMethods: { ...prev.radius?.authMethods, mschap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="mschap">MS-CHAP</Label>
+                    <Label htmlFor="mschap" className="text-sm">
+                      MS-CHAP
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="mschapv2"
-                      checked={serverConfig?.radius?.authMethods?.mschapv2 || false}
+                      checked={serverConfig?.radius?.authMethods?.mschapv2 ?? true}
                       onCheckedChange={(checked) =>
                         setServerConfig((prev) => ({
                           ...prev,
                           radius: {
                             ...prev.radius,
-                            authMethods: { ...prev.radius.authMethods, mschapv2: checked },
+                            authMethods: { ...prev.radius?.authMethods, mschapv2: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="mschapv2">MS-CHAPv2</Label>
+                    <Label htmlFor="mschapv2" className="text-sm">
+                      MS-CHAPv2
+                    </Label>
                   </div>
                 </div>
               </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Vendor Support (VSA)</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Enable Vendor-Specific Attributes for your networking equipment
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="mikrotik-vsa"
+                      checked={serverConfig?.radius?.vendors?.mikrotik ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, mikrotik: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="mikrotik-vsa" className="text-sm">
+                      MikroTik
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="ubiquiti-vsa"
+                      checked={serverConfig?.radius?.vendors?.ubiquiti ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, ubiquiti: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="ubiquiti-vsa" className="text-sm">
+                      Ubiquiti
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="cisco-vsa"
+                      checked={serverConfig?.radius?.vendors?.cisco ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, cisco: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="cisco-vsa" className="text-sm">
+                      Cisco
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="juniper-vsa"
+                      checked={serverConfig?.radius?.vendors?.juniper ?? false}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, juniper: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="juniper-vsa" className="text-sm">
+                      Juniper
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="cambium-vsa"
+                      checked={serverConfig?.radius?.vendors?.cambium ?? false}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, cambium: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="cambium-vsa" className="text-sm">
+                      Cambium
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="huawei-vsa"
+                      checked={serverConfig?.radius?.vendors?.huawei ?? false}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            vendors: { ...prev.radius?.vendors, huawei: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="huawei-vsa" className="text-sm">
+                      Huawei
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Bandwidth Management</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="enable-rate-limit"
+                      checked={serverConfig?.radius?.bandwidth?.enableRateLimit ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            bandwidth: { ...prev.radius?.bandwidth, enableRateLimit: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="enable-rate-limit">Enable Dynamic Rate Limiting</Label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="rate-limit-attr">Rate Limit Attribute</Label>
+                      <Select
+                        value={serverConfig?.radius?.bandwidth?.rateLimitAttr || "mikrotik"}
+                        onValueChange={(value) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            radius: {
+                              ...prev.radius,
+                              bandwidth: { ...prev.radius?.bandwidth, rateLimitAttr: value },
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="mikrotik">Mikrotik-Rate-Limit</SelectItem>
+                          <SelectItem value="wispr">WISPr-Bandwidth</SelectItem>
+                          <SelectItem value="filter">Filter-Id</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="burst-mode">Burst Mode</Label>
+                      <Select
+                        value={serverConfig?.radius?.bandwidth?.burstMode || "auto"}
+                        onValueChange={(value) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            radius: {
+                              ...prev.radius,
+                              bandwidth: { ...prev.radius?.bandwidth, burstMode: value },
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (Default)</SelectItem>
+                          <SelectItem value="enabled">Enabled</SelectItem>
+                          <SelectItem value="disabled">Disabled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Accounting & Usage Tracking</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="enable-accounting"
+                      checked={serverConfig?.radius?.accounting?.enabled ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            accounting: { ...prev.radius?.accounting, enabled: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="enable-accounting">Enable Session Accounting</Label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="interim-interval">Interim Update Interval (seconds)</Label>
+                      <Input
+                        id="interim-interval"
+                        type="number"
+                        placeholder="300"
+                        value={serverConfig?.radius?.accounting?.interimInterval || "300"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            radius: {
+                              ...prev.radius,
+                              accounting: { ...prev.radius?.accounting, interimInterval: e.target.value },
+                            },
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        How often routers send usage updates (default: 5 minutes)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="session-timeout">Session Timeout (hours)</Label>
+                      <Input
+                        id="session-timeout"
+                        type="number"
+                        placeholder="24"
+                        value={serverConfig?.radius?.accounting?.sessionTimeout || "24"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            radius: {
+                              ...prev.radius,
+                              accounting: { ...prev.radius?.accounting, sessionTimeout: e.target.value },
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="track-mac-address"
+                      checked={serverConfig?.radius?.accounting?.trackMacAddress ?? true}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            accounting: { ...prev.radius?.accounting, trackMacAddress: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="track-mac-address">Track MAC Addresses</Label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-3">Failover & Redundancy</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="enable-failover"
+                      checked={serverConfig?.radius?.failover?.enabled ?? false}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          radius: {
+                            ...prev.radius,
+                            failover: { ...prev.radius?.failover, enabled: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="enable-failover">Enable Backup RADIUS Server</Label>
+                  </div>
+                  {serverConfig?.radius?.failover?.enabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="backup-host">Backup Server Host</Label>
+                        <Input
+                          id="backup-host"
+                          placeholder="backup-radius.company.com"
+                          value={serverConfig?.radius?.failover?.backupHost || ""}
+                          onChange={(e) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              radius: {
+                                ...prev.radius,
+                                failover: { ...prev.radius?.failover, backupHost: e.target.value },
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="failover-timeout">Failover Timeout (seconds)</Label>
+                        <Input
+                          id="failover-timeout"
+                          type="number"
+                          placeholder="5"
+                          value={serverConfig?.radius?.failover?.timeout || "5"}
+                          onChange={(e) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              radius: {
+                                ...prev.radius,
+                                failover: { ...prev.radius?.failover, timeout: e.target.value },
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
 
               <div className="flex space-x-2">
                 <Button
@@ -320,12 +771,49 @@ export default function ServerConfigurationPage() {
                   onClick={() => handleTestConnection("RADIUS", serverConfig?.radius)}
                   className="flex items-center space-x-2"
                 >
-                  <CheckCircle className="h-4 w-4" />
+                  <Activity className="h-4 w-4" />
                   <span>Test Connection</span>
                 </Button>
                 <Button onClick={() => handleSave("radius", serverConfig?.radius)} disabled={isPending}>
-                  Save RADIUS Config
+                  {isPending ? "Saving..." : "Save FreeRADIUS Config"}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Router className="h-5 w-5" />
+                <span>MikroTik RADIUS Integration</span>
+              </CardTitle>
+              <CardDescription>Configure MikroTik routers to use this RADIUS server for authentication</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+                <h4 className="font-semibold text-amber-900 mb-2">Router Configuration Steps</h4>
+                <ol className="text-sm text-amber-800 space-y-2 list-decimal list-inside">
+                  <li>
+                    Add this RADIUS server to your MikroTik under{" "}
+                    <code className="bg-amber-100 px-1 rounded">/radius</code>
+                  </li>
+                  <li>Configure PPPoE server to use RADIUS authentication</li>
+                  <li>Enable accounting for usage tracking</li>
+                  <li>Set up Vendor-Specific Attributes (VSA) for rate limiting</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2">
+                <Label>RADIUS Configuration Command</Label>
+                <div className="relative">
+                  <pre className="bg-slate-900 text-slate-100 p-4 rounded text-xs overflow-x-auto">
+                    {`/radius add service=ppp address=${serverConfig?.radius?.host || "RADIUS_IP"} \\
+  secret="${serverConfig?.radius?.sharedSecret || "SECRET"}" \\
+  timeout=${serverConfig?.radius?.timeout || "30"}s
+
+/ppp aaa set use-radius=yes accounting=yes`}
+                  </pre>
+                </div>
               </div>
             </CardContent>
           </Card>

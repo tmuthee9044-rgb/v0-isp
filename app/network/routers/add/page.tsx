@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch"
 import { MapPicker } from "@/components/ui/map-picker"
 import { ArrowLeft, Save, Database, Shield, Settings, MapPin, Activity } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { Badge } from "@/components/ui/badge"
 
 interface Location {
   id: number
@@ -27,6 +28,7 @@ export default function AddRouterPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
+  const [radiusSettings, setRadiusSettings] = useState<any>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -73,6 +75,27 @@ export default function AddRouterPage() {
       }
     }
     fetchLocations()
+  }, [])
+
+  useEffect(() => {
+    const fetchRadiusSettings = async () => {
+      try {
+        const response = await fetch("/api/server-settings")
+        if (response.ok) {
+          const data = await response.json()
+          setRadiusSettings(data.radius)
+          if (data.radius?.enabled && formData.ip_address && !formData.nas_ip_address) {
+            setFormData((prev) => ({
+              ...prev,
+              nas_ip_address: formData.ip_address,
+            }))
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching RADIUS settings:", error)
+      }
+    }
+    fetchRadiusSettings()
   }, [])
 
   const handleInputChange = (field: string, value: any) => {
@@ -312,67 +335,177 @@ export default function AddRouterPage() {
                 <CardTitle>Security Configuration</CardTitle>
                 <CardDescription>Configure authentication and security settings</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      value={formData.username}
-                      onChange={(e) => handleInputChange("username", e.target.value)}
-                      placeholder="admin"
-                      required
-                    />
+              <CardContent className="space-y-6">
+                {/* Router Authentication */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Router Authentication</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => handleInputChange("username", e.target.value)}
+                        placeholder="admin"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => handleInputChange("password", e.target.value)}
+                        placeholder="Enter password"
+                        required
+                      />
+                    </div>
                   </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => handleInputChange("password", e.target.value)}
-                      placeholder="Enter password"
-                      required
-                    />
+                    <Label htmlFor="connection_method">Connection Method</Label>
+                    <Select
+                      value={formData.connection_method}
+                      onValueChange={(value) => handleInputChange("connection_method", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="api">API (Recommended)</SelectItem>
+                        <SelectItem value="ssh">SSH</SelectItem>
+                        <SelectItem value="both">Both API & SSH</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="connection_method">Connection Method</Label>
-                  <Select
-                    value={formData.connection_method}
-                    onValueChange={(value) => handleInputChange("connection_method", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="api">API</SelectItem>
-                      <SelectItem value="ssh">SSH</SelectItem>
-                      <SelectItem value="both">Both</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">RADIUS Authentication (FreeRADIUS)</h3>
+                    {radiusSettings?.enabled && (
+                      <Badge className="bg-green-100 text-green-800">
+                        <Activity className="w-3 h-3 mr-1" />
+                        Server Active
+                      </Badge>
+                    )}
+                  </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="radius_secret">RADIUS Secret</Label>
-                    <Input
-                      id="radius_secret"
-                      value={formData.radius_secret}
-                      onChange={(e) => handleInputChange("radius_secret", e.target.value)}
-                      placeholder="Enter RADIUS secret"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="nas_ip_address">NAS IP Address</Label>
-                    <Input
-                      id="nas_ip_address"
-                      value={formData.nas_ip_address}
-                      onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
-                      placeholder="192.168.1.1"
-                    />
-                  </div>
+                  {radiusSettings?.enabled ? (
+                    <>
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm space-y-2">
+                        <p className="font-medium text-blue-900">FreeRADIUS Server Detected</p>
+                        <div className="space-y-1 text-blue-700">
+                          <p>
+                            Server:{" "}
+                            <span className="font-mono">
+                              {radiusSettings.host}:{radiusSettings.authPort}
+                            </span>
+                          </p>
+                          <p>Protocols: PPPoE, IPoE, Hotspot, Wireless</p>
+                          <p>Accounting: {radiusSettings.acctPort}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="radius_secret">RADIUS Shared Secret 🔒</Label>
+                          <Input
+                            id="radius_secret"
+                            type="password"
+                            value={formData.radius_secret}
+                            onChange={(e) => handleInputChange("radius_secret", e.target.value)}
+                            placeholder="Enter shared secret"
+                            required
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Must match the secret configured in FreeRADIUS clients.conf
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="nas_ip_address">NAS IP Address</Label>
+                          <Input
+                            id="nas_ip_address"
+                            value={formData.nas_ip_address}
+                            onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
+                            placeholder={formData.ip_address || "Router IP address"}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Network Access Server identifier (usually router IP)
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 border rounded-lg space-y-2">
+                        <p className="text-sm font-medium">After creating this router, configure MikroTik:</p>
+                        <div className="space-y-1 text-xs font-mono bg-white p-2 rounded border">
+                          <div className="text-muted-foreground"># Add RADIUS server</div>
+                          <div>/radius add service=ppp,login address={radiusSettings.host} secret=[YOUR_SECRET]</div>
+                          <div className="text-muted-foreground mt-2"># Enable RADIUS AAA</div>
+                          <div>/ppp aaa set use-radius=yes accounting=yes</div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-sm text-green-900">
+                          <strong>Supported Features:</strong> User authentication, bandwidth control via
+                          vendor-specific attributes (Mikrotik-Rate-Limit), session accounting, and failover redundancy.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="radius_secret">RADIUS Secret (Optional)</Label>
+                          <Input
+                            id="radius_secret"
+                            type="password"
+                            value={formData.radius_secret}
+                            onChange={(e) => handleInputChange("radius_secret", e.target.value)}
+                            placeholder="Leave empty if not using RADIUS"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="nas_ip_address">NAS IP Address (Optional)</Label>
+                          <Input
+                            id="nas_ip_address"
+                            value={formData.nas_ip_address}
+                            onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
+                            placeholder="Leave empty if not using RADIUS"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <Shield className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-yellow-900">FreeRADIUS Not Configured</p>
+                            <p className="text-sm text-yellow-700 mt-1">
+                              To enable centralized AAA (Authentication, Authorization, Accounting) with FreeRADIUS,
+                              configure your RADIUS server in{" "}
+                              <a
+                                href="/settings/servers"
+                                target="_blank"
+                                className="underline font-medium"
+                                rel="noreferrer"
+                              >
+                                Settings → Servers
+                              </a>
+                              .
+                            </p>
+                            <p className="text-sm text-yellow-700 mt-2">
+                              <strong>Benefits:</strong> Centralized user management, PPPoE/IPoE/Hotspot authentication,
+                              dynamic bandwidth control, session tracking, and multi-vendor support (MikroTik, Ubiquiti,
+                              Cisco, Juniper, Cambium, Huawei).
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

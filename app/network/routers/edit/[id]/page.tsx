@@ -32,6 +32,7 @@ import {
   Signal,
   Network,
   Terminal,
+  Shield,
 } from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
@@ -112,6 +113,28 @@ interface LogEntry {
   message: string
 }
 
+// Define FormData interface for better type safety
+interface FormData {
+  name: string
+  type: "mikrotik" | "ubiquiti" | "juniper" | "other"
+  location_id: string
+  connection_type: "public_ip" | "private_ip" | "vpn"
+  hostname: string
+  api_port: number
+  ssh_port: number
+  username: string
+  password: string
+  mikrotik_user: string
+  mikrotik_password: string
+  trafficking_record: string
+  speed_control: string
+  save_visited_ips: boolean
+  radius_secret: string
+  radius_nas_ip: string
+  gps_latitude: number
+  gps_longitude: number
+}
+
 export default function EditRouterPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const routerId = params.id as string
@@ -137,6 +160,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
 
   const [routerDetails, setRouterDetails] = useState<any>(null)
 
+  const [radiusSettings, setRadiusSettings] = useState<any>(null)
+
   useEffect(() => {
     fetchRouter()
     fetchLocations()
@@ -146,6 +171,18 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
     fetchLogs()
     // Fetch router details on mount
     fetchRouterDetails()
+    const fetchRadiusSettings = async () => {
+      try {
+        const response = await fetch("/api/server-settings")
+        if (response.ok) {
+          const data = await response.json()
+          setRadiusSettings(data.radius)
+        }
+      } catch (error) {
+        console.error("Error fetching RADIUS settings:", error)
+      }
+    }
+    fetchRadiusSettings()
   }, [routerId])
 
   useEffect(() => {
@@ -305,9 +342,14 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
       if (response.ok) {
         const data = await response.json()
         setLogs(data.logs || [])
+      } else {
+        // If logs are not found or there's an error, clear logs
+        setLogs([])
       }
     } catch (error) {
       console.error("Error fetching logs:", error)
+      setLogs([]) // Ensure logs are cleared on error
+      toast.error("Failed to fetch router logs")
     }
   }
 
@@ -362,7 +404,7 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
       log.topics.toLowerCase().includes(logFilter.toLowerCase()),
   )
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name: "",
     type: "mikrotik" as const,
     location_id: "",
@@ -770,27 +812,96 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
 
                     {/* Radius Configuration */}
                     <div className="space-y-4 pt-4 border-t">
-                      <h3 className="font-semibold">Radius Configuration</h3>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="radius-secret">Radius Secret 🔒</Label>
-                        <Input
-                          id="radius-secret"
-                          value={formData.radius_secret}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, radius_secret: e.target.value }))}
-                          placeholder="kG5CF9eUpHD5VS5"
-                        />
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">RADIUS Configuration</h3>
+                        {radiusSettings?.enabled && (
+                          <Badge variant="success" className="bg-green-100 text-green-800">
+                            <Activity className="w-3 h-3 mr-1" />
+                            RADIUS Server Active
+                          </Badge>
+                        )}
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="radius-nas-ip">Radius NAS IP</Label>
-                        <Input
-                          id="radius-nas-ip"
-                          value={formData.radius_nas_ip}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, radius_nas_ip: e.target.value }))}
-                          placeholder="45.77.1.85"
-                        />
-                      </div>
+                      {radiusSettings?.enabled ? (
+                        <>
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                            <p className="font-medium text-blue-900 mb-1">FreeRADIUS Integration</p>
+                            <p className="text-blue-700">
+                              This router is configured to work with your FreeRADIUS server at{" "}
+                              <span className="font-mono">
+                                {radiusSettings.host}:{radiusSettings.authPort}
+                              </span>
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="radius-secret">RADIUS Secret 🔒</Label>
+                            <Input
+                              id="radius-secret"
+                              type="password"
+                              value={formData.radius_secret}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, radius_secret: e.target.value }))}
+                              placeholder="Enter shared secret (must match FreeRADIUS server)"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              This secret authenticates communication between the router and RADIUS server
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="radius-nas-ip">RADIUS NAS IP</Label>
+                            <Input
+                              id="radius-nas-ip"
+                              value={formData.radius_nas_ip}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, radius_nas_ip: e.target.value }))}
+                              placeholder={formData.hostname || "Enter NAS IP address"}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Network Access Server IP - typically the router's management IP
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                            <p className="text-sm font-medium text-amber-900">MikroTik Configuration Commands</p>
+                            <div className="space-y-1 text-xs font-mono bg-white p-2 rounded border">
+                              <div className="text-amber-800"># Add RADIUS server to MikroTik</div>
+                              <div>
+                                /radius add service=ppp,login address={radiusSettings.host} secret=
+                                {formData.radius_secret || "YOUR_SECRET"}
+                              </div>
+                              <div className="text-amber-800 mt-2"># Enable RADIUS authentication</div>
+                              <div>/ppp aaa set use-radius=yes</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="p-2 bg-gray-50 rounded">
+                              <p className="text-muted-foreground">Auth Port</p>
+                              <p className="font-medium font-mono">{radiusSettings.authPort}</p>
+                            </div>
+                            <div className="p-2 bg-gray-50 rounded">
+                              <p className="text-muted-foreground">Accounting Port</p>
+                              <p className="font-medium font-mono">{radiusSettings.acctPort}</p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <Shield className="w-5 h-5 text-yellow-600 mt-0.5" />
+                            <div>
+                              <p className="font-medium text-yellow-900">RADIUS Server Not Configured</p>
+                              <p className="text-sm text-yellow-700 mt-1">
+                                Configure your FreeRADIUS server in{" "}
+                                <a href="/settings/servers" className="underline font-medium">
+                                  Settings → Servers
+                                </a>{" "}
+                                to enable AAA (Authentication, Authorization, Accounting) for this router.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </form>
@@ -877,43 +988,89 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Status</p>
-                    <div className="flex items-center gap-2 mt-1">
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Status */}
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <span className="text-sm font-medium">Status</span>
+                    <div className="flex items-center gap-2">
                       <div
                         className={`w-3 h-3 rounded-full ${
-                          routerData?.status === "connected" ? "bg-green-500 animate-pulse" : "bg-red-500"
+                          routerDetails?.success ? "bg-green-500 animate-pulse" : "bg-red-500"
                         }`}
                       />
-                      <p className="font-medium capitalize">{routerData?.status || "Unknown"}</p>
+                      <span className="font-medium capitalize">
+                        {routerDetails?.success ? "Connected" : routerData?.status || "Disconnected"}
+                      </span>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Connection Type</p>
-                    <p className="font-medium mt-1">{routerData?.connection_type || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Router Type</p>
-                    <p className="font-medium mt-1 capitalize">{routerData?.type || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">API Port</p>
-                    <p className="font-medium mt-1">{routerData?.api_port || "N/A"}</p>
+
+                  {/* Platform */}
+                  {routerDetails?.details?.system_resources?.platform && (
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">Platform</span>
+                      <span className="font-medium">{routerDetails.details.system_resources.platform}</span>
+                    </div>
+                  )}
+
+                  {/* Board Name */}
+                  {routerDetails?.details?.system_resources?.["board-name"] && (
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">Board Name</span>
+                      <span className="font-medium">{routerDetails.details.system_resources["board-name"]}</span>
+                    </div>
+                  )}
+
+                  {/* RouterOS Version */}
+                  {routerDetails?.details?.system_resources?.version && (
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">RouterOS Version</span>
+                      <span className="font-medium">{routerDetails.details.system_resources.version}</span>
+                    </div>
+                  )}
+
+                  {/* CPU Usage */}
+                  {routerDetails?.details?.system_resources?.["cpu-load"] !== undefined && (
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">CPU Usage</span>
+                      <span className="font-medium">{routerDetails.details.system_resources["cpu-load"]}%</span>
+                    </div>
+                  )}
+
+                  {/* Last Sync Status */}
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <span className="text-sm font-medium">Last Sync Status</span>
+                    <span className="font-medium">
+                      {routerDetails?.success ? (
+                        <span className="text-green-600 flex items-center gap-1">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Success
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Not synced</span>
+                      )}
+                    </span>
                   </div>
                 </div>
 
+                {/* Connection message and latency */}
                 {routerDetails?.success && (
                   <div className="pt-4 border-t">
-                    <p className="text-sm font-medium text-green-600 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4" />
-                      {routerDetails.message}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{routerDetails.message}</p>
                     {routerDetails.details?.ping?.latency && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Latency: {routerDetails.details.ping.latency}ms
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Error message if connection failed */}
+                {!routerDetails?.success && routerDetails?.error && (
+                  <div className="pt-4 border-t">
+                    <p className="text-sm text-red-600 flex items-center gap-2">
+                      <XCircle className="w-4 h-4" />
+                      {routerDetails.error}
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -1556,8 +1713,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredLogs.length > 0 ? (
-                      filteredLogs.map((log) => (
+                    {logs.length > 0 ? (
+                      (logFilter ? filteredLogs : logs).map((log) => (
                         <TableRow key={log.id}>
                           <TableCell className="text-sm">{formatLogTime(log.time)}</TableCell>
                           <TableCell>
@@ -1568,8 +1725,18 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground">
-                          No logs found
+                        <TableCell colSpan={3} className="text-center py-8">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <FileText className="w-8 h-8 opacity-50" />
+                            <p>No logs available from the physical MikroTik router</p>
+                            <p className="text-xs">
+                              Make sure the REST API is enabled on the router (IP → Services → www/www-ssl)
+                            </p>
+                            <Button size="sm" variant="outline" onClick={fetchLogs} className="mt-2 bg-transparent">
+                              <RefreshCw className="w-4 h-4 mr-1" />
+                              Try Again
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -1577,8 +1744,9 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                 </Table>
               </div>
 
-              <div className="text-sm text-muted-foreground">
-                Showing {filteredLogs.length} of {logs.length} log entries
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Showing {logFilter ? filteredLogs.length : logs.length} log entries from physical router</span>
+                {logs.length > 0 && <span className="text-xs">Last updated: {new Date().toLocaleTimeString()}</span>}
               </div>
             </CardContent>
           </Card>

@@ -157,8 +157,8 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
       AND cs.status = 'pending'
-      AND cs.activated_at IS NULL
-      AND (cs.start_date IS NULL OR cs.start_date <= CURRENT_DATE)
+      AND cs.activation_date IS NULL
+      AND (cs.installation_date IS NULL OR cs.installation_date <= CURRENT_DATE)
     `
 
     if (pendingServices.length === 0) {
@@ -173,7 +173,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
         await sql`
           UPDATE customer_services 
           SET status = 'active',
-              activated_at = NOW(),
+              activation_date = NOW(),
               updated_at = NOW()
           WHERE id = ${service.id}
         `
@@ -193,9 +193,11 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
         })
 
         try {
+          // Added source column to fix NOT NULL constraint violation
           await sql`
             INSERT INTO system_logs (
-              level, 
+              level,
+              source,
               category, 
               message, 
               details, 
@@ -204,6 +206,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
             )
             VALUES (
               'info',
+              'payment_system',
               'service_activation',
               ${`Service ${service.service_name} automatically activated after payment`},
               ${logDetails}::jsonb,

@@ -1402,28 +1402,50 @@ export default function FinancePage() {
 
           {/* Main Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-12 lg:w-auto lg:inline-flex">
-                {" "}
-                {/* */}
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="revenue">Revenue</TabsTrigger>
-                <TabsTrigger value="expenses">Expenses</TabsTrigger>
-                <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
-                <TabsTrigger value="taxes">Taxes</TabsTrigger>
-                <TabsTrigger value="budget">Budget</TabsTrigger>
-                <TabsTrigger value="ledger">Ledger</TabsTrigger>
-                <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
-                <TabsTrigger value="balancesheet">Balance Sheet</TabsTrigger>
-                <TabsTrigger value="trialbalance">Trial Balance</TabsTrigger>
-                <TabsTrigger value="profitloss">Profit & Loss</TabsTrigger> {/* */}
-                <TabsTrigger value="audit">Audit</TabsTrigger>
+            <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+              <TabsList className="inline-flex flex-nowrap min-w-full sm:min-w-0 w-max sm:w-auto gap-1 sm:gap-2">
+                <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="revenue" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Revenue
+                </TabsTrigger>
+                <TabsTrigger value="expenses" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Expenses
+                </TabsTrigger>
+                <TabsTrigger value="invoicing" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Invoicing
+                </TabsTrigger>
+                <TabsTrigger value="taxes" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Taxes
+                </TabsTrigger>
+                <TabsTrigger value="budget" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Budget
+                </TabsTrigger>
+                <TabsTrigger value="ledger" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Ledger
+                </TabsTrigger>
+                <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Cash Flow
+                </TabsTrigger>
+                <TabsTrigger value="balancesheet" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Balance Sheet
+                </TabsTrigger>
+                <TabsTrigger value="trialbalance" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Trial Balance
+                </TabsTrigger>
+                <TabsTrigger value="profitloss" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Profit & Loss
+                </TabsTrigger>
+                <TabsTrigger value="audit" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Audit
+                </TabsTrigger>
               </TabsList>
             </div>
 
             {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Breakdown */}
                 <Card>
                   <CardHeader>
@@ -1550,8 +1572,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Revenue Tab */}
-            <TabsContent value="revenue" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="revenue" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Growth Metrics */}
                 <Card>
                   <CardHeader>
@@ -1673,7 +1695,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Breakdown */}
                 <Card>
                   <CardHeader>
@@ -1785,7 +1807,7 @@ export default function FinancePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Expense Categories */}
                 <Card>
                   <CardHeader>
@@ -1959,7 +1981,7 @@ export default function FinancePage() {
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
+                                    <MoreHorizontal className="h-4 w-8" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -1999,8 +2021,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Invoicing Tab */}
-            <TabsContent value="invoicing" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <TabsContent value="invoicing" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 {/* Invoice Summary */}
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -2245,7 +2267,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Taxes Tab */}
-            <TabsContent value="taxes" className="space-y-6">
+            <TabsContent value="taxes" className="space-y-4 sm:space-y-6">
               {/* Tax Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
@@ -2501,8 +2523,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Budget Tab */}
-            <TabsContent value="budget" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="budget" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Budget Overview */}
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -2622,7 +2644,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* General Ledger Tab */}
-            <TabsContent value="ledger" className="space-y-6">
+            <TabsContent value="ledger" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">General Ledger</h3>
@@ -2696,7 +2718,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Account Balances</CardTitle>
@@ -2810,7 +2832,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Cash Flow Tab */}
-            <TabsContent value="cashflow" className="space-y-6">
+            <TabsContent value="cashflow" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Cash Flow Analysis</h3>
@@ -2830,7 +2852,7 @@ export default function FinancePage() {
 
               {cashFlowData ? (
                 <>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-green-600">Cash Inflows</CardTitle>
@@ -2965,7 +2987,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Add Profit & Loss TabsContent before the Audit tab */}
-            <TabsContent value="profitloss" className="space-y-4">
+            <TabsContent value="profitloss" className="space-y-4 sm:space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Profit & Loss Statement</CardTitle>
@@ -3108,7 +3130,7 @@ export default function FinancePage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="balancesheet" className="space-y-6">
+            <TabsContent value="balancesheet" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Balance Sheet</h3>
@@ -3129,7 +3151,7 @@ export default function FinancePage() {
               </div>
 
               {balanceSheetData ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                   {/* Assets */}
                   <Card>
                     <CardHeader>
@@ -3280,7 +3302,7 @@ export default function FinancePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="trialbalance" className="space-y-6">
+            <TabsContent value="trialbalance" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Trial Balance</h3>
@@ -3368,7 +3390,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Audit Logs Tab */}
-            <TabsContent value="audit" className="space-y-6">
+            <TabsContent value="audit" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Finance Audit Trail</h3>
@@ -3457,7 +3479,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Activity Summary</CardTitle>

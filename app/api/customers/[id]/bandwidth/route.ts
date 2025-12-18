@@ -12,23 +12,24 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const customerService = await sql`
       SELECT 
         cs.id as service_id,
-        cs.pppoe_username,
-        cs.router_id,
+        c.portal_username,
+        ip.ip_address,
+        ip.router_id,
         r.host as router_host,
         r.port as router_port,
         r.username as router_username,
         r.password as router_password,
-        r.use_ssl as router_use_ssl,
-        c.portal_username
+        r.use_ssl as router_use_ssl
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN routers r ON r.id = cs.router_id
+      LEFT JOIN ip_addresses ip ON ip.customer_id = c.id AND ip.status = 'active'
+      LEFT JOIN network_devices r ON r.id = ip.router_id
       WHERE cs.customer_id = ${customerId}
         AND cs.status = 'active'
       LIMIT 1
     `
 
-    if (customerService.length === 0 || !customerService[0].pppoe_username) {
+    if (customerService.length === 0 || (!customerService[0].portal_username && !customerService[0].ip_address)) {
       return await getHistoricalBandwidth(sql, customerId, period)
     }
 
@@ -46,7 +47,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         )
 
         const activeSessions = await mikrotik.getPPPoEActiveSessions()
-        const customerSession = activeSessions.find((session: any) => session.name === service.pppoe_username)
+        const customerSession = activeSessions.find(
+          (session: any) => session.name === service.portal_username || session.address === service.ip_address,
+        )
 
         if (customerSession) {
           const now = new Date()
@@ -63,24 +66,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
               download: i === 0 ? Math.round((customerSession.rx_bytes || 0) / 1024 / 1024) : 0,
               upload: i === 0 ? Math.round((customerSession.tx_bytes || 0) / 1024 / 1024) : 0,
             })
-          }
-
-          try {
-            await sql`
-              INSERT INTO customer_bandwidth_history 
-                (customer_id, service_id, upload_mbps, download_mbps, recorded_at)
-              VALUES (
-                ${customerId},
-                ${service.service_id},
-                ${(customerSession.tx_bytes || 0) / 1024 / 1024},
-                ${(customerSession.rx_bytes || 0) / 1024 / 1024},
-                NOW()
-              )
-              ON CONFLICT (customer_id, service_id, recorded_at) DO NOTHING
-            `
-          } catch (err) {
-            // Table might not exist yet, ignore error
-            console.log("[v0] customer_bandwidth_history table not found, skipping storage")
           }
 
           return NextResponse.json({
@@ -107,97 +92,107 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 async function getHistoricalBandwidth(sql: any, customerId: string, period: string) {
-  let bandwidthData
+  try {
+    let bandwidthData
 
-  switch (period) {
-    case "today":
-      bandwidthData = await sql`
-        SELECT 
-          DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
-          SUM(rl.acct_input_octets) as total_download,
-          SUM(rl.acct_output_octets) as total_upload
-        FROM radius_logs rl
-        JOIN customers c ON c.portal_username = rl.username
-        WHERE c.id = ${customerId}
-          AND DATE(rl.log_timestamp) = CURRENT_DATE
-        GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
-        ORDER BY timestamp DESC
-        LIMIT 24
-      `
-      break
-    case "week":
-      bandwidthData = await sql`
-        SELECT 
-          DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
-          SUM(rl.acct_input_octets) as total_download,
-          SUM(rl.acct_output_octets) as total_upload
-        FROM radius_logs rl
-        JOIN customers c ON c.portal_username = rl.username
-        WHERE c.id = ${customerId}
-          AND rl.log_timestamp >= NOW() - INTERVAL '7 days'
-        GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
-        ORDER BY timestamp DESC
-        LIMIT 168
-      `
-      break
-    case "month":
-      bandwidthData = await sql`
-        SELECT 
-          DATE_TRUNC('day', rl.log_timestamp) as timestamp,
-          SUM(rl.acct_input_octets) as total_download,
-          SUM(rl.acct_output_octets) as total_upload
-        FROM radius_logs rl
-        JOIN customers c ON c.portal_username = rl.username
-        WHERE c.id = ${customerId}
-          AND rl.log_timestamp >= NOW() - INTERVAL '30 days'
-        GROUP BY DATE_TRUNC('day', rl.log_timestamp)
-        ORDER BY timestamp DESC
-        LIMIT 30
-      `
-      break
-    case "quarter":
-      bandwidthData = await sql`
-        SELECT 
-          DATE_TRUNC('day', rl.log_timestamp) as timestamp,
-          SUM(rl.acct_input_octets) as total_download,
-          SUM(rl.acct_output_octets) as total_upload
-        FROM radius_logs rl
-        JOIN customers c ON c.portal_username = rl.username
-        WHERE c.id = ${customerId}
-          AND rl.log_timestamp >= NOW() - INTERVAL '90 days'
-        GROUP BY DATE_TRUNC('day', rl.log_timestamp)
-        ORDER BY timestamp DESC
-        LIMIT 90
-      `
-      break
-    default:
-      bandwidthData = await sql`
-        SELECT 
-          DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
-          SUM(rl.acct_input_octets) as total_download,
-          SUM(rl.acct_output_octets) as total_upload
-        FROM radius_logs rl
-        JOIN customers c ON c.portal_username = rl.username
-        WHERE c.id = ${customerId}
-          AND DATE(rl.log_timestamp) = CURRENT_DATE
-        GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
-        ORDER BY timestamp DESC
-        LIMIT 24
-      `
+    switch (period) {
+      case "today":
+        bandwidthData = await sql`
+          SELECT 
+            DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
+            SUM(rl.acct_input_octets) as total_download,
+            SUM(rl.acct_output_octets) as total_upload
+          FROM radius_logs rl
+          JOIN customers c ON c.portal_username = rl.username
+          WHERE c.id = ${customerId}
+            AND DATE(rl.log_timestamp) = CURRENT_DATE
+          GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
+          ORDER BY timestamp DESC
+          LIMIT 24
+        `
+        break
+      case "week":
+        bandwidthData = await sql`
+          SELECT 
+            DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
+            SUM(rl.acct_input_octets) as total_download,
+            SUM(rl.acct_output_octets) as total_upload
+          FROM radius_logs rl
+          JOIN customers c ON c.portal_username = rl.username
+          WHERE c.id = ${customerId}
+            AND rl.log_timestamp >= NOW() - INTERVAL '7 days'
+          GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
+          ORDER BY timestamp DESC
+          LIMIT 168
+        `
+        break
+      case "month":
+        bandwidthData = await sql`
+          SELECT 
+            DATE_TRUNC('day', rl.log_timestamp) as timestamp,
+            SUM(rl.acct_input_octets) as total_download,
+            SUM(rl.acct_output_octets) as total_upload
+          FROM radius_logs rl
+          JOIN customers c ON c.portal_username = rl.username
+          WHERE c.id = ${customerId}
+            AND rl.log_timestamp >= NOW() - INTERVAL '30 days'
+          GROUP BY DATE_TRUNC('day', rl.log_timestamp)
+          ORDER BY timestamp DESC
+          LIMIT 30
+        `
+        break
+      case "quarter":
+        bandwidthData = await sql`
+          SELECT 
+            DATE_TRUNC('day', rl.log_timestamp) as timestamp,
+            SUM(rl.acct_input_octets) as total_download,
+            SUM(rl.acct_output_octets) as total_upload
+          FROM radius_logs rl
+          JOIN customers c ON c.portal_username = rl.username
+          WHERE c.id = ${customerId}
+            AND rl.log_timestamp >= NOW() - INTERVAL '90 days'
+          GROUP BY DATE_TRUNC('day', rl.log_timestamp)
+          ORDER BY timestamp DESC
+          LIMIT 90
+        `
+        break
+      default:
+        bandwidthData = await sql`
+          SELECT 
+            DATE_TRUNC('hour', rl.log_timestamp) as timestamp,
+            SUM(rl.acct_input_octets) as total_download,
+            SUM(rl.acct_output_octets) as total_upload
+          FROM radius_logs rl
+          JOIN customers c ON c.portal_username = rl.username
+          WHERE c.id = ${customerId}
+            AND DATE(rl.log_timestamp) = CURRENT_DATE
+          GROUP BY DATE_TRUNC('hour', rl.log_timestamp)
+          ORDER BY timestamp DESC
+          LIMIT 24
+        `
+    }
+
+    // Format the data for the chart
+    const formattedData = bandwidthData
+      .map((record) => ({
+        timestamp: new Date(record.timestamp).toLocaleTimeString(),
+        download: Math.round((record.total_download || 0) / 1024 / 1024), // Convert to MB
+        upload: Math.round((record.total_upload || 0) / 1024 / 1024), // Convert to MB
+      }))
+      .reverse()
+
+    return NextResponse.json({
+      success: true,
+      data: formattedData,
+      live: false,
+    })
+  } catch (error) {
+    console.error("[v0] Error fetching historical bandwidth, radius_logs may not exist:", error)
+    return NextResponse.json({
+      success: true,
+      data: [],
+      live: false,
+      message: "No historical bandwidth data available. Configure RADIUS logging to track bandwidth usage.",
+    })
   }
-
-  // Format the data for the chart
-  const formattedData = bandwidthData
-    .map((record) => ({
-      timestamp: new Date(record.timestamp).toLocaleTimeString(),
-      download: Math.round((record.total_download || 0) / 1024 / 1024), // Convert to MB
-      upload: Math.round((record.total_upload || 0) / 1024 / 1024), // Convert to MB
-    }))
-    .reverse()
-
-  return NextResponse.json({
-    success: true,
-    data: formattedData,
-    live: false,
-  })
 }

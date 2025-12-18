@@ -4,7 +4,7 @@ import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { releaseIPAddress } from "@/lib/ip-management"
-import { provisionServiceToRouter } from "@/lib/router-provisioning"
+import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -417,37 +417,103 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
   }
 }
 
-// Original updateCustomerService function
 export async function updateCustomerService(serviceId: number, formData: FormData) {
   try {
     const sql = await getSql()
 
     const monthlyFee = Number.parseFloat(formData.get("monthly_fee") as string)
-    const startDateInput = formData.get("start_date") as string
-    const startDate =
-      startDateInput && startDateInput.trim() !== "" ? startDateInput : new Date().toISOString().split("T")[0]
-    const endDate = (formData.get("end_date") as string) || null
-    const ipAddress = (formData.get("ip_address") as string) || null
-    const deviceId = (formData.get("device_id") as string) || null
-    const connectionType = (formData.get("connection_type") as string) || null
     const status = formData.get("status") as string
+    const oldStatus = formData.get("old_status") as string
 
+    const serviceData = await sql`
+      SELECT cs.*, c.id as customer_id, c.portal_username,
+             ia.ip_address, ia.router_id,
+             r.host, r.port, r.username, r.password, r.use_ssl
+      FROM customer_services cs
+      JOIN customers c ON c.id = cs.customer_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = c.id AND ia.status = 'allocated'
+      LEFT JOIN network_devices r ON r.id = ia.router_id
+      WHERE cs.id = ${serviceId}
+      LIMIT 1
+    `
+
+    if (serviceData.length === 0) {
+      return { success: false, error: "Service not found" }
+    }
+
+    const service = serviceData[0]
+
+    // Update the service status
     const result = await sql`
       UPDATE customer_services 
       SET 
         monthly_fee = ${monthlyFee},
-        start_date = ${startDate},
-        end_date = ${endDate},
-        ip_address = CAST(${ipAddress} AS inet),
-        device_id = ${deviceId},
-        connection_type = ${connectionType},
-        status = ${status}
+        status = ${status},
+        activation_date = CASE WHEN ${status} = 'active' AND activation_date IS NULL THEN NOW() ELSE activation_date END,
+        suspension_date = CASE WHEN ${status} = 'suspended' THEN NOW() ELSE suspension_date END,
+        updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
     `
 
     if (result.length === 0) {
       return { success: false, error: "Service not found" }
+    }
+
+    if (service.router_id && service.host && (service.portal_username || service.ip_address)) {
+      try {
+        // Status changed from pending to active - ADD to router
+        if (oldStatus === "pending" && status === "active") {
+          console.log("[v0] Provisioning service to router (pending -> active)")
+
+          await provisionServiceToRouter({
+            serviceId: service.id,
+            customerId: service.customer_id,
+            routerId: service.router_id,
+            ipAddress: service.ip_address,
+            connectionType: service.ip_address ? "static_ip" : "pppoe",
+            pppoeUsername: service.portal_username,
+            pppoePassword: service.portal_username, // Use portal username as default password
+            downloadSpeed: service.download_speed,
+            uploadSpeed: service.upload_speed,
+          })
+        }
+
+        // Status changed to suspended - REMOVE from router
+        if (status === "suspended" && oldStatus !== "suspended") {
+          console.log("[v0] Deprovisioning service from router (-> suspended)")
+
+          await deprovisionServiceFromRouter({
+            serviceId: service.id,
+            customerId: service.customer_id,
+            routerId: service.router_id,
+            connectionType: service.ip_address ? "static_ip" : "pppoe",
+            ipAddress: service.ip_address,
+            pppoeUsername: service.portal_username,
+            reason: "Service suspended",
+          })
+        }
+
+        // Status changed from suspended to active - RE-ADD to router
+        if (status === "active" && oldStatus === "suspended") {
+          console.log("[v0] Re-provisioning service to router (suspended -> active)")
+
+          await provisionServiceToRouter({
+            serviceId: service.id,
+            customerId: service.customer_id,
+            routerId: service.router_id,
+            ipAddress: service.ip_address,
+            connectionType: service.ip_address ? "static_ip" : "pppoe",
+            pppoeUsername: service.portal_username,
+            pppoePassword: service.portal_username,
+            downloadSpeed: service.download_speed,
+            uploadSpeed: service.upload_speed,
+          })
+        }
+      } catch (provisionError) {
+        console.error("[v0] Router provisioning error:", provisionError)
+        // Don't fail the status update if provisioning fails
+      }
     }
 
     revalidatePath(`/customers`)
@@ -460,213 +526,52 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
 export async function deleteCustomerService(serviceId: number) {
   try {
-    console.log("[v0] ========== STARTING SERVICE DELETION ==========")
-    console.log("[v0] Service ID to delete:", serviceId)
-
     const sql = await getSql()
 
-    console.log("[v0] Fetching service details...")
-    const [service] = await sql`
-      SELECT cs.*, sp.name as service_name, sp.price as service_price, cs.customer_id, cs.monthly_fee
+    const serviceData = await sql`
+      SELECT cs.*, c.id as customer_id, c.portal_username,
+             ia.router_id, ia.ip_address
       FROM customer_services cs
-      LEFT JOIN customers c ON cs.customer_id = c.id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      JOIN customers c ON c.id = cs.customer_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = c.id AND ia.status = 'allocated'
       WHERE cs.id = ${serviceId}
+      LIMIT 1
     `
 
-    if (!service) {
-      console.error("[v0] Service not found:", serviceId)
+    if (serviceData.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const customerId = service.customer_id
-    console.log("[v0] Service found:", {
-      serviceId,
-      customerId,
-      serviceName: service.service_name,
-      monthlyFee: service.monthly_fee,
-    })
+    const service = serviceData[0]
 
-    console.log("[v0] Searching for unpaid invoices for customer:", customerId)
-    const unpaidInvoices = await sql`
-      SELECT *
-      FROM invoices
-      WHERE customer_id = ${customerId}
-      AND status IN ('pending', 'partial', 'overdue')
-      ORDER BY created_at DESC
-      LIMIT 5
-    `
+    if (service.router_id) {
+      try {
+        console.log("[v0] Deprovisioning service before deletion")
 
-    console.log("[v0] Found unpaid invoices:", unpaidInvoices.length)
-    if (unpaidInvoices.length > 0) {
-      console.log(
-        "[v0] Unpaid invoice details:",
-        unpaidInvoices.map((inv) => ({
-          id: inv.id,
-          invoice_number: inv.invoice_number,
-          amount: inv.amount,
-          paid_amount: inv.paid_amount || 0,
-          status: inv.status,
-        })),
-      )
-    }
-
-    for (const invoice of unpaidInvoices) {
-      const remainingAmount = invoice.amount - (invoice.paid_amount || 0)
-
-      console.log("[v0] Processing invoice:", {
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoice_number,
-        totalAmount: invoice.amount,
-        paidAmount: invoice.paid_amount || 0,
-        remainingAmount,
-      })
-
-      if (remainingAmount <= 0) {
-        console.log("[v0] Skipping invoice (already fully paid):", invoice.invoice_number)
-        continue
+        await deprovisionServiceFromRouter({
+          serviceId: service.id,
+          customerId: service.customer_id,
+          routerId: service.router_id,
+          connectionType: service.ip_address ? "static_ip" : "pppoe",
+          ipAddress: service.ip_address,
+          pppoeUsername: service.portal_username,
+          reason: "Service deleted",
+        })
+      } catch (provisionError) {
+        console.error("[v0] Router deprovisioning error:", provisionError)
+        // Continue with deletion even if deprovisioning fails
       }
-
-      const creditNoteNumber = `CN-${customerId}-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${serviceId}-${invoice.id}`
-
-      console.log("[v0] Creating credit note:", {
-        creditNoteNumber,
-        amount: remainingAmount,
-        reason: "Service Deleted",
-      })
-
-      const creditNoteResult = await sql`
-        INSERT INTO credit_notes (
-          customer_id,
-          invoice_id,
-          amount,
-          reason,
-          notes,
-          credit_note_number,
-          status,
-          created_by,
-          approved_by,
-          approved_at,
-          created_at
-        ) VALUES (
-          ${customerId},
-          ${invoice.id},
-          ${remainingAmount},
-          'Service Deleted',
-          ${"Credit note issued for deleted service: " + (service.service_name || "Unknown Service") + ". Invoice " + invoice.invoice_number + " cleared."},
-          ${creditNoteNumber},
-          'approved',
-          1,
-          1,
-          NOW(),
-          NOW()
-        ) RETURNING *
-      `
-
-      console.log("[v0] Credit note created successfully:", {
-        id: creditNoteResult[0].id,
-        creditNoteNumber,
-        amount: remainingAmount,
-      })
-
-      console.log("[v0] Marking invoice as paid:", invoice.invoice_number)
-      await sql`
-        UPDATE invoices
-        SET status = 'paid', paid_amount = amount
-        WHERE id = ${invoice.id}
-      `
-
-      console.log("[v0] Logging credit note creation to admin_logs")
-      await sql`
-        INSERT INTO admin_logs (
-          admin_id,
-          action,
-          resource_type,
-          resource_id,
-          new_values,
-          created_at
-        ) VALUES (
-          1,
-          'credit_note_created',
-          'credit_note',
-          ${creditNoteResult[0].id},
-          ${JSON.stringify({
-            customer_id: customerId,
-            service_id: serviceId,
-            invoice_id: invoice.id,
-            credit_note_number: creditNoteNumber,
-            amount: remainingAmount,
-            reason: "Service Deleted",
-            service_name: service.service_name,
-            invoice_number: invoice.invoice_number,
-          })}::jsonb,
-          NOW()
-        )
-      `
-
-      console.log("[v0] Admin log entry created for credit note")
     }
 
-    console.log("[v0] Deleting service from database...")
-    const result = await sql`
+    await sql`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
-      RETURNING *
     `
 
-    if (result.length === 0) {
-      console.error("[v0] Service deletion failed - service not found")
-      return { success: false, error: "Service not found" }
-    }
-
-    console.log("[v0] Service deleted successfully from database")
-
-    console.log("[v0] Creating final admin log entry for service deletion")
-    await sql`
-      INSERT INTO admin_logs (
-        admin_id,
-        action,
-        resource_type,
-        resource_id,
-        old_values,
-        created_at
-      ) VALUES (
-        1,
-        'service_deleted',
-        'customer_service',
-        ${serviceId},
-        ${JSON.stringify({
-          customer_id: customerId,
-          service_id: serviceId,
-          service_name: service.service_name,
-          monthly_fee: service.monthly_fee,
-          credit_notes_issued: unpaidInvoices.length,
-        })}::jsonb,
-        NOW()
-      )
-    `
-
-    console.log("[v0] ========== SERVICE DELETION COMPLETED ==========")
-    console.log("[v0] Summary:", {
-      serviceId,
-      customerId,
-      creditNotesIssued: unpaidInvoices.length,
-      success: true,
-    })
-
-    revalidatePath("/customers")
-    return {
-      success: true,
-      message: `Service deleted successfully. ${unpaidInvoices.length} credit note(s) issued for unpaid invoices.`,
-      creditNotesIssued: unpaidInvoices.length,
-    }
+    revalidatePath(`/customers`)
+    return { success: true }
   } catch (error) {
-    console.error("[v0] ========== SERVICE DELETION FAILED ==========")
-    console.error("[v0] Error deleting customer service:", error)
-    console.error("[v0] Error details:", {
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : "No stack trace",
-    })
+    console.error("Error deleting customer service:", error)
     return { success: false, error: "Failed to delete service" }
   }
 }

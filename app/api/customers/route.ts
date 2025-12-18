@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
     const location = searchParams.get("location")
     const type = searchParams.get("type")
     const search = searchParams.get("search")
+    const limit = searchParams.get("limit") || "100"
+    const offset = searchParams.get("offset") || "0"
 
     const conditions: Array<string> = []
 
@@ -69,9 +71,30 @@ export async function GET(request: NextRequest) {
       values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
-    query += ` GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, c.customer_type, c.email, c.phone, c.city, c.status, c.created_at ORDER BY c.created_at DESC LIMIT 100`
+    query += ` GROUP BY c.id, c.account_number, c.first_name, c.last_name, c.business_name, c.customer_type, c.email, c.phone, c.city, c.status, c.created_at ORDER BY c.created_at DESC LIMIT ${limit} OFFSET ${offset}`
 
     const customers = await sql.unsafe(query, values)
+
+    let countQuery = `SELECT COUNT(DISTINCT c.id) as total FROM customers c`
+    if (conditions.length > 0) {
+      countQuery += ` WHERE ${conditions.join(" AND ")}`
+    }
+    if (search) {
+      const searchTerm = search.replace(/'/g, "''").toLowerCase()
+      if (conditions.length > 0) {
+        countQuery += ` AND (`
+      } else {
+        countQuery += ` WHERE (`
+      }
+      countQuery += `c.first_name ILIKE '%' || $${values.length + 1} || '%' OR 
+        c.last_name ILIKE '%' || $${values.length + 2} || '%' OR 
+        c.business_name ILIKE '%' || $${values.length + 3} || '%' OR 
+        c.email ILIKE '%' || $${values.length + 4} || '%' OR 
+        c.account_number ILIKE '%' || $${values.length + 5} || '%')`
+    }
+
+    const countResult = await sql.unsafe(countQuery, values)
+    const totalCount = Number.parseInt(countResult[0]?.total || "0")
 
     const transformedCustomers = customers.map((customer: any) => ({
       ...customer,
@@ -85,7 +108,12 @@ export async function GET(request: NextRequest) {
       open_tickets: 0,
     }))
 
-    return NextResponse.json(transformedCustomers)
+    return NextResponse.json({
+      customers: transformedCustomers,
+      total: totalCount,
+      limit: Number.parseInt(limit),
+      offset: Number.parseInt(offset),
+    })
   } catch (error) {
     return NextResponse.json(
       {

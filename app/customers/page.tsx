@@ -34,6 +34,7 @@ import {
   UserX,
   UserPlus,
   Filter,
+  Loader2,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
@@ -82,6 +83,9 @@ export default function CustomersPage() {
   const [stats, setStats] = useState<CustomerStats | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
+  const [displayLimit, setDisplayLimit] = useState(100)
+  const [totalCustomers, setTotalCustomers] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [locationFilter, setLocationFilter] = useState("all")
@@ -100,13 +104,18 @@ export default function CustomersPage() {
     ])
       .then(([customersData, statsData, locationsData]) => {
         let customersArray = []
+        let total = 0
+
         if (Array.isArray(customersData)) {
           customersArray = customersData
+          total = customersData.length
         } else if (customersData.customers && Array.isArray(customersData.customers)) {
           customersArray = customersData.customers
+          total = customersData.total || customersData.customers.length
         }
 
         setCustomers(customersArray)
+        setTotalCustomers(total)
         setStats(statsData)
 
         const locationsArray = Array.isArray(locationsData.locations)
@@ -376,6 +385,38 @@ export default function CustomersPage() {
     const formatted = Math.round(amount).toFixed(2)
     // Remove leading zero if it exists (e.g., "0.50" becomes ".50")
     return formatted.startsWith("0.") ? formatted.substring(1) : formatted
+  }
+
+  const loadMoreCustomers = async () => {
+    setLoadingMore(true)
+    try {
+      const response = await fetch(`/api/customers?limit=${displayLimit + 100}&offset=0`)
+      const data = await response.json()
+
+      let customersArray = []
+      if (Array.isArray(data)) {
+        customersArray = data
+      } else if (data.customers && Array.isArray(data.customers)) {
+        customersArray = data.customers
+      }
+
+      setCustomers(customersArray)
+      setDisplayLimit(displayLimit + 100)
+      setLoadingMore(false)
+
+      toast({
+        title: "Success",
+        description: `Loaded ${customersArray.length} customers`,
+      })
+    } catch (error) {
+      console.error("Failed to load more customers:", error)
+      setLoadingMore(false)
+      toast({
+        title: "Error",
+        description: "Failed to load more customers",
+        variant: "destructive",
+      })
+    }
   }
 
   if (loading) {
@@ -707,6 +748,7 @@ export default function CustomersPage() {
             </Table>
           </div>
 
+          {/* Mobile Card View - Shown only on mobile */}
           <div className="md:hidden space-y-3">
             {filteredCustomers.map((customer) => (
               <Card key={customer.id} className="p-4">
@@ -818,6 +860,33 @@ export default function CustomersPage() {
               </Card>
             ))}
           </div>
+
+          {/* Load More button */}
+          {customers.length < totalCustomers && (
+            <div className="mt-4 sm:mt-6 flex justify-center">
+              <Button
+                onClick={loadMoreCustomers}
+                disabled={loadingMore}
+                variant="outline"
+                size="lg"
+                className="w-full sm:w-auto bg-transparent"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading more...
+                  </>
+                ) : (
+                  <>
+                    Load More Customers
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({customers.length} of {totalCustomers})
+                    </span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

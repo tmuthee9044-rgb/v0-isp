@@ -1,17 +1,21 @@
-import { neon } from "@neondatabase/serverless"
+/**
+ * RADIUS Integration Library - Clean Version
+ * Manages RADIUS user provisioning and session tracking
+ * Compatible with PostgreSQL offline and Neon serverless (Rule 4)
+ */
 
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
-interface RadiusUserConfig {
-  customerId: number
-  serviceId?: number
+// Type definition for RADIUS user configuration
+export interface RadiusUserConfig {
   username: string
   password: string
+  customerId: number
+  serviceId?: number
   ipAddress?: string
   downloadSpeed?: number
   uploadSpeed?: number
-  expiryDate?: Date
-  nasId?: number
+  expiryDate?: string | null
 }
 
 /**
@@ -19,6 +23,7 @@ interface RadiusUserConfig {
  */
 export async function provisionRadiusUser(config: RadiusUserConfig) {
   try {
+    const sql = await getSql()
     const bcrypt = require("bcryptjs")
     const password_hash = await bcrypt.hash(config.password, 10)
 
@@ -81,6 +86,8 @@ export async function suspendRadiusUser(params: {
   reason: string
 }) {
   try {
+    const sql = await getSql()
+
     await sql`
       UPDATE radius_users
       SET status = 'suspended', updated_at = NOW()
@@ -128,6 +135,8 @@ export async function deprovisionRadiusUser(params: {
   reason: string
 }) {
   try {
+    const sql = await getSql()
+
     // Disconnect active sessions first
     await suspendRadiusUser(params)
 
@@ -150,6 +159,8 @@ export async function deprovisionRadiusUser(params: {
  */
 export async function getCustomerRadiusSessions(customer_id: number) {
   try {
+    const sql = await getSql()
+
     const sessions = await sql`
       SELECT 
         rsa.*,

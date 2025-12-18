@@ -135,7 +135,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         source,
         category,
         message,
-        metadata
+        details
       ) VALUES (
         'INFO',
         'document-upload',
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           source,
           category,
           message,
-          metadata
+          details
         ) VALUES (
           'ERROR',
           'document-upload',

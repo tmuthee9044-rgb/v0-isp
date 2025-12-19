@@ -137,8 +137,8 @@ export async function POST(request: NextRequest) {
       if (settings.enabled && settings.host && settings.sharedSecret) {
         await sql`
           UPDATE network_devices 
-          SET config = jsonb_set(
-            COALESCE(config, '{}'),
+          SET configuration = jsonb_set(
+            COALESCE(configuration, '{}'),
             '{radius}',
             ${JSON.stringify({
               host: settings.host,
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
             })}
           ),
           updated_at = NOW()
-          WHERE device_type = 'router' AND status = 'active'
+          WHERE type = 'router' AND status = 'active'
         `
 
         // Log the configuration update
@@ -179,8 +179,8 @@ export async function POST(request: NextRequest) {
       if (settings.enabled) {
         await sql`
           UPDATE network_devices 
-          SET config = jsonb_set(
-            COALESCE(config, '{}'),
+          SET configuration = jsonb_set(
+            COALESCE(configuration, '{}'),
             '{openvpn}',
             ${JSON.stringify({
               port: settings.port,
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
             })}
           ),
           updated_at = NOW()
-          WHERE device_type = 'vpn_server' AND status = 'active'
+          WHERE type = 'vpn_server' AND status = 'active'
         `
       }
     }
@@ -208,8 +208,8 @@ export async function POST(request: NextRequest) {
 
       await sql`
         UPDATE network_devices 
-        SET config = jsonb_set(
-          COALESCE(config, '{}'),
+        SET configuration = jsonb_set(
+          COALESCE(configuration, '{}'),
           '{network}',
           ${JSON.stringify({
             gateway: settings.gateway,

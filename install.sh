@@ -269,6 +269,40 @@ install_postgresql() {
 install_freeradius() {
     print_header "Installing FreeRADIUS"
     
+    print_info "Detecting host network IP address..."
+    
+    # Try to detect the primary network IP (not localhost)
+    RADIUS_HOST=""
+    
+    # Method 1: Get IP from default route interface
+    if command -v ip &> /dev/null; then
+        DEFAULT_INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+        if [ -n "$DEFAULT_INTERFACE" ]; then
+            RADIUS_HOST=$(ip addr show "$DEFAULT_INTERFACE" | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
+        fi
+    fi
+    
+    # Method 2: Use hostname -I (fallback)
+    if [ -z "$RADIUS_HOST" ] && command -v hostname &> /dev/null; then
+        RADIUS_HOST=$(hostname -I | awk '{print $1}')
+    fi
+    
+    # Method 3: Use ifconfig (fallback for older systems)
+    if [ -z "$RADIUS_HOST" ] && command -v ifconfig &> /dev/null; then
+        RADIUS_HOST=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -n1)
+    fi
+    
+    # Fallback to localhost if detection fails
+    if [ -z "$RADIUS_HOST" ]; then
+        RADIUS_HOST="127.0.0.1"
+        print_warning "Could not detect network IP, using localhost (127.0.0.1)"
+        print_warning "Physical routers will NOT be able to connect!"
+        print_info "Please update RADIUS_SERVER in .env.local with your actual IP"
+    else
+        print_success "Detected host IP: $RADIUS_HOST"
+        print_info "Physical routers will connect to this IP address"
+    fi
+    
     # Check if FreeRADIUS is already installed
     if command -v radiusd &> /dev/null || command -v freeradius &> /dev/null; then
         print_success "FreeRADIUS already installed"
@@ -565,6 +599,19 @@ SQLEOF
         print_success "SQL module enabled"
     fi
     
+    print_info "Configuring FreeRADIUS to listen on all network interfaces..."
+    
+    RADIUSD_CONF="$FREERADIUS_DIR/radiusd.conf"
+    if [ -f "$RADIUSD_CONF" ]; then
+        sudo cp "$RADIUSD_CONF" "$RADIUSD_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Ensure FreeRADIUS listens on all interfaces (0.0.0.0)
+        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$RADIUSD_CONF" 2>/dev/null || true
+        sudo sed -i 's/ipaddr = ::1/ipaddr = ::/g' "$RADIUSD_CONF" 2>/dev/null || true
+        
+        print_success "FreeRADIUS configured to listen on all interfaces"
+    fi
+    
     # Configure NAS clients
     print_info "Configuring NAS clients..."
     
@@ -573,7 +620,6 @@ SQLEOF
     if [ -f "$CLIENTS_CONF" ]; then
         sudo cp "$CLIENTS_CONF" "$CLIENTS_CONF.backup.$(date +%Y%m%d_%H%M%S)"
         
-        # Add default localhost client for testing
         sudo tee -a "$CLIENTS_CONF" > /dev/null << CLIENTEOF
 
 # ISP Management System - Auto-configured clients
@@ -584,7 +630,27 @@ client localhost {
     nas_type = other
 }
 
-# Add more NAS clients from database dynamically via raddb/clients.conf
+# Host machine IP (for local testing and management)
+client host_machine {
+    ipaddr = ${RADIUS_HOST}
+    secret = ${RADIUS_SECRET}
+    require_message_authenticator = no
+    nas_type = other
+}
+
+# Allow all private network ranges (routers will authenticate)
+# You should restrict this to specific router IPs in production
+client private_network {
+    ipaddr = 10.0.0.0/8
+    ipaddr = 172.16.0.0/12
+    ipaddr = 192.168.0.0/16
+    secret = ${RADIUS_SECRET}
+    require_message_authenticator = no
+    nas_type = other
+    shortname = private-nets
+}
+
+# Add more NAS clients from database dynamically
 # Routers will be synced from network_devices table
 CLIENTEOF
         
@@ -630,7 +696,6 @@ CLIENTEOF
         print_success "FreeRADIUS service restarted"
     fi
     
-    # Add RADIUS secret to .env.local
     print_info "Adding RADIUS configuration to .env.local..."
     
     if [ -f ".env.local" ]; then
@@ -638,12 +703,12 @@ CLIENTEOF
         grep -v "RADIUS_SECRET\|RADIUS_SERVER\|RADIUS_AUTH_PORT\|RADIUS_ACCT_PORT" .env.local > .env.local.tmp || true
         mv .env.local.tmp .env.local
         
-        # Add new RADIUS settings
+        # Add new RADIUS settings with actual host IP
         cat >> .env.local << ENVEOF
 
 # RADIUS Configuration
 RADIUS_SECRET=${RADIUS_SECRET}
-RADIUS_SERVER=127.0.0.1
+RADIUS_SERVER=${RADIUS_HOST}
 RADIUS_AUTH_PORT=1812
 RADIUS_ACCT_PORT=1813
 ENVEOF
@@ -651,18 +716,25 @@ ENVEOF
         print_success "RADIUS configuration added to .env.local"
     fi
     
-    # Save RADIUS credentials
     cat >> database-credentials.txt << RADEOF
 
 FreeRADIUS Configuration
 ========================
+RADIUS Server IP: ${RADIUS_HOST}
 RADIUS Secret: ${RADIUS_SECRET}
 Auth Port: 1812
 Accounting Port: 1813
 Config Directory: ${FREERADIUS_DIR}
 
-To test RADIUS:
-  radtest testuser testpass localhost 0 ${RADIUS_SECRET}
+Important: Configure your MikroTik routers with:
+  /radius add address=${RADIUS_HOST} secret=${RADIUS_SECRET} service=ppp
+
+To test RADIUS from this machine:
+  radtest testuser testpass ${RADIUS_HOST} 0 ${RADIUS_SECRET}
+
+To test from a router:
+  ping ${RADIUS_HOST}
+  (should respond if firewall allows ICMP)
 
 To view logs:
   sudo tail -f /var/log/freeradius/radius.log
@@ -676,15 +748,27 @@ RADEOF
     echo ""
     print_success "FreeRADIUS installation complete!"
     echo ""
-    print_info "RADIUS Server: 127.0.0.1"
+    print_info "Radius Server IP: ${RADIUS_HOST}"
     print_info "Auth Port: 1812"
     print_info "Accounting Port: 1813"
     print_info "Secret: ${RADIUS_SECRET}"
     echo ""
+    
+    if [ "$RADIUS_HOST" != "127.0.0.1" ]; then
+        print_success "Physical routers can connect to: ${RADIUS_HOST}"
+        echo ""
+        print_info "Configure MikroTik routers with:"
+        echo "  /radius add address=${RADIUS_HOST} secret=${RADIUS_SECRET} service=ppp"
+    else
+        print_warning "Radius is only accessible locally (127.0.0.1)"
+        print_warning "Update RADIUS_SERVER in .env.local with your network IP"
+    fi
+    echo ""
     print_info "Next steps:"
     echo "  1. RADIUS tables will be created during database setup"
-    echo "  2. Configure your routers with the RADIUS secret"
-    echo "  3. Test connectivity from /network/radius dashboard"
+    echo "  2. Verify routers can ping ${RADIUS_HOST}"
+    echo "  3. Configure routers with the RADIUS secret above"
+    echo "  4. Test connectivity from /network/radius dashboard"
     echo ""
 }
 
@@ -778,7 +862,7 @@ setup_database() {
     print_info "Transferring table ownership to $DB_USER..."
     
     sudo -u postgres psql -d "$DB_NAME" -c "
-    DO \$\$
+    DO $$
     DECLARE
         r RECORD;
     BEGIN
@@ -1415,8 +1499,6 @@ apply_database_fixes() {
     print_info "Running database migrations..."
     
     DB_NAME="${DB_NAME:-isp_system}"
-    DB_USER="${DB_USER:-isp_admin}"
-    
     if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
         print_error "Database '$DB_NAME' does not exist"
         print_info "Creating database first..."

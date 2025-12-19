@@ -84,6 +84,42 @@ If `./install.sh` fails with syntax errors:
    ./install.sh
    ```
 
+## Next.js Development Server Errors
+
+If you encounter "Failed to find Server Action" or similar errors:
+
+**Error:** `Failed to find Server Action "x". This request might be from an older or newer deployment.`
+
+**Solution:**
+
+Run the fix script:
+```bash
+chmod +x scripts/fix-dev-server.sh
+./scripts/fix-dev-server.sh
+npm run dev
+```
+
+Or manually:
+```bash
+# Stop the dev server (Ctrl+C)
+rm -rf .next
+rm -rf node_modules/.cache
+npm run dev
+```
+
+**If the error persists:**
+```bash
+# Full rebuild
+rm -rf .next node_modules
+npm install
+npm run dev
+```
+
+This typically happens when:
+- Server actions are modified during hot reload
+- Development server cache becomes stale
+- Build artifacts contain outdated references
+
 ## Quick Commands
 
 - **Start development server:** `npm run dev`

@@ -303,27 +303,26 @@ install_freeradius() {
     print_info "Generating RADIUS secret..."
     RADIUS_SECRET=$(openssl rand -base64 32)
     
-    # Determine FreeRADIUS config directory
-    if [[ "$OS" == "linux" ]]; then
-        FREERADIUS_DIR="/etc/freeradius/3.0"
-    elif [[ "$OS" == "macos" ]]; then
-        FREERADIUS_DIR="/usr/local/etc/raddb"
+    print_info "Detecting FreeRADIUS configuration directory..."
+    FREERADIUS_DIR=""
+    
+    # Try multiple possible locations
+    for dir in /etc/freeradius/3.0 /etc/freeradius /etc/raddb /usr/local/etc/raddb /opt/freeradius/etc/raddb; do
+        if [ -d "$dir" ]; then
+            FREERADIUS_DIR="$dir"
+            print_success "Found FreeRADIUS config directory: $FREERADIUS_DIR"
+            break
+        fi
+    done
+    
+    if [ -z "$FREERADIUS_DIR" ]; then
+        print_error "Could not find FreeRADIUS configuration directory"
+        print_info "Please install FreeRADIUS or specify the config directory manually"
+        exit 1
     fi
     
-    if [ ! -d "$FREERADIUS_DIR" ]; then
-        print_warning "FreeRADIUS config directory not found at $FREERADIUS_DIR"
-        print_info "Searching for config directory..."
-        
-        for dir in /etc/freeradius/* /usr/local/etc/raddb /opt/freeradius/etc/raddb; do
-            if [ -d "$dir" ]; then
-                FREERADIUS_DIR="$dir"
-                print_info "Found config directory: $FREERADIUS_DIR"
-                break
-            fi
-        done
-    fi
-    
-    print_success "FreeRADIUS config directory: $FREERADIUS_DIR"
+    sudo mkdir -p "$FREERADIUS_DIR/mods-available"
+    sudo mkdir -p "$FREERADIUS_DIR/mods-enabled"
     
     # Configure SQL module
     print_info "Configuring FreeRADIUS SQL module..."
@@ -333,20 +332,25 @@ install_freeradius() {
     if [ -f "$SQL_CONF" ]; then
         print_info "Backing up original SQL configuration..."
         sudo cp "$SQL_CONF" "$SQL_CONF.backup.$(date +%Y%m%d_%H%M%S)"
-        
-        # Create SQL configuration
-        sudo tee "$SQL_CONF" > /dev/null << SQLEOF
+    fi
+    
+    print_info "Creating SQL module configuration..."
+    sudo tee "$SQL_CONF" > /dev/null << 'SQLEOF'
+# SQL Module Configuration for Trust Waves ISP
+# Connects to PostgreSQL database for AAA operations
+
 sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
     
+    # PostgreSQL connection
     server = "localhost"
     port = 5432
-    login = "${DB_USER}"
-    password = "${DB_PASSWORD}"
-    radius_db = "${DB_NAME}"
+    login = "DB_USER_PLACEHOLDER"
+    password = "DB_PASSWORD_PLACEHOLDER"
+    radius_db = "DB_NAME_PLACEHOLDER"
     
-    # Connection pool settings
+    # Connection pool settings (optimized for performance - rule 6)
     pool {
         start = 5
         min = 4
@@ -358,123 +362,201 @@ sql {
         idle_timeout = 60
     }
     
-    # Authentication query
-    authorize_check_query = "\\
-        SELECT \\
-            username, \\
-            'Cleartext-Password' AS attribute, \\
-            password_hash AS value, \\
-            '==' AS op \\
-        FROM radius_users \\
-        WHERE username = '%{SQL-User-Name}' \\
+    # Read database configuration from clients
+    read_clients = yes
+    client_table = "radius_nas"
+    
+    # Authentication - Check user credentials
+    authorize_check_query = "\
+        SELECT \
+            username, \
+            'Cleartext-Password' AS attribute, \
+            password_hash AS value, \
+            '==' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
+        AND status = 'active' \
+        AND (expiry_date IS NULL OR expiry_date > NOW()) \
+        LIMIT 1"
+    
+    # Authorization - Return user attributes (bandwidth limits, IP address, etc.)
+    authorize_reply_query = "\
+        SELECT \
+            'Mikrotik-Rate-Limit' AS attribute, \
+            CONCAT(download_limit::text, 'M/', upload_limit::text, 'M') AS value, \
+            ':=' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
+        AND status = 'active' \
+        AND download_limit IS NOT NULL \
+        UNION ALL \
+        SELECT \
+            'Session-Timeout' AS attribute, \
+            session_timeout::text AS value, \
+            ':=' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
+        AND session_timeout IS NOT NULL \
+        AND status = 'active' \
+        UNION ALL \
+        SELECT \
+            'Idle-Timeout' AS attribute, \
+            idle_timeout::text AS value, \
+            ':=' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
+        AND idle_timeout IS NOT NULL \
+        AND status = 'active' \
+        UNION ALL \
+        SELECT \
+            'Framed-IP-Address' AS attribute, \
+            ip_address::text AS value, \
+            ':=' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
+        AND ip_address IS NOT NULL \
+        AND status = 'active' \
+        UNION ALL \
+        SELECT \
+            'Simultaneous-Use' AS attribute, \
+            simultaneous_use::text AS value, \
+            ':=' AS op \
+        FROM radius_users \
+        WHERE username = '%{SQL-User-Name}' \
         AND status = 'active'"
     
-    # Authorization reply attributes
-    authorize_reply_query = "\\
-        SELECT \\
-            'Mikrotik-Rate-Limit' AS attribute, \\
-            CONCAT(download_limit::text, 'M/', upload_limit::text, 'M') AS value, \\
-            ':=' AS op \\
-        FROM radius_users \\
-        WHERE username = '%{SQL-User-Name}' \\
-        AND status = 'active' \\
-        UNION ALL \\
-        SELECT \\
-            'Session-Timeout' AS attribute, \\
-            session_timeout::text AS value, \\
-            ':=' AS op \\
-        FROM radius_users \\
-        WHERE username = '%{SQL-User-Name}' \\
-        AND session_timeout IS NOT NULL \\
-        AND status = 'active' \\
-        UNION ALL \\
-        SELECT \\
-            'Idle-Timeout' AS attribute, \\
-            idle_timeout::text AS value, \\
-            ':=' AS op \\
-        FROM radius_users \\
-        WHERE username = '%{SQL-User-Name}' \\
-        AND idle_timeout IS NOT NULL \\
-        AND status = 'active' \\
-        UNION ALL \\
-        SELECT \\
-            'Framed-IP-Address' AS attribute, \\
-            ip_address::text AS value, \\
-            ':=' AS op \\
-        FROM radius_users \\
-        WHERE username = '%{SQL-User-Name}' \\
-        AND ip_address IS NOT NULL \\
-        AND status = 'active'"
+    # Post-Auth - Update last login time
+    post_auth_query = "\
+        UPDATE radius_users \
+        SET updated_at = NOW() \
+        WHERE username = '%{SQL-User-Name}'"
     
-    # Accounting queries
+    # Accounting configuration
     accounting {
-        reference = "%{tolower:type.%{Acct-Status-Type}.query}"
+        reference = "%{tolower:type.%{Acct-Status-Type}}"
         
+        # Accounting Start - New session
         type {
             start {
-                query = "\\
-                    INSERT INTO radius_sessions_active ( \\
-                        acct_session_id, username, nas_ip_address, \\
-                        nas_port_id, framed_ip_address, calling_station_id, \\
-                        service_type, start_time \\
-                    ) VALUES ( \\
-                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \\
-                        '%{NAS-IP-Address}', '%{NAS-Port}', \\
-                        NULLIF('%{Framed-IP-Address}', '')::inet, \\
-                        '%{Calling-Station-Id}', \\
-                        COALESCE('%{Service-Type}', 'PPPoE'), NOW() \\
-                    ) ON CONFLICT (acct_session_id) DO UPDATE SET \\
-                        start_time = NOW(), \\
-                        last_update = NOW()"
+                query = "\
+                    INSERT INTO radius_sessions_active ( \
+                        acct_session_id, acct_unique_id, username, user_id, \
+                        nas_id, nas_ip_address, nas_port_id, \
+                        service_type, framed_ip_address, calling_station_id, \
+                        called_station_id, start_time, last_update \
+                    ) VALUES ( \
+                        '%{Acct-Session-Id}', \
+                        '%{Acct-Unique-Session-Id}', \
+                        '%{SQL-User-Name}', \
+                        (SELECT id FROM radius_users WHERE username = '%{SQL-User-Name}' LIMIT 1), \
+                        (SELECT id FROM radius_nas WHERE ip_address = '%{NAS-IP-Address}'::inet LIMIT 1), \
+                        '%{NAS-IP-Address}'::inet, \
+                        '%{NAS-Port}', \
+                        COALESCE('%{Service-Type}', 'PPPoE'), \
+                        NULLIF('%{Framed-IP-Address}', '')::inet, \
+                        '%{Calling-Station-Id}', \
+                        '%{Called-Station-Id}', \
+                        NOW(), NOW() \
+                    ) ON CONFLICT (acct_session_id) DO UPDATE SET \
+                        start_time = NOW(), \
+                        last_update = NOW(); \
+                    \
+                    INSERT INTO radius_accounting ( \
+                        acct_session_id, username, nas_ip_address, event_type, \
+                        framed_ip_address, event_time \
+                    ) VALUES ( \
+                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
+                        '%{NAS-IP-Address}'::inet, 'Start', \
+                        NULLIF('%{Framed-IP-Address}', '')::inet, NOW() \
+                    )"
             }
             
+            # Accounting Interim Update - Session progress
             interim-update {
-                query = "\\
-                    UPDATE radius_sessions_active SET \\
-                        session_time = '%{Acct-Session-Time}'::integer, \\
-                        bytes_in = '%{Acct-Input-Octets}'::bigint, \\
-                        bytes_out = '%{Acct-Output-Octets}'::bigint, \\
-                        packets_in = '%{Acct-Input-Packets}'::bigint, \\
-                        packets_out = '%{Acct-Output-Packets}'::bigint, \\
-                        last_update = NOW() \\
-                    WHERE acct_session_id = '%{Acct-Session-Id}'"
+                query = "\
+                    UPDATE radius_sessions_active SET \
+                        session_time = COALESCE('%{Acct-Session-Time}', '0')::integer, \
+                        bytes_in = COALESCE('%{Acct-Input-Octets}', '0')::bigint + \
+                                   COALESCE('%{Acct-Input-Gigawords}', '0')::bigint * 4294967296, \
+                        bytes_out = COALESCE('%{Acct-Output-Octets}', '0')::bigint + \
+                                    COALESCE('%{Acct-Output-Gigawords}', '0')::bigint * 4294967296, \
+                        packets_in = COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
+                        packets_out = COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
+                        last_update = NOW() \
+                    WHERE acct_session_id = '%{Acct-Session-Id}'; \
+                    \
+                    INSERT INTO radius_accounting ( \
+                        acct_session_id, username, nas_ip_address, event_type, \
+                        bytes_in, bytes_out, packets_in, packets_out, \
+                        session_time, event_time \
+                    ) VALUES ( \
+                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
+                        '%{NAS-IP-Address}'::inet, 'Interim-Update', \
+                        COALESCE('%{Acct-Input-Octets}', '0')::bigint, \
+                        COALESCE('%{Acct-Output-Octets}', '0')::bigint, \
+                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
+                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
+                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
+                        NOW() \
+                    )"
             }
             
+            # Accounting Stop - Session ended
             stop {
-                query = "\\
-                    WITH deleted AS ( \\
-                        DELETE FROM radius_sessions_active \\
-                        WHERE acct_session_id = '%{Acct-Session-Id}' \\
-                        RETURNING * \\
-                    ) \\
-                    INSERT INTO radius_sessions_archive ( \\
-                        acct_session_id, username, nas_ip_address, \\
-                        nas_port_id, framed_ip_address, calling_station_id, \\
-                        service_type, start_time, stop_time, session_time, \\
-                        bytes_in, bytes_out, packets_in, packets_out, \\
-                        terminate_cause \\
-                    ) SELECT \\
-                        acct_session_id, username, nas_ip_address, \\
-                        nas_port_id, framed_ip_address, calling_station_id, \\
-                        service_type, start_time, NOW(), \\
-                        '%{Acct-Session-Time}'::integer, \\
-                        '%{Acct-Input-Octets}'::bigint, \\
-                        '%{Acct-Output-Octets}'::bigint, \\
-                        '%{Acct-Input-Packets}'::bigint, \\
-                        '%{Acct-Output-Packets}'::bigint, \\
-                        '%{Acct-Terminate-Cause}' \\
-                    FROM deleted"
+                query = "\
+                    WITH deleted AS ( \
+                        DELETE FROM radius_sessions_active \
+                        WHERE acct_session_id = '%{Acct-Session-Id}' \
+                        RETURNING * \
+                    ) \
+                    INSERT INTO radius_sessions_archive ( \
+                        acct_session_id, acct_unique_id, username, user_id, \
+                        nas_id, nas_ip_address, nas_port_id, \
+                        service_type, framed_ip_address, calling_station_id, \
+                        called_station_id, start_time, stop_time, last_update, \
+                        session_time, bytes_in, bytes_out, packets_in, packets_out, \
+                        terminate_cause \
+                    ) SELECT \
+                        acct_session_id, acct_unique_id, username, user_id, \
+                        nas_id, nas_ip_address, nas_port_id, \
+                        service_type, framed_ip_address, calling_station_id, \
+                        called_station_id, start_time, NOW(), last_update, \
+                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
+                        COALESCE('%{Acct-Input-Octets}', '0')::bigint + \
+                        COALESCE('%{Acct-Input-Gigawords}', '0')::bigint * 4294967296, \
+                        COALESCE('%{Acct-Output-Octets}', '0')::bigint + \
+                        COALESCE('%{Acct-Output-Gigawords}', '0')::bigint * 4294967296, \
+                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
+                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
+                        '%{Acct-Terminate-Cause}' \
+                    FROM deleted; \
+                    \
+                    INSERT INTO radius_accounting ( \
+                        acct_session_id, username, nas_ip_address, event_type, \
+                        bytes_in, bytes_out, packets_in, packets_out, \
+                        session_time, terminate_cause, event_time \
+                    ) VALUES ( \
+                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
+                        '%{NAS-IP-Address}'::inet, 'Stop', \
+                        COALESCE('%{Acct-Input-Octets}', '0')::bigint, \
+                        COALESCE('%{Acct-Output-Octets}', '0')::bigint, \
+                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
+                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
+                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
+                        '%{Acct-Terminate-Cause}', \
+                        NOW() \
+                    )"
             }
         }
     }
 }
 SQLEOF
-        
-        print_success "SQL configuration created"
-    else
-        print_error "SQL module configuration file not found: $SQL_CONF"
-        exit 1
-    fi
+    
+    sudo sed -i "s/DB_USER_PLACEHOLDER/${DB_USER}/g" "$SQL_CONF"
+    sudo sed -i "s/DB_PASSWORD_PLACEHOLDER/${DB_PASSWORD}/g" "$SQL_CONF"
+    sudo sed -i "s/DB_NAME_PLACEHOLDER/${DB_NAME}/g" "$SQL_CONF"
+    
+    print_success "SQL configuration created and linked to database: ${DB_NAME}"
     
     # Enable SQL module
     print_info "Enabling SQL module..."

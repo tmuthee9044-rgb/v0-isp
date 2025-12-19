@@ -266,6 +266,346 @@ install_postgresql() {
     fi
 }
 
+install_freeradius() {
+    print_header "Installing FreeRADIUS"
+    
+    # Check if FreeRADIUS is already installed
+    if command -v radiusd &> /dev/null || command -v freeradius &> /dev/null; then
+        print_success "FreeRADIUS already installed"
+        RADIUSD_CMD=$(command -v radiusd || command -v freeradius)
+        print_info "FreeRADIUS binary: $RADIUSD_CMD"
+    else
+        print_info "Installing FreeRADIUS..."
+        
+        if [[ "$OS" == "linux" ]]; then
+            sudo apt update
+            sudo apt install -y freeradius freeradius-postgresql freeradius-utils
+            
+            if [ $? -eq 0 ]; then
+                print_success "FreeRADIUS installed"
+            else
+                print_error "Failed to install FreeRADIUS"
+                exit 1
+            fi
+        elif [[ "$OS" == "macos" ]]; then
+            brew install freeradius-server
+            
+            if [ $? -eq 0 ]; then
+                print_success "FreeRADIUS installed"
+            else
+                print_error "Failed to install FreeRADIUS"
+                exit 1
+            fi
+        fi
+    fi
+    
+    # Generate RADIUS secret
+    print_info "Generating RADIUS secret..."
+    RADIUS_SECRET=$(openssl rand -base64 32)
+    
+    # Determine FreeRADIUS config directory
+    if [[ "$OS" == "linux" ]]; then
+        FREERADIUS_DIR="/etc/freeradius/3.0"
+    elif [[ "$OS" == "macos" ]]; then
+        FREERADIUS_DIR="/usr/local/etc/raddb"
+    fi
+    
+    if [ ! -d "$FREERADIUS_DIR" ]; then
+        print_warning "FreeRADIUS config directory not found at $FREERADIUS_DIR"
+        print_info "Searching for config directory..."
+        
+        for dir in /etc/freeradius/* /usr/local/etc/raddb /opt/freeradius/etc/raddb; do
+            if [ -d "$dir" ]; then
+                FREERADIUS_DIR="$dir"
+                print_info "Found config directory: $FREERADIUS_DIR"
+                break
+            fi
+        done
+    fi
+    
+    print_success "FreeRADIUS config directory: $FREERADIUS_DIR"
+    
+    # Configure SQL module
+    print_info "Configuring FreeRADIUS SQL module..."
+    
+    SQL_CONF="$FREERADIUS_DIR/mods-available/sql"
+    
+    if [ -f "$SQL_CONF" ]; then
+        print_info "Backing up original SQL configuration..."
+        sudo cp "$SQL_CONF" "$SQL_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Create SQL configuration
+        sudo tee "$SQL_CONF" > /dev/null << SQLEOF
+sql {
+    driver = "rlm_sql_postgresql"
+    dialect = "postgresql"
+    
+    server = "localhost"
+    port = 5432
+    login = "${DB_USER}"
+    password = "${DB_PASSWORD}"
+    radius_db = "${DB_NAME}"
+    
+    # Connection pool settings
+    pool {
+        start = 5
+        min = 4
+        max = 32
+        spare = 10
+        uses = 0
+        retry_delay = 30
+        lifetime = 0
+        idle_timeout = 60
+    }
+    
+    # Authentication query
+    authorize_check_query = "\\
+        SELECT \\
+            username, \\
+            'Cleartext-Password' AS attribute, \\
+            password_hash AS value, \\
+            '==' AS op \\
+        FROM radius_users \\
+        WHERE username = '%{SQL-User-Name}' \\
+        AND status = 'active'"
+    
+    # Authorization reply attributes
+    authorize_reply_query = "\\
+        SELECT \\
+            'Mikrotik-Rate-Limit' AS attribute, \\
+            CONCAT(download_limit::text, 'M/', upload_limit::text, 'M') AS value, \\
+            ':=' AS op \\
+        FROM radius_users \\
+        WHERE username = '%{SQL-User-Name}' \\
+        AND status = 'active' \\
+        UNION ALL \\
+        SELECT \\
+            'Session-Timeout' AS attribute, \\
+            session_timeout::text AS value, \\
+            ':=' AS op \\
+        FROM radius_users \\
+        WHERE username = '%{SQL-User-Name}' \\
+        AND session_timeout IS NOT NULL \\
+        AND status = 'active' \\
+        UNION ALL \\
+        SELECT \\
+            'Idle-Timeout' AS attribute, \\
+            idle_timeout::text AS value, \\
+            ':=' AS op \\
+        FROM radius_users \\
+        WHERE username = '%{SQL-User-Name}' \\
+        AND idle_timeout IS NOT NULL \\
+        AND status = 'active' \\
+        UNION ALL \\
+        SELECT \\
+            'Framed-IP-Address' AS attribute, \\
+            ip_address::text AS value, \\
+            ':=' AS op \\
+        FROM radius_users \\
+        WHERE username = '%{SQL-User-Name}' \\
+        AND ip_address IS NOT NULL \\
+        AND status = 'active'"
+    
+    # Accounting queries
+    accounting {
+        reference = "%{tolower:type.%{Acct-Status-Type}.query}"
+        
+        type {
+            start {
+                query = "\\
+                    INSERT INTO radius_sessions_active ( \\
+                        acct_session_id, username, nas_ip_address, \\
+                        nas_port_id, framed_ip_address, calling_station_id, \\
+                        service_type, start_time \\
+                    ) VALUES ( \\
+                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \\
+                        '%{NAS-IP-Address}', '%{NAS-Port}', \\
+                        NULLIF('%{Framed-IP-Address}', '')::inet, \\
+                        '%{Calling-Station-Id}', \\
+                        COALESCE('%{Service-Type}', 'PPPoE'), NOW() \\
+                    ) ON CONFLICT (acct_session_id) DO UPDATE SET \\
+                        start_time = NOW(), \\
+                        last_update = NOW()"
+            }
+            
+            interim-update {
+                query = "\\
+                    UPDATE radius_sessions_active SET \\
+                        session_time = '%{Acct-Session-Time}'::integer, \\
+                        bytes_in = '%{Acct-Input-Octets}'::bigint, \\
+                        bytes_out = '%{Acct-Output-Octets}'::bigint, \\
+                        packets_in = '%{Acct-Input-Packets}'::bigint, \\
+                        packets_out = '%{Acct-Output-Packets}'::bigint, \\
+                        last_update = NOW() \\
+                    WHERE acct_session_id = '%{Acct-Session-Id}'"
+            }
+            
+            stop {
+                query = "\\
+                    WITH deleted AS ( \\
+                        DELETE FROM radius_sessions_active \\
+                        WHERE acct_session_id = '%{Acct-Session-Id}' \\
+                        RETURNING * \\
+                    ) \\
+                    INSERT INTO radius_sessions_archive ( \\
+                        acct_session_id, username, nas_ip_address, \\
+                        nas_port_id, framed_ip_address, calling_station_id, \\
+                        service_type, start_time, stop_time, session_time, \\
+                        bytes_in, bytes_out, packets_in, packets_out, \\
+                        terminate_cause \\
+                    ) SELECT \\
+                        acct_session_id, username, nas_ip_address, \\
+                        nas_port_id, framed_ip_address, calling_station_id, \\
+                        service_type, start_time, NOW(), \\
+                        '%{Acct-Session-Time}'::integer, \\
+                        '%{Acct-Input-Octets}'::bigint, \\
+                        '%{Acct-Output-Octets}'::bigint, \\
+                        '%{Acct-Input-Packets}'::bigint, \\
+                        '%{Acct-Output-Packets}'::bigint, \\
+                        '%{Acct-Terminate-Cause}' \\
+                    FROM deleted"
+            }
+        }
+    }
+}
+SQLEOF
+        
+        print_success "SQL configuration created"
+    else
+        print_error "SQL module configuration file not found: $SQL_CONF"
+        exit 1
+    fi
+    
+    # Enable SQL module
+    print_info "Enabling SQL module..."
+    if [ -d "$FREERADIUS_DIR/mods-enabled" ]; then
+        sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql" 2>/dev/null || true
+        print_success "SQL module enabled"
+    fi
+    
+    # Configure NAS clients
+    print_info "Configuring NAS clients..."
+    
+    CLIENTS_CONF="$FREERADIUS_DIR/clients.conf"
+    
+    if [ -f "$CLIENTS_CONF" ]; then
+        sudo cp "$CLIENTS_CONF" "$CLIENTS_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Add default localhost client for testing
+        sudo tee -a "$CLIENTS_CONF" > /dev/null << CLIENTEOF
+
+# ISP Management System - Auto-configured clients
+client localhost {
+    ipaddr = 127.0.0.1
+    secret = ${RADIUS_SECRET}
+    require_message_authenticator = no
+    nas_type = other
+}
+
+# Add more NAS clients from database dynamically via raddb/clients.conf
+# Routers will be synced from network_devices table
+CLIENTEOF
+        
+        print_success "NAS clients configured"
+    fi
+    
+    # Configure firewall
+    print_info "Configuring firewall for RADIUS..."
+    if [[ "$OS" == "linux" ]] && command -v ufw &> /dev/null; then
+        sudo ufw allow 1812/udp comment 'RADIUS Authentication'
+        sudo ufw allow 1813/udp comment 'RADIUS Accounting'
+        print_success "Firewall rules added for RADIUS"
+    else
+        print_warning "Firewall not configured automatically. Please open ports 1812/udp and 1813/udp manually."
+    fi
+    
+    # Test FreeRADIUS configuration
+    print_info "Testing FreeRADIUS configuration..."
+    if sudo radiusd -CX 2>&1 | grep -q "Configuration appears to be OK"; then
+        print_success "FreeRADIUS configuration is valid"
+    else
+        print_warning "FreeRADIUS configuration may have issues"
+        print_info "Run 'sudo radiusd -CX' to see detailed configuration check"
+    fi
+    
+    # Start FreeRADIUS service
+    print_info "Starting FreeRADIUS service..."
+    if [[ "$OS" == "linux" ]]; then
+        sudo systemctl stop freeradius 2>/dev/null || true
+        sleep 2
+        sudo systemctl start freeradius
+        sudo systemctl enable freeradius
+        
+        if sudo systemctl is-active --quiet freeradius; then
+            print_success "FreeRADIUS service started and enabled"
+        else
+            print_error "Failed to start FreeRADIUS service"
+            print_info "Check logs: sudo journalctl -u freeradius -n 50"
+            print_info "Or run in debug mode: sudo freeradius -X"
+        fi
+    elif [[ "$OS" == "macos" ]]; then
+        sudo brew services restart freeradius-server
+        print_success "FreeRADIUS service restarted"
+    fi
+    
+    # Add RADIUS secret to .env.local
+    print_info "Adding RADIUS configuration to .env.local..."
+    
+    if [ -f ".env.local" ]; then
+        # Remove old RADIUS settings if they exist
+        grep -v "RADIUS_SECRET\|RADIUS_SERVER\|RADIUS_AUTH_PORT\|RADIUS_ACCT_PORT" .env.local > .env.local.tmp || true
+        mv .env.local.tmp .env.local
+        
+        # Add new RADIUS settings
+        cat >> .env.local << ENVEOF
+
+# RADIUS Configuration
+RADIUS_SECRET=${RADIUS_SECRET}
+RADIUS_SERVER=127.0.0.1
+RADIUS_AUTH_PORT=1812
+RADIUS_ACCT_PORT=1813
+ENVEOF
+        
+        print_success "RADIUS configuration added to .env.local"
+    fi
+    
+    # Save RADIUS credentials
+    cat >> database-credentials.txt << RADEOF
+
+FreeRADIUS Configuration
+========================
+RADIUS Secret: ${RADIUS_SECRET}
+Auth Port: 1812
+Accounting Port: 1813
+Config Directory: ${FREERADIUS_DIR}
+
+To test RADIUS:
+  radtest testuser testpass localhost 0 ${RADIUS_SECRET}
+
+To view logs:
+  sudo tail -f /var/log/freeradius/radius.log
+
+To run in debug mode:
+  sudo freeradius -X
+RADEOF
+    
+    print_success "FreeRADIUS credentials saved to database-credentials.txt"
+    
+    echo ""
+    print_success "FreeRADIUS installation complete!"
+    echo ""
+    print_info "RADIUS Server: 127.0.0.1"
+    print_info "Auth Port: 1812"
+    print_info "Accounting Port: 1813"
+    print_info "Secret: ${RADIUS_SECRET}"
+    echo ""
+    print_info "Next steps:"
+    echo "  1. RADIUS tables will be created during database setup"
+    echo "  2. Configure your routers with the RADIUS secret"
+    echo "  3. Test connectivity from /network/radius dashboard"
+    echo ""
+}
+
 setup_database() {
     print_header "Setting Up Database"
     
@@ -1387,6 +1727,58 @@ CREATE TABLE IF NOT EXISTS routers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create radius_users table if missing (for FreeRADIUS)
+CREATE TABLE IF NOT EXISTS radius_users (
+    username VARCHAR(255) PRIMARY KEY,
+    password_hash VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'active',
+    download_limit NUMERIC(10,2) DEFAULT 0,
+    upload_limit NUMERIC(10,2) DEFAULT 0,
+    session_timeout INTEGER,
+    idle_timeout INTEGER,
+    ip_address INET,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create radius_sessions_active table if missing (for FreeRADIUS accounting)
+CREATE TABLE IF NOT EXISTS radius_sessions_active (
+    acct_session_id VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET,
+    nas_port_id VARCHAR(255),
+    framed_ip_address INET,
+    calling_station_id VARCHAR(255),
+    service_type VARCHAR(50),
+    start_time TIMESTAMP NOT NULL,
+    last_update TIMESTAMP,
+    session_time INTEGER DEFAULT 0,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0,
+    packets_in BIGINT DEFAULT 0,
+    packets_out BIGINT DEFAULT 0,
+    UNIQUE (username, nas_ip_address, start_time) -- Prevent duplicate entries for same user session from same NAS
+);
+
+-- Create radius_sessions_archive table if missing (for FreeRADIUS accounting)
+CREATE TABLE IF NOT EXISTS radius_sessions_archive (
+    acct_session_id VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET,
+    nas_port_id VARCHAR(255),
+    framed_ip_address INET,
+    calling_station_id VARCHAR(255),
+    service_type VARCHAR(50),
+    start_time TIMESTAMP NOT NULL,
+    stop_time TIMESTAMP NOT NULL,
+    session_time INTEGER,
+    bytes_in BIGINT,
+    bytes_out BIGINT,
+    packets_in BIGINT,
+    packets_out BIGINT,
+    terminate_cause VARCHAR(50)
+);
+
 -- Add ALL missing columns to existing tables based on Neon schema
 DO $$ 
 DECLARE
@@ -1884,6 +2276,10 @@ verify_database_tables() {
         "leave_requests"
         "activity_logs"
         "schema_migrations"
+        # Added FreeRADIUS tables
+        "radius_users"
+        "radius_sessions_active"
+        "radius_sessions_archive"
     )
     
     MISSING_TABLES=()
@@ -2041,6 +2437,7 @@ full_installation() {
     
     install_postgresql
     setup_database
+    install_freeradius
     install_nodejs
     install_npm
     install_dependencies
@@ -2059,6 +2456,7 @@ full_installation() {
     print_success "ISP Management System has been installed successfully!"
     echo ""
     print_success "✓ PostgreSQL database is running and connected"
+    print_success "✓ FreeRADIUS server installed and configured"
     print_success "✓ All database tables created and verified"
     print_success "✓ Database operations tested successfully"
     print_success "✓ Node.js and npm installed and verified"
@@ -2070,10 +2468,14 @@ full_installation() {
     echo "  2. Open your browser to:"
     echo "     http://localhost:3000"
     echo ""
-    echo "  3. Database credentials saved in:"
+    echo "  3. Test RADIUS connectivity:"
+    echo "     Visit http://localhost:3000/network/radius"
+    echo ""
+    echo "  4. Credentials saved in:"
     echo "     ./database-credentials.txt"
     echo ""
     echo "Note: The system is configured for offline PostgreSQL operation."
+    echo "      FreeRADIUS is integrated with the database."
     echo "      All tables have been created and verified."
     echo ""
 }

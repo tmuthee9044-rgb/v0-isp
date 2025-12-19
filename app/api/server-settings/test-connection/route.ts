@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-
-// Force rebuild - Updated: 2025-12-18 18:24:00
-// All level values must be UPPERCASE per system_logs_level_check constraint
+import { testRadiusServer } from "@/lib/radius-client"
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,25 +12,32 @@ export async function POST(request: NextRequest) {
     if (type === "radius") {
       const config = body.config
 
-      const testResult = {
-        success: true,
-        message: "RADIUS server connection successful",
-        details: {
-          host: config.host,
-          authPort: config.authPort,
-          responseTime: "45ms",
-          status: "Authentication working",
-        },
+      if (!config.host || !config.authPort || !config.secret) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Missing required fields: host, authPort, and secret are required",
+          },
+          { status: 400 },
+        )
       }
 
-      const logLevel = "INFO" // Must be uppercase: INFO, WARNING, ERROR, SUCCESS, DEBUG
+      const testResult = await testRadiusServer(
+        config.host,
+        Number.parseInt(config.authPort),
+        config.secret,
+        5000, // 5 second timeout
+      )
+
+      // Log the test
+      const logLevel = testResult.success ? "INFO" : "ERROR"
       await sql`
         INSERT INTO system_logs (level, source, category, message, details, created_at)
         VALUES (
           ${logLevel},
           'RADIUS Server',
           'server_config',
-          'RADIUS connection test performed',
+          ${testResult.success ? "RADIUS connection test successful" : "RADIUS connection test failed"},
           ${JSON.stringify(testResult)},
           NOW()
         )
@@ -42,25 +47,37 @@ export async function POST(request: NextRequest) {
     } else if (type === "openvpn") {
       const config = body.config
 
+      if (!config.host || !config.port) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Missing required fields: host and port are required",
+          },
+          { status: 400 },
+        )
+      }
+
+      // For OpenVPN, we can only check if the port is reachable
+      // Full OpenVPN testing requires certificate setup
       const testResult = {
-        success: true,
-        message: "OpenVPN server connection successful",
+        success: false,
+        message: "OpenVPN testing requires manual verification with certificates",
         details: {
           host: config.host,
           port: config.port,
           protocol: config.protocol,
-          status: "Server reachable",
+          status: "Manual verification required",
         },
       }
 
-      const logLevel = "INFO" // Must be uppercase
+      const logLevel = "INFO"
       await sql`
         INSERT INTO system_logs (level, source, category, message, details, created_at)
         VALUES (
           ${logLevel},
           'OpenVPN Server',
           'server_config',
-          'OpenVPN connection test performed',
+          'OpenVPN connection test requested',
           ${JSON.stringify(testResult)},
           NOW()
         )

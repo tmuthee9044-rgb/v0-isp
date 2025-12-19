@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export async function GET() {
   const sql = await getSql()
@@ -19,9 +19,15 @@ export async function GET() {
         acctPort: "1813",
         timeout: "30",
         sharedSecret: "",
+        protocols: {
+          pppoe: false,
+          ipoe: false,
+          hotspot: false,
+          wireless: false,
+        },
         authMethods: {
-          pap: true,
-          chap: true,
+          pap: false,
+          chap: false,
           mschap: false,
           mschapv2: false,
         },
@@ -33,32 +39,32 @@ export async function GET() {
         protocol: "udp",
         cipher: "aes-256-cbc",
         vpnNetwork: "10.8.0.0/24",
-        primaryDns: "8.8.8.8",
-        secondaryDns: "8.8.4.4",
-        tlsAuth: true,
+        primaryDns: "",
+        secondaryDns: "",
+        tlsAuth: false,
         clientToClient: false,
         duplicateCn: false,
-        compression: true,
+        compression: false,
       },
       network: {
         gateway: "",
         subnetMask: "255.255.255.0",
         managementVlan: "",
         customerVlanRange: "",
-        snmpCommunity: "public",
-        ntpServer: "pool.ntp.org",
-        firewall: true,
-        ddosProtection: true,
+        snmpCommunity: "",
+        ntpServer: "",
+        firewall: false,
+        ddosProtection: false,
         portScanDetection: false,
         intrusionDetection: false,
-        uploadLimit: "10",
-        downloadLimit: "50",
-        burstRatio: "1.5",
+        uploadLimit: "",
+        downloadLimit: "",
+        burstRatio: "",
         monitoring: {
-          snmp: true,
-          bandwidth: true,
-          uptime: true,
-          alerts: true,
+          snmp: false,
+          bandwidth: false,
+          uptime: false,
+          alerts: false,
           interval: "5",
           threshold: "80",
         },
@@ -67,20 +73,29 @@ export async function GET() {
 
     settings.forEach((setting) => {
       const keys = setting.key.split(".")
-      const value = JSON.parse(setting.value)
+      let value
+      try {
+        value = JSON.parse(setting.value)
+      } catch {
+        value = setting.value
+      }
 
       if (keys[0] === "server" && keys[1] === "radius") {
-        if (keys[2] === "authMethods") {
+        if (keys[2] === "protocols") {
+          serverConfig.radius.protocols = { ...serverConfig.radius.protocols, ...value }
+        } else if (keys[2] === "authMethods") {
           serverConfig.radius.authMethods = { ...serverConfig.radius.authMethods, ...value }
-        } else {
+        } else if (keys[2]) {
           serverConfig.radius[keys[2]] = value
         }
       } else if (keys[0] === "server" && keys[1] === "openvpn") {
-        serverConfig.openvpn[keys[2]] = value
+        if (keys[2]) {
+          serverConfig.openvpn[keys[2]] = value
+        }
       } else if (keys[0] === "network") {
-        if (keys[1] === "monitoring") {
+        if (keys[1] === "monitoring" && keys[2]) {
           serverConfig.network.monitoring[keys[2]] = value
-        } else {
+        } else if (keys[1]) {
           serverConfig.network[keys[1]] = value
         }
       }
@@ -102,15 +117,24 @@ export async function POST(request: NextRequest) {
 
     if (type === "radius") {
       for (const [key, value] of Object.entries(settings)) {
-        await sql`
-          INSERT INTO system_config (key, value, updated_at)
-          VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
-          ON CONFLICT (key) 
-          DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
-        `
+        if (key === "protocols" || key === "authMethods") {
+          await sql`
+            INSERT INTO system_config (key, value, updated_at)
+            VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
+            ON CONFLICT (key) 
+            DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
+          `
+        } else {
+          await sql`
+            INSERT INTO system_config (key, value, updated_at)
+            VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
+            ON CONFLICT (key) 
+            DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
+          `
+        }
       }
 
-      if (settings.enabled) {
+      if (settings.enabled && settings.host && settings.sharedSecret) {
         await sql`
           UPDATE network_devices 
           SET config = jsonb_set(
@@ -125,6 +149,19 @@ export async function POST(request: NextRequest) {
           ),
           updated_at = NOW()
           WHERE device_type = 'router' AND status = 'active'
+        `
+
+        // Log the configuration update
+        await sql`
+          INSERT INTO system_logs (level, source, category, message, details, created_at)
+          VALUES (
+            'INFO',
+            'RADIUS Server',
+            'server_config',
+            'RADIUS configuration updated and pushed to network devices',
+            ${JSON.stringify({ host: settings.host, authPort: settings.authPort })},
+            NOW()
+          )
         `
       }
     }

@@ -12,20 +12,26 @@ export async function POST(request: NextRequest) {
     if (type === "radius") {
       const config = body.config
 
-      if (!config.host || !config.authPort || !config.secret) {
+      const host = config.host
+      const authPort = config.authPort
+      const secret = config.secret || config.sharedSecret
+
+      console.log("[v0] RADIUS test config:", { host, authPort, hasSecret: !!secret })
+
+      if (!host || !authPort || !secret) {
         return NextResponse.json(
           {
             success: false,
-            message: "Missing required fields: host, authPort, and secret are required",
+            message: `Missing required fields: ${!host ? "host" : ""} ${!authPort ? "authPort" : ""} ${!secret ? "secret" : ""}`,
           },
           { status: 400 },
         )
       }
 
       const testResult = await testRadiusServer(
-        config.host,
-        Number.parseInt(config.authPort),
-        config.secret,
+        host,
+        Number.parseInt(authPort),
+        secret,
         5000, // 5 second timeout
       )
 
@@ -88,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: false, message: "Invalid connection type" }, { status: 400 })
   } catch (error) {
-    console.error("Error testing connection:", error)
+    console.error("[v0] Error testing connection:", error)
     return NextResponse.json(
       { success: false, message: "Connection test failed", error: String(error) },
       { status: 500 },

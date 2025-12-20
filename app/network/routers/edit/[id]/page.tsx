@@ -14,25 +14,26 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Switch } from "@/components/ui/switch"
 import {
-  Eye,
-  EyeOff,
+  AlertCircle,
+  AlertTriangle,
   ArrowLeft,
-  Save,
-  RefreshCw,
-  Database,
-  RouterIcon,
-  BarChart3,
-  FileText,
   Activity,
   CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Loader2,
+  Eye,
+  EyeOff,
+  FileText,
   Info,
-  Signal,
+  Loader2,
   Network,
-  Terminal,
+  RouterIcon,
+  Save,
+  Signal,
   Shield,
+  Terminal,
+  RefreshCw,
+  BarChart3,
+  Database,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
@@ -161,6 +162,8 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
   const [routerDetails, setRouterDetails] = useState<any>(null)
 
   const [radiusSettings, setRadiusSettings] = useState<any>(null)
+  const [radiusTestResult, setRadiusTestResult] = useState<any>(null)
+  const [radiusTestLoading, setRadiusTestLoading] = useState(false)
 
   useEffect(() => {
     fetchRouter()
@@ -513,6 +516,43 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
     if (status === "failed") return <XCircle className="w-5 h-5 text-red-500" />
     if (status === "running") return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
     return <AlertTriangle className="w-5 h-5 text-yellow-500" />
+  }
+
+  const handleTestRadius = async () => {
+    setRadiusTestLoading(true)
+    setRadiusTestResult(null)
+
+    try {
+      const response = await fetch(`/api/network/routers/${routerId}/test-radius`, {
+        method: "POST",
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setRadiusTestResult(data)
+        toast({
+          title: data.success ? "Test Completed" : "Test Completed with Issues",
+          description: data.success ? "RADIUS connectivity test passed" : "Some tests failed. Check details below.",
+          variant: data.success ? "default" : "destructive",
+        })
+      } else {
+        toast({
+          title: "Test Failed",
+          description: data.error || "Failed to test RADIUS connectivity",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error testing RADIUS:", error)
+      toast({
+        title: "Error",
+        description: "Failed to perform RADIUS test",
+        variant: "destructive",
+      })
+    } finally {
+      setRadiusTestLoading(false)
+    }
   }
 
   if (loading) {
@@ -884,6 +924,145 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                             <p className="text-xs text-muted-foreground">
                               Network Access Server IP - typically the router's management IP
                             </p>
+                          </div>
+
+                          <div className="p-4 bg-gray-50 border rounded-lg space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-semibold text-sm">RADIUS Test & Troubleshooting</h4>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Verify router can connect to FreeRADIUS server
+                                </p>
+                              </div>
+                              <Button
+                                onClick={handleTestRadius}
+                                disabled={radiusTestLoading}
+                                size="sm"
+                                variant="outline"
+                                className="gap-2 bg-transparent"
+                              >
+                                {radiusTestLoading ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Testing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Activity className="w-4 h-4" />
+                                    Run Test
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+
+                            {radiusTestResult && (
+                              <div className="space-y-3">
+                                {/* Test Results */}
+                                {radiusTestResult.tests?.map((test: any, index: number) => (
+                                  <div
+                                    key={index}
+                                    className={`p-3 rounded-lg border ${
+                                      test.status === "success"
+                                        ? "bg-green-50 border-green-200"
+                                        : test.status === "failed"
+                                          ? "bg-red-50 border-red-200"
+                                          : test.status === "warning"
+                                            ? "bg-amber-50 border-amber-200"
+                                            : "bg-blue-50 border-blue-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      {test.status === "success" && (
+                                        <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
+                                      )}
+                                      {test.status === "failed" && (
+                                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+                                      )}
+                                      {test.status === "warning" && (
+                                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                                      )}
+                                      {test.status === "info" && <Info className="w-4 h-4 text-blue-600 mt-0.5" />}
+                                      <div className="flex-1">
+                                        <p className="font-medium text-sm">{test.name}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">{test.message}</p>
+
+                                        {test.details && (
+                                          <div className="mt-2 text-xs font-mono bg-white p-2 rounded border">
+                                            <div>Host: {test.details.host}</div>
+                                            <div>Port: {test.details.port}</div>
+                                            {test.details.responseTime && (
+                                              <div>Response Time: {test.details.responseTime}</div>
+                                            )}
+                                            <div>Status: {test.details.status}</div>
+                                            {test.details.error && (
+                                              <div className="text-red-600">Error: {test.details.error}</div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {test.checks && (
+                                          <div className="mt-2 space-y-1">
+                                            {test.checks.map((check: any, idx: number) => (
+                                              <div key={idx} className="flex items-center gap-2 text-xs">
+                                                {check.status === "success" && (
+                                                  <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                                )}
+                                                {check.status === "error" && (
+                                                  <AlertCircle className="w-3 h-3 text-red-600" />
+                                                )}
+                                                {check.status === "warning" && (
+                                                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                )}
+                                                <span className="font-medium">{check.item}:</span>
+                                                <span className="text-muted-foreground">{check.message}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {/* MikroTik Configuration Commands */}
+                                {radiusTestResult.mikrotikConfig && (
+                                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                    <p className="text-sm font-medium text-amber-900 mb-2">
+                                      MikroTik Configuration Commands
+                                    </p>
+                                    <div className="space-y-1 text-xs font-mono bg-white p-3 rounded border max-h-48 overflow-y-auto">
+                                      {radiusTestResult.mikrotikConfig.commands.map((cmd: string, idx: number) => (
+                                        <div
+                                          key={idx}
+                                          className={cmd.startsWith("#") ? "text-amber-800 font-semibold mt-2" : ""}
+                                        >
+                                          {cmd}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <p className="text-xs text-amber-700 mt-2">
+                                      Copy these commands and paste them into your MikroTik terminal
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Troubleshooting Tips */}
+                                <div className="p-3 bg-slate-50 border rounded-lg">
+                                  <p className="text-sm font-medium mb-2">Troubleshooting Checklist</p>
+                                  <ul className="text-xs space-y-1 text-muted-foreground">
+                                    <li>✓ Verify RADIUS secret matches on both router and server</li>
+                                    <li>✓ Ensure router can ping RADIUS server IP: {radiusSettings.host}</li>
+                                    <li>
+                                      ✓ Check firewall allows UDP ports {radiusSettings.authPort} and{" "}
+                                      {radiusSettings.acctPort}
+                                    </li>
+                                    <li>✓ Confirm FreeRADIUS service is running: systemctl status freeradius</li>
+                                    <li>✓ Check FreeRADIUS logs: tail -f /var/log/freeradius/radius.log</li>
+                                    <li>✓ Test from MikroTik: /radius incoming print</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">

@@ -345,51 +345,47 @@ export async function checkAndProvisionActiveServices(): Promise<void> {
   try {
     console.log(`[v0] === Checking for services to provision ===`)
 
-    // Find services that should be provisioned:
-    // 1. Status is active
-    // 2. Not yet provisioned (router_provisioned = false or NULL)
-    // 3. Has a router_id
-    // 4. Has connection details (IP or PPPoE credentials)
     const servicesToProvision = await sql`
       SELECT 
         cs.id as service_id,
         cs.customer_id,
-        cs.router_id,
+        cs.service_plan_id,
+        ia.router_id,
         cs.connection_type,
-        cs.ip_address,
-        cs.pppoe_username,
-        cs.pppoe_password,
-        cs.speed_profile,
-        cs.download_speed,
-        cs.upload_speed
+        ia.ip_address,
+        c.portal_username as pppoe_username,
+        c.portal_username as pppoe_password,
+        sp.speed_download,
+        sp.speed_upload,
+        nd.ip_address as router_ip,
+        nd.api_port as router_port
       FROM customer_services cs
+      JOIN customers c ON c.id = cs.customer_id
+      JOIN service_plans sp ON sp.id = cs.service_plan_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.service_id = cs.id
+      LEFT JOIN network_devices nd ON nd.id = ia.router_id
       WHERE cs.status = 'active'
         AND (cs.router_provisioned = false OR cs.router_provisioned IS NULL)
-        AND cs.router_id IS NOT NULL
-        AND cs.next_billing_date >= CURRENT_DATE
-        AND (
-          (cs.connection_type = 'pppoe' AND cs.pppoe_username IS NOT NULL AND cs.pppoe_password IS NOT NULL)
-          OR (cs.connection_type = 'static_ip' AND cs.ip_address IS NOT NULL)
-        )
+        AND ia.router_id IS NOT NULL
+        AND nd.ip_address IS NOT NULL
       LIMIT 50
     `
 
     console.log(`[v0] Found ${servicesToProvision.length} services to provision`)
 
     const provisionPromises = servicesToProvision.map((service) => {
-      console.log(`[v0] Provisioning service ${service.service_id}`)
+      console.log(`[v0] Provisioning service ${service.service_id} to router ${service.router_id}`)
 
       return provisionServiceToRouter({
         serviceId: service.service_id,
         customerId: service.customer_id,
         routerId: service.router_id,
         ipAddress: service.ip_address,
-        connectionType: service.connection_type || "pppoe",
-        pppoeUsername: service.pppoe_username,
-        pppoePassword: service.pppoe_password,
-        speedProfile: service.speed_profile,
-        downloadSpeed: service.download_speed,
-        uploadSpeed: service.upload_speed,
+        connectionType: service.ip_address ? "static_ip" : "pppoe",
+        pppoeUsername: service.pppoe_username || `customer_${service.customer_id}`,
+        pppoePassword: service.pppoe_password || `customer_${service.customer_id}`,
+        downloadSpeed: service.speed_download,
+        uploadSpeed: service.speed_upload,
       })
     })
 

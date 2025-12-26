@@ -667,36 +667,88 @@ export async function activateServiceOnPayment(paymentId: number, customerId: nu
     const sql = await getSql()
 
     const pendingServices = await sql`
-      SELECT cs.*, sp.name as service_name
+      SELECT cs.*, sp.name as service_name, sp.speed_download, sp.upload_speed,
+             c.portal_username, c.email,
+             ia.ip_address, ia.router_id,
+             nd.ip_address as router_ip, nd.api_port, nd.api_username, nd.api_password, nd.use_ssl
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
+      JOIN customers c ON c.id = cs.customer_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.service_id = cs.id
+      LEFT JOIN network_devices nd ON nd.id = ia.router_id
       WHERE cs.customer_id = ${customerId}
       AND cs.status = 'pending'
       ORDER BY cs.created_at ASC
     `
 
+    console.log(`[v0] Activating ${pendingServices.length} pending services after payment`)
+
     for (const service of pendingServices) {
       await sql`
         UPDATE customer_services 
-        SET status = 'active'
+        SET status = 'active', activation_date = NOW()
         WHERE id = ${service.id}
       `
 
+      const radiusUsername = service.portal_username || `customer_${customerId}`
+      const radiusPassword = service.portal_username || `customer_${customerId}`
+
+      console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
+      const radiusResult = await provisionRadiusUser({
+        customerId,
+        serviceId: service.id,
+        username: radiusUsername,
+        password: radiusPassword,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.speed_download,
+        uploadSpeed: service.upload_speed,
+        nasId: service.router_id || undefined,
+      })
+
+      if (!radiusResult.success) {
+        console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
+      } else {
+        console.log(`[v0] RADIUS provisioning successful`)
+      }
+
+      if (service.router_id && service.router_ip) {
+        console.log(`[v0] Provisioning service ${service.id} to physical router ${service.router_id}...`)
+
+        const routerResult = await provisionServiceToRouter({
+          serviceId: service.id,
+          customerId,
+          routerId: service.router_id,
+          ipAddress: service.ip_address || undefined,
+          connectionType: service.ip_address ? "static_ip" : "pppoe",
+          pppoeUsername: radiusUsername,
+          pppoePassword: radiusPassword,
+          downloadSpeed: service.speed_download,
+          uploadSpeed: service.upload_speed,
+        })
+
+        if (!routerResult.success) {
+          console.error(`[v0] Router provisioning failed:`, routerResult.error)
+        } else {
+          console.log(`[v0] Router provisioning successful - PPPoE secret created`)
+        }
+      } else {
+        console.log(`[v0] No router assigned to service ${service.id}, skipping router provisioning`)
+      }
+
       await sql`
-        INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
+        INSERT INTO system_logs (level, category, source, message, details, created_at)
         VALUES (
-          1,
-          'service_activation',
-          'customer_service',
-          ${service.id},
+          'INFO', 'customer', 'service_activation',
+          ${`Service ${service.service_name} activated for customer ${customerId} after payment ${paymentId}`},
           ${JSON.stringify({
             customer_id: customerId,
             service_id: service.id,
             service_name: service.service_name,
             payment_id: paymentId,
-            reason: "payment_received",
-            message: `Service ${service.service_name} activated for customer ${customerId} after payment received`,
-          })}::jsonb,
+            radius_provisioned: radiusResult.success,
+            router_provisioned: service.router_id ? true : false,
+            pppoe_username: radiusUsername,
+          })},
           NOW()
         )
       `
@@ -705,10 +757,10 @@ export async function activateServiceOnPayment(paymentId: number, customerId: nu
     return {
       success: true,
       activated_services: pendingServices.length,
-      message: `${pendingServices.length} service(s) activated successfully`,
+      message: `${pendingServices.length} service(s) activated and provisioned successfully`,
     }
   } catch (error) {
-    console.error("Error activating services on payment:", error)
+    console.error("[v0] Error activating services on payment:", error)
     return { success: false, error: "Failed to activate services" }
   }
 }

@@ -899,31 +899,32 @@ export default function EditRouterPage({ params }: { params: { id: string } }) {
                             </p>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="radius-secret">RADIUS Secret 🔒</Label>
-                            <Input
-                              id="radius-secret"
-                              type="password"
-                              value={formData.radius_secret}
-                              onChange={(e) => setFormData((prev) => ({ ...prev, radius_secret: e.target.value }))}
-                              placeholder="Enter shared secret (must match FreeRADIUS server)"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              This secret authenticates communication between the router and RADIUS server
-                            </p>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="radius-nas-ip">RADIUS NAS IP</Label>
-                            <Input
-                              id="radius-nas-ip"
-                              value={formData.radius_nas_ip}
-                              onChange={(e) => setFormData((prev) => ({ ...prev, radius_nas_ip: e.target.value }))}
-                              placeholder={formData.hostname || "Enter NAS IP address"}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Network Access Server IP - typically the router's management IP
-                            </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="radius_secret">RADIUS Shared Secret 🔒</Label>
+                              <Input
+                                id="radius_secret"
+                                type="password"
+                                value={formData.radius_secret || ""}
+                                onChange={(e) => setFormData((prev) => ({ ...prev, radius_secret: e.target.value }))}
+                                placeholder="Enter shared secret"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Must match the secret configured in FreeRADIUS clients.conf
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="radius_nas_ip">NAS IP Address</Label>
+                              <Input
+                                id="radius_nas_ip"
+                                value={formData.radius_nas_ip || ""}
+                                onChange={(e) => setFormData((prev) => ({ ...prev, radius_nas_ip: e.target.value }))}
+                                placeholder={formData.ip_address || "Router IP address"}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Network Access Server identifier (usually router IP)
+                              </p>
+                            </div>
                           </div>
 
                           <div className="p-4 bg-gray-50 border rounded-lg space-y-4">

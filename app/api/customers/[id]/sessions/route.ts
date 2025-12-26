@@ -89,145 +89,152 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 async function getHistoricalSessions(sql: any, customerId: string, period: string) {
   try {
-    let sessions
+    const activeSessions = await sql`
+      SELECT 
+        rsa.acct_session_id as id,
+        rsa.username as login_id,
+        rsa.bytes_in as data_in,
+        rsa.bytes_out as data_out,
+        rsa.start_time,
+        EXTRACT(EPOCH FROM (NOW() - rsa.start_time))::INTEGER as duration_seconds,
+        rsa.framed_ip as ip_address,
+        rsa.calling_station_id as mac_address,
+        rn.name as nas,
+        'active' as status
+      FROM radius_sessions_active rsa
+      JOIN radius_users ru ON rsa.user_id = ru.id
+      LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+      WHERE ru.customer_id = ${customerId}
+      ORDER BY rsa.start_time DESC
+    `
+
+    let archivedSessions = []
 
     switch (period) {
       case "today":
-        sessions = await sql`
+        archivedSessions = await sql`
           SELECT 
-            rl.id,
-            rl.username as login_id,
-            rl.acct_input_octets as data_in,
-            rl.acct_output_octets as data_out,
-            rl.log_timestamp as start_time,
-            rl.acct_session_time as duration_seconds,
-            rl.framed_ip as ip_address,
-            rl.calling_station_id as mac_address,
-            rl.nas_ip as nas,
-            CASE 
-              WHEN rl.acct_status_type = 'Start' THEN 'active'
-              WHEN rl.acct_status_type = 'Stop' THEN 'expired'
-              ELSE 'suspended'
-            END as status
-          FROM radius_logs rl
-          JOIN customers c ON c.portal_username = rl.username
-          WHERE c.id = ${customerId}
-            AND DATE(rl.log_timestamp) = CURRENT_DATE
-          ORDER BY rl.log_timestamp DESC
+            rsa.acct_session_id as id,
+            rsa.username as login_id,
+            rsa.bytes_in as data_in,
+            rsa.bytes_out as data_out,
+            rsa.start_time,
+            EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
+            rsa.framed_ip as ip_address,
+            rsa.calling_station_id as mac_address,
+            rn.name as nas,
+            'expired' as status
+          FROM radius_sessions_archive rsa
+          JOIN radius_users ru ON rsa.user_id = ru.id
+          LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+          WHERE ru.customer_id = ${customerId}
+            AND DATE(rsa.start_time) = CURRENT_DATE
+          ORDER BY rsa.start_time DESC
           LIMIT 50
         `
         break
       case "week":
-        sessions = await sql`
+        archivedSessions = await sql`
           SELECT 
-            rl.id,
-            rl.username as login_id,
-            rl.acct_input_octets as data_in,
-            rl.acct_output_octets as data_out,
-            rl.log_timestamp as start_time,
-            rl.acct_session_time as duration_seconds,
-            rl.framed_ip as ip_address,
-            rl.calling_station_id as mac_address,
-            rl.nas_ip as nas,
-            CASE 
-              WHEN rl.acct_status_type = 'Start' THEN 'active'
-              WHEN rl.acct_status_type = 'Stop' THEN 'expired'
-              ELSE 'suspended'
-            END as status
-          FROM radius_logs rl
-          JOIN customers c ON c.portal_username = rl.username
-          WHERE c.id = ${customerId}
-            AND rl.log_timestamp >= NOW() - INTERVAL '7 days'
-          ORDER BY rl.log_timestamp DESC
+            rsa.acct_session_id as id,
+            rsa.username as login_id,
+            rsa.bytes_in as data_in,
+            rsa.bytes_out as data_out,
+            rsa.start_time,
+            EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
+            rsa.framed_ip as ip_address,
+            rsa.calling_station_id as mac_address,
+            rn.name as nas,
+            'expired' as status
+          FROM radius_sessions_archive rsa
+          JOIN radius_users ru ON rsa.user_id = ru.id
+          LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+          WHERE ru.customer_id = ${customerId}
+            AND rsa.start_time >= NOW() - INTERVAL '7 days'
+          ORDER BY rsa.start_time DESC
           LIMIT 50
         `
         break
       case "month":
-        sessions = await sql`
+        archivedSessions = await sql`
           SELECT 
-            rl.id,
-            rl.username as login_id,
-            rl.acct_input_octets as data_in,
-            rl.acct_output_octets as data_out,
-            rl.log_timestamp as start_time,
-            rl.acct_session_time as duration_seconds,
-            rl.framed_ip as ip_address,
-            rl.calling_station_id as mac_address,
-            rl.nas_ip as nas,
-            CASE 
-              WHEN rl.acct_status_type = 'Start' THEN 'active'
-              WHEN rl.acct_status_type = 'Stop' THEN 'expired'
-              ELSE 'suspended'
-            END as status
-          FROM radius_logs rl
-          JOIN customers c ON c.portal_username = rl.username
-          WHERE c.id = ${customerId}
-            AND rl.log_timestamp >= NOW() - INTERVAL '30 days'
-          ORDER BY rl.log_timestamp DESC
+            rsa.acct_session_id as id,
+            rsa.username as login_id,
+            rsa.bytes_in as data_in,
+            rsa.bytes_out as data_out,
+            rsa.start_time,
+            EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
+            rsa.framed_ip as ip_address,
+            rsa.calling_station_id as mac_address,
+            rn.name as nas,
+            'expired' as status
+          FROM radius_sessions_archive rsa
+          JOIN radius_users ru ON rsa.user_id = ru.id
+          LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+          WHERE ru.customer_id = ${customerId}
+            AND rsa.start_time >= NOW() - INTERVAL '30 days'
+          ORDER BY rsa.start_time DESC
           LIMIT 50
         `
         break
       case "quarter":
-        sessions = await sql`
+        archivedSessions = await sql`
           SELECT 
-            rl.id,
-            rl.username as login_id,
-            rl.acct_input_octets as data_in,
-            rl.acct_output_octets as data_out,
-            rl.log_timestamp as start_time,
-            rl.acct_session_time as duration_seconds,
-            rl.framed_ip as ip_address,
-            rl.calling_station_id as mac_address,
-            rl.nas_ip as nas,
-            CASE 
-              WHEN rl.acct_status_type = 'Start' THEN 'active'
-              WHEN rl.acct_status_type = 'Stop' THEN 'expired'
-              ELSE 'suspended'
-            END as status
-          FROM radius_logs rl
-          JOIN customers c ON c.portal_username = rl.username
-          WHERE c.id = ${customerId}
-            AND rl.log_timestamp >= NOW() - INTERVAL '90 days'
-          ORDER BY rl.log_timestamp DESC
+            rsa.acct_session_id as id,
+            rsa.username as login_id,
+            rsa.bytes_in as data_in,
+            rsa.bytes_out as data_out,
+            rsa.start_time,
+            EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
+            rsa.framed_ip as ip_address,
+            rsa.calling_station_id as mac_address,
+            rn.name as nas,
+            'expired' as status
+          FROM radius_sessions_archive rsa
+          JOIN radius_users ru ON rsa.user_id = ru.id
+          LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+          WHERE ru.customer_id = ${customerId}
+            AND rsa.start_time >= NOW() - INTERVAL '90 days'
+          ORDER BY rsa.start_time DESC
           LIMIT 50
         `
         break
       default:
-        sessions = await sql`
+        archivedSessions = await sql`
           SELECT 
-            rl.id,
-            rl.username as login_id,
-            rl.acct_input_octets as data_in,
-            rl.acct_output_octets as data_out,
-            rl.log_timestamp as start_time,
-            rl.acct_session_time as duration_seconds,
-            rl.framed_ip as ip_address,
-            rl.calling_station_id as mac_address,
-            rl.nas_ip as nas,
-            CASE 
-              WHEN rl.acct_status_type = 'Start' THEN 'active'
-              WHEN rl.acct_status_type = 'Stop' THEN 'expired'
-              ELSE 'suspended'
-            END as status
-          FROM radius_logs rl
-          JOIN customers c ON c.portal_username = rl.username
-          WHERE c.id = ${customerId}
-          ORDER BY rl.log_timestamp DESC
+            rsa.acct_session_id as id,
+            rsa.username as login_id,
+            rsa.bytes_in as data_in,
+            rsa.bytes_out as data_out,
+            rsa.start_time,
+            EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
+            rsa.framed_ip as ip_address,
+            rsa.calling_station_id as mac_address,
+            rn.name as nas,
+            'expired' as status
+          FROM radius_sessions_archive rsa
+          JOIN radius_users ru ON rsa.user_id = ru.id
+          LEFT JOIN radius_nas rn ON rsa.nas_id = rn.id
+          WHERE ru.customer_id = ${customerId}
+          ORDER BY rsa.start_time DESC
           LIMIT 50
         `
     }
 
+    // Combine active and archived sessions
+    const allSessions = [...activeSessions, ...archivedSessions]
+
     // Format the sessions data
-    const formattedSessions = sessions.map((session) => ({
+    const formattedSessions = allSessions.map((session) => ({
       id: session.id.toString(),
       login_id: session.login_id,
       data_in: session.data_in || 0,
       data_out: session.data_out || 0,
       start_time: session.start_time,
       duration: formatDuration(session.duration_seconds || 0),
-      ip_address: session.ip_address,
-      mac_address: session.mac_address,
-      nas: session.nas,
+      ip_address: session.ip_address || "N/A",
+      mac_address: session.mac_address || "N/A",
+      nas: session.nas || "Unknown",
       status: session.status,
     }))
 
@@ -237,12 +244,12 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
       live: false,
     })
   } catch (error) {
-    console.error("[v0] Error fetching historical sessions from radius_logs:", error)
+    console.error("[v0] Error fetching historical sessions from RADIUS tables:", error)
     return NextResponse.json({
       success: true,
       sessions: [],
       live: false,
-      message: "No historical session data available. RADIUS logging may not be configured.",
+      message: "No session data available. Ensure RADIUS is properly configured and customers have active services.",
     })
   }
 }

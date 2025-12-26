@@ -9,7 +9,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const messages = await sql`
       SELECT 
         m.*,
-        c.full_name as recipient_name
+        COALESCE(
+          NULLIF(CONCAT(c.first_name, ' ', c.last_name), ' '),
+          c.name
+        ) as recipient_name
       FROM messages m
       LEFT JOIN customers c ON m.customer_id = c.id
       WHERE m.customer_id = ${customerId}
@@ -33,7 +36,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { messageType, subject, content, template_id } = await request.json()
 
     const [customer] = await sql`
-      SELECT email, phone, full_name 
+      SELECT 
+        email, 
+        phone, 
+        COALESCE(
+          NULLIF(CONCAT(first_name, ' ', last_name), ' '),
+          name
+        ) as full_name
       FROM customers 
       WHERE id = ${customerId}
       LIMIT 1

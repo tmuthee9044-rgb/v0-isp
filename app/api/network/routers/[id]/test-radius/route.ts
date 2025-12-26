@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 import { testRadiusServer } from "@/lib/radius-client"
+import { createMikroTikClient } from "@/lib/mikrotik-api"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -9,7 +10,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // Get router details
     const [router] = await sql`
-      SELECT id, name, ip_address, hostname, radius_secret, radius_nas_ip
+      SELECT id, name, ip_address, hostname, radius_secret, radius_nas_ip,
+             api_username, api_password, api_port
       FROM network_devices
       WHERE id = ${routerId}
       LIMIT 1
@@ -42,19 +44,128 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const tests = []
 
-    // Test 1: RADIUS Server Connectivity
+    let serverToRouterPing = false
+    try {
+      const { exec } = require("child_process")
+      const { promisify } = require("util")
+      const execPromise = promisify(exec)
+
+      const pingCommand =
+        process.platform === "win32" ? `ping -n 3 ${router.ip_address}` : `ping -c 3 -W 2 ${router.ip_address}`
+
+      const { stdout, stderr } = await execPromise(pingCommand)
+      serverToRouterPing = stdout.includes("ttl=") || stdout.includes("TTL=")
+
+      tests.push({
+        name: "Server → Router (Ping)",
+        status: serverToRouterPing ? "success" : "failed",
+        message: serverToRouterPing
+          ? `Server can reach router at ${router.ip_address}`
+          : `Server cannot ping router at ${router.ip_address}`,
+        details: {
+          routerIP: router.ip_address,
+          reachable: serverToRouterPing,
+        },
+      })
+    } catch (error: any) {
+      tests.push({
+        name: "Server → Router (Ping)",
+        status: "failed",
+        message: `Ping test failed: ${error.message}`,
+        details: { error: error.message },
+      })
+    }
+
+    let routerToRadiusPing = false
+    let routerRadiusConfig: any = null
+    try {
+      const mikrotik = await createMikroTikClient(Number.parseInt(routerId))
+
+      if (mikrotik) {
+        // Test ping from router to RADIUS server
+        const pingResult = await mikrotik.execute(`/ping address=${radius.host} count=3`)
+        routerToRadiusPing = pingResult.success
+
+        // Get RADIUS configuration from router
+        const radiusConfigResult = await mikrotik.execute("/radius/print")
+        if (radiusConfigResult.success && radiusConfigResult.data) {
+          routerRadiusConfig = Array.isArray(radiusConfigResult.data)
+            ? radiusConfigResult.data
+            : [radiusConfigResult.data]
+        }
+
+        await mikrotik.disconnect()
+
+        tests.push({
+          name: "Router → RADIUS Server (Ping)",
+          status: routerToRadiusPing ? "success" : "failed",
+          message: routerToRadiusPing
+            ? `Router can reach RADIUS server at ${radius.host}`
+            : `Router cannot ping RADIUS server at ${radius.host}`,
+          details: {
+            radiusHost: radius.host,
+            reachable: routerToRadiusPing,
+          },
+        })
+      } else {
+        tests.push({
+          name: "Router → RADIUS Server (Ping)",
+          status: "warning",
+          message: "Cannot connect to router API to test RADIUS reachability",
+          details: { error: "Router API connection failed" },
+        })
+      }
+    } catch (error: any) {
+      tests.push({
+        name: "Router → RADIUS Server (Ping)",
+        status: "warning",
+        message: `Cannot test router connectivity: ${error.message}`,
+        details: { error: error.message },
+      })
+    }
+
+    // Test 3: RADIUS Server Connectivity from management system
     const radiusTest = await testRadiusServer(radius.host, Number.parseInt(radius.authPort), radius.sharedSecret, 5000)
 
     tests.push({
-      name: "RADIUS Server Connectivity",
+      name: "RADIUS Server Authentication",
       status: radiusTest.success ? "success" : "failed",
       message: radiusTest.message,
       details: radiusTest.details,
     })
 
-    // Test 2: Router Configuration Check
+    if (routerRadiusConfig && routerRadiusConfig.length > 0) {
+      const radiusServers = routerRadiusConfig.map((cfg: any) => ({
+        address: cfg.address,
+        service: cfg.service,
+        port: cfg["authentication-port"] || cfg.port,
+        secret: cfg.secret ? "***configured***" : "NOT SET",
+      }))
+
+      const isConfigured = radiusServers.some((srv: any) => srv.address === radius.host)
+
+      tests.push({
+        name: "Router RADIUS Configuration",
+        status: isConfigured ? "success" : "warning",
+        message: isConfigured
+          ? `RADIUS server ${radius.host} is configured on router`
+          : `RADIUS server ${radius.host} NOT found in router config`,
+        details: {
+          configuredServers: radiusServers,
+          expectedServer: radius.host,
+        },
+      })
+    } else {
+      tests.push({
+        name: "Router RADIUS Configuration",
+        status: "warning",
+        message: "Could not retrieve RADIUS configuration from router",
+      })
+    }
+
+    // Test 5: Router Configuration Check
     const configCheck = {
-      name: "Router Configuration",
+      name: "Database Configuration",
       status: "info",
       checks: [],
     }
@@ -63,13 +174,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       configCheck.checks.push({
         item: "RADIUS Secret",
         status: "warning",
-        message: "Not configured on router",
+        message: "Not configured in database",
       })
     } else if (router.radius_secret === radius.sharedSecret) {
       configCheck.checks.push({
         item: "RADIUS Secret",
         status: "success",
-        message: "Matches server configuration",
+        message: "Matches RADIUS server configuration",
       })
     } else {
       configCheck.checks.push({
@@ -95,7 +206,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     tests.push(configCheck)
 
-    // Test 3: Check if router is in NAS clients
+    // Test 6: Check if router is in NAS clients
     const nasClient = await sql`
       SELECT nasname, shortname, secret
       FROM radius_nas
@@ -110,7 +221,54 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       details: nasClient.length > 0 ? nasClient[0] : null,
     })
 
-    // Test 4: Check for active RADIUS users
+    const recentActivity = await sql`
+      SELECT COUNT(*) as count, MAX(created_at) as last_activity
+      FROM radius_sessions_active
+      WHERE nas_ip_address = ${router.radius_nas_ip || router.ip_address}
+    `
+
+    if (recentActivity[0].count > 0) {
+      tests.push({
+        name: "RADIUS Activity",
+        status: "success",
+        message: `Router has ${recentActivity[0].count} active sessions`,
+        details: {
+          activeSessions: recentActivity[0].count,
+          lastActivity: recentActivity[0].last_activity,
+        },
+      })
+    } else {
+      // Check archived sessions
+      const archivedActivity = await sql`
+        SELECT COUNT(*) as count, MAX(stop_time) as last_session
+        FROM radius_sessions_archive
+        WHERE nas_ip_address = ${router.radius_nas_ip || router.ip_address}
+        LIMIT 1
+      `
+
+      if (archivedActivity[0].count > 0) {
+        tests.push({
+          name: "RADIUS Activity",
+          status: "info",
+          message: "No active sessions, but has session history",
+          details: {
+            totalHistoricalSessions: archivedActivity[0].count,
+            lastSession: archivedActivity[0].last_session,
+          },
+        })
+      } else {
+        tests.push({
+          name: "RADIUS Activity",
+          status: "warning",
+          message: "No RADIUS sessions detected from this router",
+          details: {
+            note: "Router may not have sent any authentication requests yet",
+          },
+        })
+      }
+    }
+
+    // Test 8: Check for active RADIUS users
     const activeUsers = await sql`
       SELECT COUNT(*) as count
       FROM radius_users
@@ -124,6 +282,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       message: `${activeUsers[0].count} active users configured`,
     })
 
+    const bidirectionalConnected = serverToRouterPing && routerToRadiusPing
+    const overallStatus = bidirectionalConnected ? "success" : "warning"
+
     // Generate MikroTik configuration
     const mikrotikConfig = {
       commands: [
@@ -133,7 +294,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         `# Enable RADIUS authentication`,
         `/ppp aaa set use-radius=yes`,
         ``,
-        `# Test RADIUS connectivity`,
+        `# Test RADIUS connectivity from router`,
+        `/ping ${radius.host} count=5`,
+        ``,
+        `# Check RADIUS status`,
         `/radius incoming print`,
       ],
       testCommand: `/ping ${radius.host} count=5`,
@@ -145,14 +309,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       VALUES (
         'INFO',
         'radius',
-        'RADIUS connectivity test performed',
-        ${JSON.stringify({ router_id: routerId, router_name: router.name, tests })},
+        'Bidirectional RADIUS connectivity test performed',
+        ${JSON.stringify({
+          router_id: routerId,
+          router_name: router.name,
+          bidirectional_connectivity: bidirectionalConnected,
+          tests,
+        })},
         'router-radius-test'
       )
     `
 
     return NextResponse.json({
-      success: radiusTest.success,
+      success: bidirectionalConnected,
+      overallStatus,
       router: {
         id: router.id,
         name: router.name,
@@ -162,6 +332,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         host: radius.host,
         authPort: radius.authPort,
         acctPort: radius.acctPort,
+      },
+      connectivity: {
+        serverToRouter: serverToRouterPing,
+        routerToRadius: routerToRadiusPing,
+        bidirectional: bidirectionalConnected,
       },
       tests,
       mikrotikConfig,

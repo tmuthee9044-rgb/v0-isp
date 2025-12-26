@@ -114,6 +114,19 @@ async function storeCustomerBandwidthUsage(
     const dateHour = new Date()
     dateHour.setMinutes(0, 0, 0)
 
+    const tableExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'bandwidth_usage'
+      )
+    `
+
+    if (!tableExists[0]?.exists) {
+      console.log(`[v0] bandwidth_usage table does not exist yet. Skipping storage.`)
+      return
+    }
+
     await sql`
       INSERT INTO bandwidth_usage (
         customer_id, 
@@ -147,6 +160,25 @@ async function storeCustomerBandwidthUsage(
 
 async function getHistoricalBandwidth(sql: any, customerId: string, period: string) {
   try {
+    const tableExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'bandwidth_usage'
+      )
+    `
+
+    if (!tableExists[0]?.exists) {
+      console.log(`[v0] bandwidth_usage table does not exist yet. Returning empty data.`)
+      return NextResponse.json({
+        success: true,
+        data: [],
+        live: false,
+        message:
+          "Historical bandwidth tracking not yet enabled. Run migration: scripts/create_bandwidth_usage_table.sql",
+      })
+    }
+
     let bandwidthData
 
     switch (period) {

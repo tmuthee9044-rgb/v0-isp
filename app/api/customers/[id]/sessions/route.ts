@@ -89,6 +89,27 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 async function getHistoricalSessions(sql: any, customerId: string, period: string) {
   try {
+    const tableCheck = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'radius_sessions_active'
+      ) as radius_active_exists,
+      EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'radius_sessions_archive'
+      ) as radius_archive_exists
+    `
+
+    if (!tableCheck[0].radius_active_exists || !tableCheck[0].radius_archive_exists) {
+      console.log("[v0] RADIUS tables not found. Please run: scripts/create-radius-tables.sh")
+      return NextResponse.json({
+        success: true,
+        sessions: [],
+        live: false,
+        message: "RADIUS tables not configured. Please run database migration: scripts/create-radius-tables.sh",
+      })
+    }
+
     const activeSessions = await sql`
       SELECT 
         rsa.acct_session_id as id,
@@ -97,7 +118,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
         rsa.bytes_out as data_out,
         rsa.start_time,
         EXTRACT(EPOCH FROM (NOW() - rsa.start_time))::INTEGER as duration_seconds,
-        rsa.framed_ip as ip_address,
+        rsa.framed_ip_address as ip_address,
         rsa.calling_station_id as mac_address,
         rn.name as nas,
         'active' as status
@@ -120,7 +141,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
             rsa.bytes_out as data_out,
             rsa.start_time,
             EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
-            rsa.framed_ip as ip_address,
+            rsa.framed_ip_address as ip_address,
             rsa.calling_station_id as mac_address,
             rn.name as nas,
             'expired' as status
@@ -142,7 +163,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
             rsa.bytes_out as data_out,
             rsa.start_time,
             EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
-            rsa.framed_ip as ip_address,
+            rsa.framed_ip_address as ip_address,
             rsa.calling_station_id as mac_address,
             rn.name as nas,
             'expired' as status
@@ -164,7 +185,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
             rsa.bytes_out as data_out,
             rsa.start_time,
             EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
-            rsa.framed_ip as ip_address,
+            rsa.framed_ip_address as ip_address,
             rsa.calling_station_id as mac_address,
             rn.name as nas,
             'expired' as status
@@ -186,7 +207,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
             rsa.bytes_out as data_out,
             rsa.start_time,
             EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
-            rsa.framed_ip as ip_address,
+            rsa.framed_ip_address as ip_address,
             rsa.calling_station_id as mac_address,
             rn.name as nas,
             'expired' as status
@@ -208,7 +229,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
             rsa.bytes_out as data_out,
             rsa.start_time,
             EXTRACT(EPOCH FROM (rsa.stop_time - rsa.start_time))::INTEGER as duration_seconds,
-            rsa.framed_ip as ip_address,
+            rsa.framed_ip_address as ip_address,
             rsa.calling_station_id as mac_address,
             rn.name as nas,
             'expired' as status
@@ -249,7 +270,7 @@ async function getHistoricalSessions(sql: any, customerId: string, period: strin
       success: true,
       sessions: [],
       live: false,
-      message: "No session data available. Ensure RADIUS is properly configured and customers have active services.",
+      message: "No session data available. Run: scripts/create-radius-tables.sh to set up RADIUS infrastructure.",
     })
   }
 }

@@ -636,7 +636,11 @@ export async function deleteCustomerService(serviceId: number) {
     `
 
     revalidatePath(`/customers`)
-    return { success: true }
+    return {
+      success: true,
+      message: "Service terminated successfully and IP address released",
+      service: serviceData[0],
+    }
   } catch (error) {
     console.error("Error deleting customer service:", error)
     return { success: false, error: "Failed to delete service" }
@@ -647,7 +651,6 @@ export async function updateServiceStatus(serviceId: number, status: string) {
   try {
     const sql = await getSql()
 
-    // First, get the complete service details
     const serviceDetails = await sql`
       SELECT 
         cs.*,
@@ -657,7 +660,6 @@ export async function updateServiceStatus(serviceId: number, status: string) {
         c.phone,
         sp.name as plan_name,
         sp.bandwidth_limit,
-        ip.ip_address,
         nd.id as router_id,
         nd.ip_address as router_ip,
         nd.username as router_username,
@@ -666,10 +668,7 @@ export async function updateServiceStatus(serviceId: number, status: string) {
       FROM customer_services cs
       INNER JOIN customers c ON cs.customer_id = c.id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      LEFT JOIN ip_addresses ip ON ip.customer_id = cs.customer_id
-      LEFT JOIN network_devices nd ON ip.subnet_id = ANY(
-        SELECT id FROM subnets WHERE router_id = nd.id
-      )
+      LEFT JOIN network_devices nd ON cs.router_id = nd.id
       WHERE cs.id = ${serviceId}
       LIMIT 1
     `
@@ -679,6 +678,16 @@ export async function updateServiceStatus(serviceId: number, status: string) {
     }
 
     const service = serviceDetails[0]
+
+    console.log("[v0] Service details:", {
+      serviceId: service.id,
+      customerId: service.customer_id,
+      routerId: service.router_id,
+      ipAddress: service.ip_address,
+      pppoeUsername: service.pppoe_username,
+      status: service.status,
+      targetStatus: status,
+    })
 
     // Update the service status
     const result = await sql`
@@ -699,37 +708,75 @@ export async function updateServiceStatus(serviceId: number, status: string) {
     if (status === "active") {
       console.log("[v0] Service activation detected, provisioning to RADIUS and router...")
 
-      // Provision to RADIUS
-      if (service.pppoe_username && service.pppoe_password && service.ip_address) {
-        try {
-          await provisionRadiusUser({
-            username: service.pppoe_username,
-            password: service.pppoe_password,
-            ipAddress: service.ip_address,
-            bandwidth: service.bandwidth_limit || 10,
-            customerId: service.customer_id,
-            serviceId: service.id,
-          })
-          console.log("[v0] Successfully provisioned to RADIUS")
-        } catch (radiusError) {
-          console.error("[v0] RADIUS provisioning failed:", radiusError)
-          // Continue with router provisioning even if RADIUS fails
+      if (!service.pppoe_username || !service.pppoe_password) {
+        console.error("[v0] Missing PPPoE credentials. Username:", service.pppoe_username)
+        return {
+          success: false,
+          error:
+            "Cannot activate service: Missing PPPoE username or password. Please add the service through /services/add with complete details.",
         }
       }
 
+      if (!service.ip_address) {
+        console.error("[v0] Missing IP address for service")
+        return {
+          success: false,
+          error: "Cannot activate service: No IP address assigned. Please assign an IP address first.",
+        }
+      }
+
+      // Provision to RADIUS
+      try {
+        await provisionRadiusUser({
+          username: service.pppoe_username,
+          password: service.pppoe_password,
+          ipAddress: service.ip_address,
+          bandwidth: service.bandwidth_limit || 10,
+          customerId: service.customer_id,
+          serviceId: service.id,
+        })
+        console.log("[v0] Successfully provisioned to RADIUS")
+      } catch (radiusError) {
+        console.error("[v0] RADIUS provisioning failed:", radiusError)
+        // Continue with router provisioning even if RADIUS fails
+      }
+
       // Provision to physical router
-      if (service.router_id && service.ip_address && service.pppoe_username) {
+      if (service.router_id && service.router_ip) {
         try {
+          console.log("[v0] Provisioning to router:", {
+            routerId: service.router_id,
+            routerIp: service.router_ip,
+            customerIp: service.ip_address,
+          })
+
           await provisionServiceToRouter(service.router_id, service.customer_id, service.id, {
             ip: service.router_ip,
             username: service.router_username,
             password: service.router_password,
             port: service.router_api_port || 443,
           })
+
           console.log("[v0] Successfully provisioned to physical router")
+
+          await sql`
+            UPDATE customer_services
+            SET 
+              router_provisioned = true,
+              router_provisioned_at = NOW()
+            WHERE id = ${serviceId}
+          `
         } catch (routerError) {
           console.error("[v0] Router provisioning failed:", routerError)
+
+          await sql`
+            UPDATE customer_services
+            SET provisioning_error = ${routerError instanceof Error ? routerError.message : String(routerError)}
+            WHERE id = ${serviceId}
+          `
         }
+      } else {
+        console.log("[v0] No router assigned to service, skipping router provisioning")
       }
 
       // Log the activation
@@ -738,7 +785,7 @@ export async function updateServiceStatus(serviceId: number, status: string) {
           entity_type, entity_id, action, description, user_id, created_at
         ) VALUES (
           'service', ${serviceId}, 'activate',
-          ${`Service activated for customer ${service.first_name} ${service.last_name}. RADIUS and router provisioning completed.`},
+          ${`Service activated for customer ${service.first_name} ${service.last_name}. PPPoE: ${service.pppoe_username}, IP: ${service.ip_address}`},
           1, NOW()
         )
       `
@@ -757,7 +804,7 @@ export async function updateServiceStatus(serviceId: number, status: string) {
         }
       }
 
-      if (service.router_id && service.pppoe_username) {
+      if (service.router_id && service.pppoe_username && service.router_ip) {
         try {
           await deprovisionServiceFromRouter(service.router_id, service.pppoe_username, {
             ip: service.router_ip,
@@ -766,6 +813,14 @@ export async function updateServiceStatus(serviceId: number, status: string) {
             port: service.router_api_port || 443,
           })
           console.log("[v0] Successfully deprovisioned from router")
+
+          await sql`
+            UPDATE customer_services
+            SET 
+              router_provisioned = false,
+              router_deprovisioned_at = NOW()
+            WHERE id = ${serviceId}
+          `
         } catch (error) {
           console.error("[v0] Router deprovisioning failed:", error)
         }
@@ -785,8 +840,8 @@ export async function updateServiceStatus(serviceId: number, status: string) {
     revalidatePath("/customers")
     return { success: true, message: "Service status updated and provisioned", service: result[0] }
   } catch (error) {
-    console.error("Error updating service status:", error)
-    return { success: false, error: "Failed to update service status" }
+    console.error("[v0] Error updating service status:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 

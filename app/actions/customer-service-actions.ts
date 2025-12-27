@@ -733,7 +733,9 @@ export async function activateServiceOnPayment(paymentId: number, customerId: nu
         if (!routerResult.success) {
           console.error(`[v0] Router provisioning failed:`, routerResult.error)
         } else {
-          console.log(`[v0] Router provisioning successful - PPPoE secret created`)
+          console.log(
+            `[v0] Router provisioning successful - PPPoE secret created with IP ${service.ip_address || "auto"}`,
+          )
         }
       } else {
         console.log(`[v0] No router assigned to service ${service.id}, skipping router provisioning`)

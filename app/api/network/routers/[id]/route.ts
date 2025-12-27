@@ -199,21 +199,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       SELECT COUNT(*) as service_count FROM customer_services WHERE device_id = ${routerId}
     `
 
-    const customerDependencies = await sql`
-      SELECT COUNT(*) as customer_count FROM customers WHERE router_id = ${routerId}
-    `
-
     const subnetCount = Number(subnetDependencies[0].subnet_count)
     const serviceCount = Number(serviceDependencies[0].service_count)
-    const customerCount = Number(customerDependencies[0].customer_count)
 
-    console.log("[v0] Router dependencies:", { subnetCount, serviceCount, customerCount })
+    console.log("[v0] Router dependencies:", { subnetCount, serviceCount })
 
-    if (subnetCount > 0 || serviceCount > 0 || customerCount > 0) {
+    if (subnetCount > 0 || serviceCount > 0) {
       const dependencies = []
       if (subnetCount > 0) dependencies.push(`${subnetCount} subnet(s)`)
       if (serviceCount > 0) dependencies.push(`${serviceCount} service(s)`)
-      if (customerCount > 0) dependencies.push(`${customerCount} customer(s)`)
 
       return NextResponse.json(
         {

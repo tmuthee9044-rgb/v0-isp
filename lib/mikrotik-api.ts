@@ -158,20 +158,32 @@ export class MikroTikAPI {
 
   /**
    * Create PPPoE secret for customer
+   * The local-address is the gateway/router IP for the PPPoE server
+   * The remote-address is the customer's assigned IP address
    */
   async createPPPoESecret(
     username: string,
     password: string,
-    ipAddress: string,
+    remoteAddress: string,
     profile: string,
+    localAddress?: string,
   ): Promise<MikroTikResponse> {
-    const params = {
+    const params: any = {
       name: username,
       password: password,
-      "local-address": ipAddress,
-      profile: profile,
       service: "pppoe",
+      profile: profile || "default",
       comment: `ISP_System_${username}`,
+    }
+
+    // Set customer IP as remote-address (the IP they will get)
+    if (remoteAddress && remoteAddress !== "0.0.0.0" && remoteAddress !== "auto") {
+      params["remote-address"] = remoteAddress
+    }
+
+    // Optionally set local-address (router gateway IP)
+    if (localAddress) {
+      params["local-address"] = localAddress
     }
 
     console.log("[v0] Creating PPPoE secret with params:", { ...params, password: "***" })

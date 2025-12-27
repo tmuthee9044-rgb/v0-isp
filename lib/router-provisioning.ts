@@ -41,6 +41,23 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
     console.log(`[v0] PPPoE Username: ${params.pppoeUsername}`)
     console.log(`[v0] IP Address: ${params.ipAddress}`)
 
+    const routerInfo = await sql`
+      SELECT 
+        ip_address as router_ip,
+        configuration->>'gateway_ip' as gateway_ip,
+        configuration->>'pppoe_local_address' as pppoe_local_ip
+      FROM network_devices
+      WHERE id = ${params.routerId}
+      LIMIT 1
+    `
+
+    if (routerInfo.length === 0) {
+      throw new Error(`Router ${params.routerId} not found`)
+    }
+
+    const router = routerInfo[0]
+    const localAddress = router.pppoe_local_ip || router.gateway_ip || router.router_ip
+
     const mikrotik = await Promise.race([
       createMikroTikClient(params.routerId),
       new Promise<null>((_, reject) =>
@@ -58,12 +75,14 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
       console.log(`[v0] Provisioning PPPoE service for ${params.pppoeUsername}`)
 
       const profile = params.speedProfile || "default"
+      const remoteAddress = params.ipAddress || "auto"
 
       provisionResult = await mikrotik.createPPPoESecret(
         params.pppoeUsername,
         params.pppoePassword,
-        params.ipAddress || "0.0.0.0",
+        remoteAddress,
         profile,
+        localAddress,
       )
 
       if (!provisionResult.success) {
@@ -71,12 +90,15 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
       }
 
       console.log(`[v0] PPPoE secret created successfully for ${params.pppoeUsername}`)
+      console.log(`[v0] Customer IP (remote-address): ${remoteAddress}`)
+      console.log(`[v0] Gateway IP (local-address): ${localAddress}`)
 
       await sql`
         UPDATE customer_services
         SET 
           pppoe_username = ${params.pppoeUsername},
-          pppoe_password = ${params.pppoePassword}
+          pppoe_password = ${params.pppoePassword},
+          connection_type = 'pppoe'
         WHERE id = ${params.serviceId}
       `
     } else if (params.connectionType === "static_ip" && params.ipAddress) {
@@ -112,7 +134,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
           user_id, action, entity_type, entity_id, description, created_at
         ) VALUES (
           1, 'provision', 'customer_service', ${params.serviceId},
-          ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId}`},
+          ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId}${params.ipAddress ? ` with IP ${params.ipAddress}` : ""}`},
           NOW()
         ) ON CONFLICT DO NOTHING
       `,
@@ -122,7 +144,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
           ${params.routerId},
           'service_provisioned',
           'success',
-          ${`Service ${params.serviceId} provisioned for customer ${params.customerId}${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
+          ${`Service ${params.serviceId} provisioned for customer ${params.customerId}${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername}, IP: ${params.ipAddress || "auto"})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
           NOW()
         ) ON CONFLICT DO NOTHING
       `,
@@ -134,7 +156,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
 
     return {
       success: true,
-      message: `Service successfully provisioned to router`,
+      message: `Service successfully provisioned to router with IP ${params.ipAddress || "auto"}`,
     }
   } catch (error) {
     console.error(`[v0] Provisioning error:`, error)

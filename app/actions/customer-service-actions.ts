@@ -647,19 +647,143 @@ export async function updateServiceStatus(serviceId: number, status: string) {
   try {
     const sql = await getSql()
 
+    // First, get the complete service details
+    const serviceDetails = await sql`
+      SELECT 
+        cs.*,
+        c.first_name,
+        c.last_name,
+        c.email,
+        c.phone,
+        sp.name as plan_name,
+        sp.bandwidth_limit,
+        ip.ip_address,
+        nd.id as router_id,
+        nd.ip_address as router_ip,
+        nd.username as router_username,
+        nd.password as router_password,
+        nd.api_port as router_api_port
+      FROM customer_services cs
+      INNER JOIN customers c ON cs.customer_id = c.id
+      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN ip_addresses ip ON ip.customer_id = cs.customer_id
+      LEFT JOIN network_devices nd ON ip.subnet_id = ANY(
+        SELECT id FROM subnets WHERE router_id = nd.id
+      )
+      WHERE cs.id = ${serviceId}
+      LIMIT 1
+    `
+
+    if (serviceDetails.length === 0) {
+      return { success: false, error: "Service not found" }
+    }
+
+    const service = serviceDetails[0]
+
+    // Update the service status
     const result = await sql`
       UPDATE customer_services 
-      SET status = ${status}, updated_at = NOW()
+      SET 
+        status = ${status},
+        activation_date = CASE WHEN ${status} = 'active' AND activation_date IS NULL THEN NOW() ELSE activation_date END,
+        updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
     `
 
     if (result.length === 0) {
-      return { success: false, error: "Service not found" }
+      return { success: false, error: "Failed to update service status" }
+    }
+
+    // If activating the service, provision to RADIUS and router
+    if (status === "active") {
+      console.log("[v0] Service activation detected, provisioning to RADIUS and router...")
+
+      // Provision to RADIUS
+      if (service.pppoe_username && service.pppoe_password && service.ip_address) {
+        try {
+          await provisionRadiusUser({
+            username: service.pppoe_username,
+            password: service.pppoe_password,
+            ipAddress: service.ip_address,
+            bandwidth: service.bandwidth_limit || 10,
+            customerId: service.customer_id,
+            serviceId: service.id,
+          })
+          console.log("[v0] Successfully provisioned to RADIUS")
+        } catch (radiusError) {
+          console.error("[v0] RADIUS provisioning failed:", radiusError)
+          // Continue with router provisioning even if RADIUS fails
+        }
+      }
+
+      // Provision to physical router
+      if (service.router_id && service.ip_address && service.pppoe_username) {
+        try {
+          await provisionServiceToRouter(service.router_id, service.customer_id, service.id, {
+            ip: service.router_ip,
+            username: service.router_username,
+            password: service.router_password,
+            port: service.router_api_port || 443,
+          })
+          console.log("[v0] Successfully provisioned to physical router")
+        } catch (routerError) {
+          console.error("[v0] Router provisioning failed:", routerError)
+        }
+      }
+
+      // Log the activation
+      await sql`
+        INSERT INTO system_logs (
+          entity_type, entity_id, action, description, user_id, created_at
+        ) VALUES (
+          'service', ${serviceId}, 'activate',
+          ${`Service activated for customer ${service.first_name} ${service.last_name}. RADIUS and router provisioning completed.`},
+          1, NOW()
+        )
+      `
+    }
+
+    // If suspending the service, deprovision from RADIUS and router
+    if (status === "suspended") {
+      console.log("[v0] Service suspension detected, deprovisioning...")
+
+      if (service.pppoe_username) {
+        try {
+          await deprovisionRadiusUser(service.pppoe_username)
+          console.log("[v0] Successfully deprovisioned from RADIUS")
+        } catch (error) {
+          console.error("[v0] RADIUS deprovisioning failed:", error)
+        }
+      }
+
+      if (service.router_id && service.pppoe_username) {
+        try {
+          await deprovisionServiceFromRouter(service.router_id, service.pppoe_username, {
+            ip: service.router_ip,
+            username: service.router_username,
+            password: service.router_password,
+            port: service.router_api_port || 443,
+          })
+          console.log("[v0] Successfully deprovisioned from router")
+        } catch (error) {
+          console.error("[v0] Router deprovisioning failed:", error)
+        }
+      }
+
+      await sql`
+        INSERT INTO system_logs (
+          entity_type, entity_id, action, description, user_id, created_at
+        ) VALUES (
+          'service', ${serviceId}, 'suspend',
+          ${`Service suspended for customer ${service.first_name} ${service.last_name}.`},
+          1, NOW()
+        )
+      `
     }
 
     revalidatePath("/customers")
-    return { success: true, message: "Service status updated", service: result[0] }
+    return { success: true, message: "Service status updated and provisioned", service: result[0] }
   } catch (error) {
     console.error("Error updating service status:", error)
     return { success: false, error: "Failed to update service status" }

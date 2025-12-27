@@ -10,7 +10,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Server, Shield, Network, Activity, CheckCircle, AlertCircle, Wifi, Router, Database } from "lucide-react"
+import {
+  Activity,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Database,
+  Network,
+  Router,
+  Server,
+  Shield,
+  Wifi,
+  XCircle,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function ServerConfigurationPage() {
@@ -19,6 +31,9 @@ export default function ServerConfigurationPage() {
   const [activeNetworkTab, setActiveNetworkTab] = useState("configuration")
   const [serverConfig, setServerConfig] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  const [radiusTestResults, setRadiusTestResults] = useState<any>(null)
+  const [isTestingRouters, setIsTestingRouters] = useState(false)
 
   useEffect(() => {
     fetchServerConfig()
@@ -98,6 +113,56 @@ export default function ServerConfigurationPage() {
         description: "Failed to test connection",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleTestRadiusRouters = async () => {
+    if (!serverConfig?.radius?.host || !serverConfig?.radius?.authPort || !serverConfig?.radius?.sharedSecret) {
+      toast({
+        title: "Configuration Required",
+        description: "Please configure RADIUS server settings first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsTestingRouters(true)
+    setRadiusTestResults(null)
+
+    try {
+      const response = await fetch("/api/server-settings/test-radius-routers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          radiusHost: serverConfig.radius.host,
+          radiusPort: serverConfig.radius.authPort,
+          radiusSecret: serverConfig.radius.sharedSecret,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setRadiusTestResults(result)
+        toast({
+          title: "Test Complete",
+          description: result.message,
+        })
+      } else {
+        toast({
+          title: "Test Failed",
+          description: result.message || "Failed to test router connectivity",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to run RADIUS router test",
+        variant: "destructive",
+      })
+    } finally {
+      setIsTestingRouters(false)
     }
   }
 
@@ -761,6 +826,196 @@ export default function ServerConfigurationPage() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              <Separator />
+
+              <div className="border-t pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="font-semibold text-base">Router Connectivity Testing</h4>
+                    <p className="text-sm text-muted-foreground">Test RADIUS connectivity to all physical routers</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleTestRadiusRouters}
+                    disabled={isTestingRouters}
+                    className="flex items-center space-x-2 bg-transparent"
+                  >
+                    {isTestingRouters ? (
+                      <>
+                        <Clock className="h-4 w-4 animate-spin" />
+                        <span>Testing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Server className="h-4 w-4" />
+                        <span>Test All Routers</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {radiusTestResults && (
+                  <div className="space-y-4 mt-4">
+                    <div className="rounded-lg bg-muted p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h5 className="font-semibold">Test Results</h5>
+                        <span className="text-sm text-muted-foreground">
+                          {radiusTestResults.results?.length || 0} router(s) tested
+                        </span>
+                      </div>
+
+                      <div className="space-y-4">
+                        {radiusTestResults.results?.map((router: any) => (
+                          <div key={router.routerId} className="border rounded-lg p-4 bg-background">
+                            <div className="flex items-start justify-between mb-3">
+                              <div>
+                                <h6 className="font-semibold">{router.routerName}</h6>
+                                <p className="text-sm text-muted-foreground">IP: {router.routerIp}</p>
+                                {router.nasIp && (
+                                  <p className="text-sm text-muted-foreground">NAS IP: {router.nasIp}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                {router.overallStatus === "Connected" ? (
+                                  <CheckCircle className="h-5 w-5 text-green-600" />
+                                ) : (
+                                  <XCircle className="h-5 w-5 text-red-600" />
+                                )}
+                                <span
+                                  className={`text-sm font-semibold ${
+                                    router.overallStatus === "Connected" ? "text-green-600" : "text-red-600"
+                                  }`}
+                                >
+                                  {router.overallStatus}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                              {/* Network Connectivity */}
+                              <div className="flex items-start space-x-2">
+                                {router.tests.ping?.success ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                                )}
+                                <div>
+                                  <p className="font-medium">Network Connectivity</p>
+                                  <p className="text-muted-foreground">
+                                    {router.tests.ping?.status} - {router.tests.ping?.packetLoss || "N/A"} loss
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* NAS Registration */}
+                              <div className="flex items-start space-x-2">
+                                {router.tests.nasRegistration?.success ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                                )}
+                                <div>
+                                  <p className="font-medium">NAS Registration</p>
+                                  <p className="text-muted-foreground">
+                                    {router.tests.nasRegistration?.registered
+                                      ? `Registered as ${router.tests.nasRegistration.nasName}`
+                                      : "Not registered in RADIUS"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Secret Match */}
+                              <div className="flex items-start space-x-2">
+                                {router.tests.secretMatch?.success ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                                )}
+                                <div>
+                                  <p className="font-medium">RADIUS Secret</p>
+                                  <p className="text-muted-foreground">{router.tests.secretMatch?.message}</p>
+                                </div>
+                              </div>
+
+                              {/* RADIUS Authentication */}
+                              <div className="flex items-start space-x-2">
+                                {router.tests.radiusAuth?.success ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                                )}
+                                <div>
+                                  <p className="font-medium">RADIUS Server</p>
+                                  <p className="text-muted-foreground">
+                                    {router.tests.radiusAuth?.status}
+                                    {router.tests.radiusAuth?.responseTime &&
+                                      ` (${router.tests.radiusAuth.responseTime}ms)`}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Active Sessions */}
+                              <div className="flex items-start space-x-2">
+                                <Activity className="h-4 w-4 text-blue-600 mt-0.5" />
+                                <div>
+                                  <p className="font-medium">Active Sessions</p>
+                                  <p className="text-muted-foreground">
+                                    {router.tests.activeSessions?.count || 0} session(s)
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Recent Accounting */}
+                              <div className="flex items-start space-x-2">
+                                <Activity className="h-4 w-4 text-blue-600 mt-0.5" />
+                                <div>
+                                  <p className="font-medium">Recent Accounting</p>
+                                  <p className="text-muted-foreground">
+                                    {router.tests.recentAccounting?.count || 0} record(s) in last hour
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Troubleshooting Tips */}
+                            {router.overallStatus !== "Connected" && (
+                              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div className="flex items-start space-x-2">
+                                  <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                                  <div className="text-sm space-y-1">
+                                    <p className="font-semibold text-yellow-900">Troubleshooting Steps:</p>
+                                    <ul className="list-disc list-inside text-yellow-800 space-y-1">
+                                      {!router.tests.ping?.success && (
+                                        <li>Check network connectivity - Router is unreachable</li>
+                                      )}
+                                      {!router.tests.nasRegistration?.success && (
+                                        <li>
+                                          Add router to RADIUS NAS clients in /network/routers/edit/{router.routerId}
+                                        </li>
+                                      )}
+                                      {!router.tests.secretMatch?.success && (
+                                        <li>Update RADIUS shared secret to match on both router and RADIUS server</li>
+                                      )}
+                                      {!router.tests.radiusAuth?.success && (
+                                        <li>Check FreeRADIUS service status: systemctl status freeradius</li>
+                                      )}
+                                      {router.tests.activeSessions?.count === 0 &&
+                                        router.tests.recentAccounting?.count === 0 && (
+                                          <li>No traffic detected - Check router RADIUS configuration</li>
+                                        )}
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Separator />

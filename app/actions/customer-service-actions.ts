@@ -241,31 +241,10 @@ export async function addCustomerService(customerId: number, formData: FormData)
         )
       `
 
-      if (routerId && (pppoeEnabled || allocatedIpAddress)) {
-        console.log("[v0] Auto-provisioning service to router...")
-
-        const provisionResult = await provisionServiceToRouter({
-          serviceId,
-          customerId,
-          routerId: Number.parseInt(routerId),
-          ipAddress: allocatedIpAddress || undefined,
-          connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
-          pppoeUsername: pppoeUsername || undefined,
-          pppoePassword: pppoePassword || undefined,
-          downloadSpeed: servicePlan[0].speed_download,
-          uploadSpeed: servicePlan[0].speed_upload,
-        })
-
-        if (!provisionResult.success) {
-          console.log("[v0] Warning: Auto-provision failed:", provisionResult.error)
-        } else {
-          console.log("[v0] Service auto-provisioned successfully")
-        }
-      }
-
-      // Provision to RADIUS
       const radiusUsername = pppoeUsername || `customer_${customerId}`
       const radiusPassword = pppoePassword || `customer_${customerId}`
+
+      console.log("[v0] Provisioning to RADIUS...")
       const radiusResult = await provisionRadiusUser({
         customerId,
         serviceId,
@@ -281,6 +260,31 @@ export async function addCustomerService(customerId: number, formData: FormData)
         console.log("[v0] Warning: RADIUS provisioning failed:", radiusResult.error)
       } else {
         console.log("[v0] RADIUS user provisioned successfully")
+      }
+
+      if (routerId) {
+        console.log("[v0] Auto-provisioning service to physical router...")
+
+        const provisionResult = await provisionServiceToRouter({
+          serviceId,
+          customerId,
+          routerId: Number.parseInt(routerId),
+          ipAddress: allocatedIpAddress || undefined,
+          connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
+          pppoeUsername: radiusUsername,
+          pppoePassword: radiusPassword,
+          downloadSpeed: servicePlan[0].speed_download,
+          uploadSpeed: servicePlan[0].speed_upload,
+        })
+
+        if (!provisionResult.success) {
+          console.log("[v0] Warning: Router provisioning failed:", provisionResult.error)
+          // Don't fail the entire operation, just log the warning
+        } else {
+          console.log("[v0] Service auto-provisioned to router successfully")
+        }
+      } else {
+        console.log("[v0] No router ID provided, skipping physical router provisioning")
       }
     }
 

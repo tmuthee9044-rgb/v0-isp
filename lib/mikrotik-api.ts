@@ -170,9 +170,21 @@ export class MikroTikAPI {
       password: password,
       "local-address": ipAddress,
       profile: profile,
+      service: "pppoe",
+      comment: `ISP_System_${username}`,
     }
 
-    return await this.execute("/ppp/secret", "PUT", params)
+    console.log("[v0] Creating PPPoE secret with params:", { ...params, password: "***" })
+
+    // Try POST first (RouterOS v7+), fallback to PUT if needed
+    let result = await this.execute("/ppp/secret", "POST", params)
+
+    if (!result.success && result.error?.includes("method not allowed")) {
+      console.log("[v0] POST failed, trying PUT method...")
+      result = await this.execute("/ppp/secret", "PUT", params)
+    }
+
+    return result
   }
 
   /**

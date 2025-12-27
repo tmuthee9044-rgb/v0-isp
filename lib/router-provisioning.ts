@@ -37,10 +37,15 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
 
   try {
     console.log(`[v0] === Provisioning service ${params.serviceId} to router ${params.routerId} ===`)
+    console.log(`[v0] Connection type: ${params.connectionType}`)
+    console.log(`[v0] PPPoE Username: ${params.pppoeUsername}`)
+    console.log(`[v0] IP Address: ${params.ipAddress}`)
 
     const mikrotik = await Promise.race([
       createMikroTikClient(params.routerId),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timeout")), 5000)),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Connection timeout after 10 seconds")), 10000),
+      ),
     ])
 
     if (!mikrotik) {
@@ -66,6 +71,14 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
       }
 
       console.log(`[v0] PPPoE secret created successfully for ${params.pppoeUsername}`)
+
+      await sql`
+        UPDATE customer_services
+        SET 
+          pppoe_username = ${params.pppoeUsername},
+          pppoe_password = ${params.pppoePassword}
+        WHERE id = ${params.serviceId}
+      `
     } else if (params.connectionType === "static_ip" && params.ipAddress) {
       // Provision static IP service
       console.log(`[v0] Provisioning static IP ${params.ipAddress}`)
@@ -81,6 +94,8 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
       }
 
       console.log(`[v0] Static IP provisioned successfully`)
+    } else {
+      throw new Error(`Invalid connection type or missing credentials: ${params.connectionType}`)
     }
 
     await Promise.all([

@@ -185,6 +185,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
     const routerId = Number.parseInt(params.id)
 
+    console.log("[v0] Attempting to delete router with ID:", routerId)
+
     if (isNaN(routerId)) {
       return NextResponse.json({ message: "Invalid router ID. ID must be a number." }, { status: 400 })
     }
@@ -197,16 +199,39 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       SELECT COUNT(*) as service_count FROM customer_services WHERE device_id = ${routerId}
     `
 
+    const customerDependencies = await sql`
+      SELECT COUNT(*) as customer_count FROM customers WHERE router_id = ${routerId}
+    `
+
     const subnetCount = Number(subnetDependencies[0].subnet_count)
     const serviceCount = Number(serviceDependencies[0].service_count)
+    const customerCount = Number(customerDependencies[0].customer_count)
 
-    if (subnetCount > 0 || serviceCount > 0) {
+    console.log("[v0] Router dependencies:", { subnetCount, serviceCount, customerCount })
+
+    if (subnetCount > 0 || serviceCount > 0 || customerCount > 0) {
+      const dependencies = []
+      if (subnetCount > 0) dependencies.push(`${subnetCount} subnet(s)`)
+      if (serviceCount > 0) dependencies.push(`${serviceCount} service(s)`)
+      if (customerCount > 0) dependencies.push(`${customerCount} customer(s)`)
+
       return NextResponse.json(
         {
-          message: `Cannot delete router with associated resources. Found ${subnetCount} subnet(s) and ${serviceCount} service(s).`,
+          message: `Cannot delete router with associated resources: ${dependencies.join(", ")}. Please remove these dependencies first.`,
         },
         { status: 400 },
       )
+    }
+
+    try {
+      await sql`
+        DELETE FROM radius_nas WHERE nas_ip_address = (
+          SELECT ip_address FROM network_devices WHERE id = ${routerId}
+        )
+      `
+      console.log("[v0] Deleted router from radius_nas table")
+    } catch (error) {
+      console.log("[v0] No radius_nas entry to delete or table doesn't exist")
     }
 
     const result = await sql`
@@ -216,13 +241,33 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       RETURNING *
     `
 
+    console.log("[v0] Delete result:", result)
+
     if (result.length === 0) {
       return NextResponse.json({ message: "Router not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ message: "Router deleted successfully" })
+    await sql`
+      INSERT INTO system_logs (
+        action, entity_type, entity_id, details, created_at
+      ) VALUES (
+        'delete', 'router', ${routerId}, 
+        ${JSON.stringify({
+          name: result[0].name,
+          ip_address: result[0].ip_address,
+        })}, 
+        NOW()
+      )
+    `
+
+    console.log("[v0] Router deleted successfully:", routerId)
+
+    return NextResponse.json({
+      message: "Router deleted successfully",
+      success: true,
+    })
   } catch (error) {
-    console.error("Error deleting router:", error)
+    console.error("[v0] Error deleting router:", error)
     return NextResponse.json(
       {
         message: "Failed to delete router",

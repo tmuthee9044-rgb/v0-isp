@@ -41,18 +41,20 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       serial: config.serial || null,
       connection_type: config.connection_type || "public_ip",
       hostname: routerData.ip_address || config.hostname || "",
-      api_port: config.api_port || 8728,
-      ssh_port: config.ssh_port || 22,
-      username: config.username || "",
-      password: config.password || "",
+      api_port: config.api_port || routerData.api_port || 8728,
+      ssh_port: config.ssh_port || routerData.ssh_port || 22,
+      username: config.username || routerData.username || "",
+      password: "", // Never return passwords
       mikrotik_user: config.mikrotik_user || "",
-      trafficking_record: config.trafficking_record || "",
-      speed_control: config.speed_control || "",
+      mikrotik_password: "", // Never return passwords
+      trafficking_record: config.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
+      speed_control: config.speed_control || "PCQ + Addresslist",
       save_visited_ips: config.save_visited_ips ?? true,
-      radius_secret: config.radius_secret || "",
-      radius_nas_ip: config.nas_ip_address || "",
-      gps_latitude: config.gps_latitude || null,
-      gps_longitude: config.gps_longitude || null,
+      customer_auth_method: config.customer_auth_method || "pppoe_radius",
+      radius_secret: config.radius_secret || routerData.radius_secret || "",
+      radius_nas_ip: config.nas_ip_address || routerData.nas_ip_address || "",
+      gps_latitude: config.gps_latitude || routerData.latitude || null,
+      gps_longitude: config.gps_longitude || routerData.longitude || null,
     })
   } catch (error) {
     console.error("[v0] Error fetching router:", error)
@@ -71,6 +73,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
+    console.log("[v0] Updating router with data:", body)
+
     const {
       name,
       type,
@@ -86,6 +90,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       trafficking_record,
       speed_control,
       save_visited_ips,
+      customer_auth_method,
       radius_secret,
       radius_nas_ip,
       gps_latitude,
@@ -123,6 +128,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const existingConfig = existingRouter[0].configuration || {}
+
     const configuration = {
       ...existingConfig,
       connection_type: connection_type || existingConfig.connection_type || "public_ip",
@@ -132,14 +138,17 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       ...(password && { password }),
       mikrotik_user: mikrotik_user || existingConfig.mikrotik_user || "",
       ...(mikrotik_password && { mikrotik_password }),
-      trafficking_record: trafficking_record || existingConfig.trafficking_record || "",
-      speed_control: speed_control || existingConfig.speed_control || "",
+      trafficking_record: trafficking_record || existingConfig.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
+      speed_control: speed_control || existingConfig.speed_control || "PCQ + Addresslist",
       save_visited_ips: save_visited_ips ?? existingConfig.save_visited_ips ?? true,
+      customer_auth_method: customer_auth_method || existingConfig.customer_auth_method || "pppoe_radius",
       radius_secret: radius_secret || "",
       nas_ip_address: radius_nas_ip || "",
       gps_latitude: gps_latitude ?? null,
       gps_longitude: gps_longitude ?? null,
     }
+
+    console.log("[v0] Saving configuration:", configuration)
 
     const result = await sql`
       UPDATE network_devices SET
@@ -157,6 +166,49 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       WHERE id = ${routerId}
       RETURNING *
     `
+
+    if (type === "mikrotik" && result[0]) {
+      try {
+        console.log("[v0] Applying updated MikroTik configuration to physical router...")
+
+        const routerHost = hostname || result[0].ip_address
+        const routerUsername = mikrotik_user || username || configuration.mikrotik_user || "admin"
+        const routerPassword = mikrotik_password || password || configuration.mikrotik_password
+
+        if (routerHost && routerUsername && routerPassword) {
+          const { MikroTikAPI } = await import("@/lib/mikrotik-api")
+          const mikrotik = new MikroTikAPI({
+            host: routerHost,
+            port: api_port || configuration.api_port || 8728,
+            username: routerUsername,
+            password: routerPassword,
+          })
+
+          await mikrotik.connect()
+
+          const configResult = await mikrotik.applyRouterConfiguration({
+            customer_auth_method: customer_auth_method || configuration.customer_auth_method,
+            trafficking_record: trafficking_record || configuration.trafficking_record,
+            speed_control: speed_control || configuration.speed_control,
+            radius_server: radius_nas_ip || configuration.nas_ip_address,
+            radius_secret: radius_secret || configuration.radius_secret,
+          })
+
+          console.log("[v0] MikroTik configuration update result:", configResult)
+
+          await mikrotik.disconnect()
+
+          if (!configResult.success) {
+            console.warn("[v0] Some router configuration updates failed:", configResult.errors)
+          }
+        } else {
+          console.warn("[v0] Missing router credentials, skipping configuration push")
+        }
+      } catch (configError) {
+        console.error("[v0] Error applying router configuration updates:", configError)
+        // Don't fail the router update if config push fails
+      }
+    }
 
     await sql`
       INSERT INTO activity_logs (

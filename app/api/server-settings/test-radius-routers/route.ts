@@ -27,7 +27,6 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Querying for active routers...")
 
-    // Get all active routers
     const routers = await sql<
       Array<{
         id: number
@@ -40,12 +39,19 @@ export async function POST(request: NextRequest) {
     >`
       SELECT id, name, ip_address, radius_secret, nas_ip_address, status
       FROM network_devices
-      WHERE type = 'router'
+      WHERE (type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other')
+        OR type ILIKE '%router%')
       AND status = 'active'
       ORDER BY name
     `
 
     console.log("[v0] Found routers:", routers.length)
+    if (routers.length > 0) {
+      console.log(
+        "[v0] Router details:",
+        routers.map((r) => ({ id: r.id, name: r.name, ip: r.ip_address })),
+      )
+    }
 
     if (routers.length === 0) {
       return NextResponse.json({

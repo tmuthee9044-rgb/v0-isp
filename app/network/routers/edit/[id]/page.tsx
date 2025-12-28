@@ -463,11 +463,39 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     setLoading(true) // Keeping setLoading as per the update
 
     try {
+      console.log("[v0] Submitting router update with data:", formData)
+
       const response = await fetch(`/api/network/routers/${routerId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          type: formData.type,
+          location_id: formData.location_id,
+          connection_type: formData.connection_type,
+          hostname: formData.hostname,
+          api_port: formData.api_port,
+          ssh_port: formData.ssh_port,
+          username: formData.username,
+          password: formData.password,
+          // MikroTik Configuration
+          mikrotik_user: formData.mikrotik_user,
+          mikrotik_password: formData.mikrotik_password,
+          customer_auth_method: formData.customer_auth_method,
+          trafficking_record: formData.trafficking_record,
+          speed_control: formData.speed_control,
+          save_visited_ips: formData.save_visited_ips,
+          // RADIUS Configuration
+          radius_secret: formData.radius_secret,
+          radius_nas_ip: formData.radius_nas_ip,
+          // GPS Coordinates
+          gps_latitude: formData.gps_latitude,
+          gps_longitude: formData.gps_longitude,
+          status: routerData?.status || "active",
+        }),
       })
+
+      console.log("[v0] Response status:", response.status)
 
       if (response.ok) {
         toast.success("Router updated successfully")
@@ -730,7 +758,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           </TabsTrigger>
           <TabsTrigger value="graphics" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
-            Graphics
+            Monitoring
           </TabsTrigger>
           <TabsTrigger value="log" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
@@ -1929,11 +1957,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="time" fontSize={10} />
                                 <YAxis fontSize={10} />
-                                <Tooltip
-                                  formatter={(value: any) =>
-                                    `${typeof value === "number" ? value.toFixed(1) : "0.0"} Mbps`
-                                  }
-                                />
+                                <Tooltip formatter={(value: number) => `${value.toFixed(1)} Mbps`} />
                                 <Line type="monotone" dataKey="rx" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
                                 <Line type="monotone" dataKey="tx" stroke="#ef4444" strokeWidth={1.5} dot={false} />
                               </LineChart>

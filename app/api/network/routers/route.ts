@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       enable_traffic_recording,
       enable_speed_control,
       blocking_page_url,
+      customer_auth_method,
       notes,
       status,
     } = body
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
       enable_traffic_recording: enable_traffic_recording !== undefined ? enable_traffic_recording : true,
       enable_speed_control: enable_speed_control !== undefined ? enable_speed_control : true,
       blocking_page_url: blocking_page_url || null,
+      customer_auth_method: customer_auth_method || "pppoe_radius",
       radius_secret: radius_secret || null,
       nas_ip_address: nas_ip_address || null,
     }
@@ -186,6 +188,41 @@ export async function POST(request: NextRequest) {
     `
 
     console.log("[v0] Router created successfully:", result[0])
+
+    if (type === "mikrotik" && (api_username || username) && (api_password || password)) {
+      try {
+        console.log("[v0] Applying MikroTik configuration to physical router...")
+
+        const { MikroTikAPI } = await import("@/lib/mikrotik-api")
+        const mikrotik = new MikroTikAPI({
+          host: ip_address,
+          port: api_port || port || 8728,
+          username: api_username || username || "admin",
+          password: api_password || password,
+        })
+
+        await mikrotik.connect()
+
+        const configResult = await mikrotik.applyRouterConfiguration({
+          customer_auth_method: customer_auth_method || "pppoe_radius",
+          trafficking_record: enable_traffic_recording ? "Traffic Flow (RouterOS V6x,V7.x)" : undefined,
+          speed_control: enable_speed_control ? "PCQ + Addresslist" : undefined,
+          radius_server: nas_ip_address,
+          radius_secret: radius_secret,
+        })
+
+        console.log("[v0] MikroTik configuration result:", configResult)
+
+        await mikrotik.disconnect()
+
+        if (!configResult.success) {
+          console.warn("[v0] Some router configurations failed:", configResult.errors)
+        }
+      } catch (configError) {
+        console.error("[v0] Error applying router configuration:", configError)
+        // Don't fail the router creation if config push fails
+      }
+    }
 
     await sql`
       INSERT INTO activity_logs (

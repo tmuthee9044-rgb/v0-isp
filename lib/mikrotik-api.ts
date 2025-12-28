@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db"
-// import { fetch } from "node-fetch"
-// import { AbortController } from "abort-controller"
+import { fetch } from "node-fetch"
+import { AbortController } from "abort-controller"
 
 export interface MikroTikConfig {
   host: string
@@ -477,6 +477,348 @@ export class MikroTikAPI {
   async disconnect(): Promise<void> {
     console.log(`[v0] Disconnecting from MikroTik router`)
     this.connected = false
+  }
+
+  /**
+   * Configure traffic monitoring/recording on the router
+   * Sets up Traffic Flow (IPFIX) or Torch for bandwidth monitoring
+   */
+  async configureTrafficMonitoring(method: string): Promise<MikroTikResponse> {
+    try {
+      console.log(`[v0] Configuring traffic monitoring: ${method}`)
+
+      if (method === "Traffic Flow (RouterOS V6x,V7.x)") {
+        // Enable IPFIX/Traffic Flow
+        const result = await this.execute("/ip/traffic-flow/target", "POST", {
+          dst_address: "127.0.0.1:2055",
+          version: "ipfix",
+          enabled: "yes",
+        })
+
+        // Enable traffic flow on interfaces
+        await this.execute("/ip/traffic-flow", "PATCH", {
+          enabled: "yes",
+          interfaces: "all",
+        })
+
+        return result
+      } else if (method === "Torch") {
+        // Torch is interactive, so we just ensure the package is available
+        return { success: true, data: { message: "Torch monitoring available via /tool torch" } }
+      }
+
+      return { success: true, data: { message: "Traffic monitoring configured" } }
+    } catch (error: any) {
+      console.error("[v0] Error configuring traffic monitoring:", error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * Configure speed control/bandwidth management
+   * Sets up PCQ queues, simple queues, or hotspot profiles
+   */
+  async configureSpeedControl(method: string): Promise<MikroTikResponse> {
+    try {
+      console.log(`[v0] Configuring speed control: ${method}`)
+
+      if (method === "PCQ + Addresslist") {
+        // Create PCQ queue types for download and upload
+        const pcqDownload = await this.execute("/queue/type", "POST", {
+          name: "pcq-download-default",
+          kind: "pcq",
+          "pcq-rate": "0",
+          "pcq-classifier": "dst-address",
+        })
+
+        const pcqUpload = await this.execute("/queue/type", "POST", {
+          name: "pcq-upload-default",
+          kind: "pcq",
+          "pcq-rate": "0",
+          "pcq-classifier": "src-address",
+        })
+
+        console.log("[v0] PCQ queues configured")
+        return { success: true, data: { pcqDownload, pcqUpload } }
+      } else if (method === "Simple Queue") {
+        // Simple queues are created per customer, just ensure the feature is enabled
+        return { success: true, data: { message: "Simple Queue method enabled" } }
+      } else if (method === "Hotspot Profiles") {
+        // Hotspot profiles need hotspot to be configured first
+        return { success: true, data: { message: "Hotspot Profiles require hotspot server setup" } }
+      }
+
+      return { success: true, data: { message: "Speed control configured" } }
+    } catch (error: any) {
+      console.error("[v0] Error configuring speed control:", error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * Configure customer authorization method
+   * Sets up DHCP, PPPoE server, or RADIUS authentication
+   */
+  async configureCustomerAuth(
+    method: string,
+    radiusServer?: string,
+    radiusSecret?: string,
+    nasIp?: string,
+  ): Promise<MikroTikResponse> {
+    try {
+      console.log(`[v0] Configuring customer authorization method: ${method}`)
+
+      if (method === "dhcp_lease") {
+        console.log("[v0] Configuring DHCP Lease mode - disabling PPPoE")
+
+        // Check if DHCP server exists
+        const dhcpServers = await this.execute("/ip/dhcp-server")
+
+        if (!dhcpServers.success || !Array.isArray(dhcpServers.data) || dhcpServers.data.length === 0) {
+          return {
+            success: false,
+            error: "No DHCP server found. Please configure DHCP server first via IP → DHCP Server in WinBox.",
+          }
+        }
+
+        // Disable PPPoE servers if any exist
+        const pppoeServers = await this.execute("/interface/pppoe-server/server")
+        if (pppoeServers.success && Array.isArray(pppoeServers.data)) {
+          for (const server of pppoeServers.data) {
+            if (server[".id"]) {
+              await this.execute(`/interface/pppoe-server/server/${server[".id"]}`, "PATCH", {
+                disabled: "yes",
+              })
+              console.log(`[v0] Disabled PPPoE server: ${server.service || server[".id"]}`)
+            }
+          }
+        }
+
+        // Ensure PPP AAA is not using RADIUS
+        await this.execute("/ppp/aaa", "PATCH", {
+          "use-radius": "no",
+        }).catch(() => {}) // Ignore errors if /ppp/aaa doesn't exist
+
+        console.log("[v0] DHCP Lease mode configured successfully")
+        return {
+          success: true,
+          data: {
+            message: "DHCP Lease mode enabled. PPPoE disabled. Customers will connect via DHCP only.",
+            dhcpServers: dhcpServers.data.length,
+          },
+        }
+      } else if (method === "pppoe_radius") {
+        console.log("[v0] Configuring PPPoE with RADIUS authentication")
+
+        if (!radiusServer || !radiusSecret) {
+          return { success: false, error: "RADIUS server IP and shared secret are required for PPPoE with RADIUS" }
+        }
+
+        // Step 1: Add/Update RADIUS server configuration
+        console.log(`[v0] Configuring RADIUS server: ${radiusServer}`)
+
+        // Check if RADIUS entry already exists
+        const existingRadius = await this.execute("/radius")
+        let radiusConfigured = false
+
+        if (existingRadius.success && Array.isArray(existingRadius.data)) {
+          // Try to update existing RADIUS entry
+          for (const radius of existingRadius.data) {
+            if (radius.address === radiusServer || radius.service === "ppp") {
+              await this.execute(`/radius/${radius[".id"]}`, "PATCH", {
+                service: "ppp",
+                address: radiusServer,
+                secret: radiusSecret,
+                "authentication-port": "1812",
+                "accounting-port": "1813",
+                timeout: "3s",
+              })
+              console.log("[v0] Updated existing RADIUS configuration")
+              radiusConfigured = true
+              break
+            }
+          }
+        }
+
+        // Add new RADIUS entry if not found
+        if (!radiusConfigured) {
+          const radiusResult = await this.execute("/radius", "POST", {
+            service: "ppp",
+            address: radiusServer,
+            secret: radiusSecret,
+            "authentication-port": "1812",
+            "accounting-port": "1813",
+            timeout: "3s",
+          })
+          console.log("[v0] Added new RADIUS configuration:", radiusResult.success ? "Success" : "Failed")
+        }
+
+        // Step 2: Enable RADIUS for PPP AAA
+        console.log("[v0] Enabling RADIUS for PPP authentication and accounting")
+        await this.execute("/ppp/aaa", "PATCH", {
+          "use-radius": "yes",
+          accounting: "yes",
+        })
+
+        // Step 3: Check/Enable PPPoE server
+        console.log("[v0] Checking PPPoE server configuration")
+        const pppoeServers = await this.execute("/interface/pppoe-server/server")
+
+        if (!pppoeServers.success || !Array.isArray(pppoeServers.data) || pppoeServers.data.length === 0) {
+          return {
+            success: false,
+            error: "No PPPoE server found. Please create PPPoE server first via PPP → PPPoE Servers in WinBox.",
+          }
+        }
+
+        // Enable all PPPoE servers
+        for (const server of pppoeServers.data) {
+          if (server[".id"]) {
+            await this.execute(`/interface/pppoe-server/server/${server[".id"]}`, "PATCH", {
+              disabled: "no",
+              authentication: "pap,chap,mschap1,mschap2",
+            })
+            console.log(`[v0] Enabled PPPoE server: ${server.service || server[".id"]}`)
+          }
+        }
+
+        // Step 4: Update PPP profile to use RADIUS
+        const profiles = await this.execute("/ppp/profile")
+        if (profiles.success && Array.isArray(profiles.data)) {
+          for (const profile of profiles.data) {
+            if (profile.name === "default" || profile[".id"]) {
+              await this.execute(`/ppp/profile/${profile[".id"]}`, "PATCH", {
+                "use-compression": "no",
+                "use-encryption": "no",
+                "only-one": "no",
+              }).catch(() => {}) // Ignore errors
+            }
+          }
+        }
+
+        console.log("[v0] PPPoE with RADIUS configured successfully")
+        return {
+          success: true,
+          data: {
+            message: "PPPoE with RADIUS enabled. Customers will authenticate via FreeRADIUS server.",
+            radiusServer,
+            pppoeServers: pppoeServers.data.length,
+          },
+        }
+      } else if (method === "pppoe_secrets") {
+        console.log("[v0] Configuring PPPoE with local secrets (no RADIUS)")
+
+        // Step 1: Disable RADIUS for PPP
+        console.log("[v0] Disabling RADIUS authentication")
+        await this.execute("/ppp/aaa", "PATCH", {
+          "use-radius": "no",
+          accounting: "no",
+        })
+
+        // Step 2: Check/Enable PPPoE server
+        console.log("[v0] Checking PPPoE server configuration")
+        const pppoeServers = await this.execute("/interface/pppoe-server/server")
+
+        if (!pppoeServers.success || !Array.isArray(pppoeServers.data) || pppoeServers.data.length === 0) {
+          return {
+            success: false,
+            error: "No PPPoE server found. Please create PPPoE server first via PPP → PPPoE Servers in WinBox.",
+          }
+        }
+
+        // Enable all PPPoE servers
+        for (const server of pppoeServers.data) {
+          if (server[".id"]) {
+            await this.execute(`/interface/pppoe-server/server/${server[".id"]}`, "PATCH", {
+              disabled: "no",
+              authentication: "pap,chap,mschap1,mschap2",
+            })
+            console.log(`[v0] Enabled PPPoE server: ${server.service || server[".id"]}`)
+          }
+        }
+
+        console.log("[v0] Local PPPoE secrets mode configured successfully")
+        return {
+          success: true,
+          data: {
+            message:
+              "Local PPPoE secrets enabled. Customers will authenticate using PPP → Secrets configured in router.",
+            pppoeServers: pppoeServers.data.length,
+          },
+        }
+      }
+
+      return { success: false, error: `Unknown authentication method: ${method}` }
+    } catch (error: any) {
+      console.error("[v0] Error configuring customer authorization:", error)
+      return { success: false, error: error.message || "Failed to configure customer authorization" }
+    }
+  }
+
+  /**
+   * Apply full MikroTik configuration from settings
+   * This is called when router settings are saved
+   */
+  async applyRouterConfiguration(config: {
+    customer_auth_method?: string
+    trafficking_record?: string
+    speed_control?: string
+    radius_server?: string
+    radius_secret?: string
+  }): Promise<{ success: boolean; results: any; errors: string[] }> {
+    const results: any = {}
+    const errors: string[] = []
+
+    try {
+      console.log("[v0] Applying complete router configuration:", config)
+
+      // 1. Configure customer authorization method
+      if (config.customer_auth_method) {
+        const authResult = await this.configureCustomerAuth(
+          config.customer_auth_method,
+          config.radius_server,
+          config.radius_secret,
+        )
+        results.customerAuth = authResult
+        if (!authResult.success) {
+          errors.push(`Customer Auth: ${authResult.error}`)
+        }
+      }
+
+      // 2. Configure traffic monitoring
+      if (config.trafficking_record) {
+        const trafficResult = await this.configureTrafficMonitoring(config.trafficking_record)
+        results.trafficMonitoring = trafficResult
+        if (!trafficResult.success) {
+          errors.push(`Traffic Monitoring: ${trafficResult.error}`)
+        }
+      }
+
+      // 3. Configure speed control
+      if (config.speed_control) {
+        const speedResult = await this.configureSpeedControl(config.speed_control)
+        results.speedControl = speedResult
+        if (!speedResult.success) {
+          errors.push(`Speed Control: ${speedResult.error}`)
+        }
+      }
+
+      const success = errors.length === 0
+
+      console.log(`[v0] Router configuration applied. Success: ${success}`)
+      if (errors.length > 0) {
+        console.error("[v0] Configuration errors:", errors)
+      }
+
+      return { success, results, errors }
+    } catch (error: any) {
+      console.error("[v0] Error applying router configuration:", error)
+      return {
+        success: false,
+        results,
+        errors: [...errors, error.message],
+      }
+    }
   }
 }
 

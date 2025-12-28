@@ -135,6 +135,13 @@ export default function AddRouterPage() {
         location_id: formData.location_id ? Number.parseInt(formData.location_id) : null,
         port: Number.parseInt(formData.port),
         ssh_port: Number.parseInt(formData.ssh_port),
+        // Explicitly include MikroTik configuration
+        api_username: formData.api_username,
+        api_password: formData.api_password,
+        customer_auth_method: formData.customer_auth_method,
+        enable_traffic_recording: formData.enable_traffic_recording,
+        enable_speed_control: formData.enable_speed_control,
+        blocking_page_url: formData.blocking_page_url,
       }
 
       console.log("[v0] Submitting router data:", payload)

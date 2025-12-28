@@ -35,6 +35,7 @@ import { CustomerAuditLogTab } from "@/components/customer-audit-log-tab"
 import AddServiceModal from "@/components/add-service-modal"
 import { deleteCustomerService, updateServiceStatus } from "@/app/actions/customer-service-actions"
 import { useToast } from "@/hooks/use-toast"
+import { ServiceStatusBadge } from "@/components/service-status-badge"
 
 interface Customer {
   id: number
@@ -66,6 +67,11 @@ interface Service {
   start_date: string
   download_speed?: number
   upload_speed?: number
+  is_online?: boolean
+  last_session_at?: string
+  router_provisioned?: boolean
+  radius_provisioned?: boolean
+  balance?: number
 }
 
 export default function CustomerPage({ params }: { params: { id: string } }) {
@@ -392,9 +398,14 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
                             <h3 className="text-base sm:text-lg font-semibold">{service.service_name}</h3>
-                            <Badge variant="secondary" className="bg-gray-600 text-white text-xs">
-                              {service.status}
-                            </Badge>
+                            <ServiceStatusBadge
+                              status={service.status}
+                              isOnline={service.is_online}
+                              lastSessionAt={service.last_session_at}
+                              routerProvisioned={service.router_provisioned}
+                              radiusProvisioned={service.radius_provisioned}
+                              balance={service.balance}
+                            />
                           </div>
                           <p className="text-xs sm:text-sm text-muted-foreground">Service Plan</p>
                         </div>
@@ -436,9 +447,14 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-4 border-t">
-                        <Badge variant="secondary" className="bg-gray-600 text-white text-xs sm:text-sm">
-                          {service.status}
-                        </Badge>
+                        <ServiceStatusBadge
+                          status={service.status}
+                          isOnline={service.is_online}
+                          lastSessionAt={service.last_session_at}
+                          routerProvisioned={service.router_provisioned}
+                          radiusProvisioned={service.radius_provisioned}
+                          balance={service.balance}
+                        />
                         <div className="flex-1"></div>
                         <Button
                           variant="ghost"

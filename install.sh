@@ -297,24 +297,25 @@ install_freeradius() {
         RADIUS_HOST="127.0.0.1"
         print_warning "Could not detect network IP, using localhost (127.0.0.1)"
         print_warning "Physical routers will NOT be able to connect!"
-        print_info "Please update RADIUS_SERVER in .env.local with your actual IP"
+        print_info "Please update RADIUS configuration in /settings/servers with your actual IP"
     else
         print_success "Detected host IP: $RADIUS_HOST"
         print_info "Physical routers will connect to this IP address"
     fi
     
-    # Generate RADIUS shared secret if not exists
+    print_info "Generating RADIUS shared secret..."
     RADIUS_SECRET=$(openssl rand -hex 16)
+    print_success "Generated RADIUS secret: ${RADIUS_SECRET:0:8}... (hidden for security)"
     
     print_info "Saving RADIUS configuration to database..."
     psql "$DATABASE_URL" << SAVERADIUS
 -- Save RADIUS server configuration
 INSERT INTO system_config (key, value, created_at, updated_at) VALUES
     ('server.radius.enabled', 'true', NOW(), NOW()),
-    ('server.radius.host', '"$RADIUS_HOST"', NOW(), NOW()),
+    ('server.radius.host', '$RADIUS_HOST', NOW(), NOW()),
     ('server.radius.authPort', '1812', NOW(), NOW()),
     ('server.radius.acctPort', '1813', NOW(), NOW()),
-    ('server.radius.sharedSecret', '"$RADIUS_SECRET"', NOW(), NOW()),
+    ('server.radius.sharedSecret', '$RADIUS_SECRET', NOW(), NOW()),
     ('server.radius.timeout', '30', NOW(), NOW())
 ON CONFLICT (key) DO UPDATE SET 
     value = EXCLUDED.value,
@@ -330,6 +331,7 @@ SAVERADIUS
     
     if [ $? -eq 0 ]; then
         print_success "RADIUS configuration saved to database"
+        print_info "Configuration is accessible from /settings/servers page"
     else
         print_warning "Failed to save RADIUS configuration to database"
     fi
@@ -364,9 +366,6 @@ SAVERADIUS
         fi
     fi
     
-    # Generate RADIUS secret
-    print_info "Generating RADIUS secret..."
-    RADIUS_SECRET=$(openssl rand -base64 32)
     
     print_info "Detecting FreeRADIUS configuration directory..."
     FREERADIUS_DIR=""
@@ -693,113 +692,97 @@ CLIENTEOF
     if [[ "$OS" == "linux" ]] && command -v ufw &> /dev/null; then
         sudo ufw allow 1812/udp comment 'RADIUS Authentication'
         sudo ufw allow 1813/udp comment 'RADIUS Accounting'
-        print_success "Firewall rules added for RADIUS"
-    else
-        print_warning "Firewall not configured automatically. Please open ports 1812/udp and 1813/udp manually."
+        print_success "Firewall configured (UFW)"
+    elif [[ "$OS" == "linux" ]] && command -v firewall-cmd &> /dev/null; then
+        sudo firewall-cmd --add-port=1812/udp --permanent
+        sudo firewall-cmd --add-port=1813/udp --permanent
+        sudo firewall-cmd --reload
+        print_success "Firewall configured (firewalld)"
     fi
     
-    # Test FreeRADIUS configuration
-    print_info "Testing FreeRADIUS configuration..."
-    if sudo radiusd -CX 2>&1 | grep -q "Configuration appears to be OK"; then
-        print_success "FreeRADIUS configuration is valid"
-    else
-        print_warning "FreeRADIUS configuration may have issues"
-        print_info "Run 'sudo radiusd -CX' to see detailed configuration check"
-    fi
-    
-    # Start FreeRADIUS service
     print_info "Starting FreeRADIUS service..."
     if [[ "$OS" == "linux" ]]; then
-        sudo systemctl stop freeradius 2>/dev/null || true
-        sleep 2
-        sudo systemctl start freeradius
-        sudo systemctl enable freeradius
-        
-        if sudo systemctl is-active --quiet freeradius; then
-            print_success "FreeRADIUS service started and enabled"
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl enable freeradius
+            sudo systemctl restart freeradius
+            
+            # Wait for service to start
+            sleep 2
+            
+            if sudo systemctl is-active --quiet freeradius; then
+                print_success "FreeRADIUS service is running"
+            else
+                print_error "FreeRADIUS service failed to start"
+                print_info "Check logs: sudo journalctl -u freeradius -n 50"
+                return 1
+            fi
         else
-            print_error "Failed to start FreeRADIUS service"
-            print_info "Check logs: sudo journalctl -u freeradius -n 50"
-            print_info "Or run in debug mode: sudo freeradius -X"
+            sudo service freeradius restart
+            print_info "FreeRADIUS service restarted"
         fi
-    elif [[ "$OS" == "macos" ]]; then
-        sudo brew services restart freeradius-server
-        print_success "FreeRADIUS service restarted"
     fi
     
-    print_info "Adding RADIUS configuration to .env.local..."
+    print_info "Testing RADIUS server connectivity..."
     
-    if [ -f ".env.local" ]; then
-        # Remove old RADIUS settings if they exist
-        grep -v "RADIUS_SECRET\|RADIUS_SERVER\|RADIUS_AUTH_PORT\|RADIUS_ACCT_PORT" .env.local > .env.local.tmp || true
-        mv .env.local.tmp .env.local
-        
-        # Add new RADIUS settings with actual host IP
-        cat >> .env.local << ENVEOF
-
-# RADIUS Configuration
-RADIUS_SECRET=${RADIUS_SECRET}
-RADIUS_SERVER=${RADIUS_HOST}
-RADIUS_AUTH_PORT=1812
-RADIUS_ACCT_PORT=1813
-ENVEOF
-        
-        print_success "Radius configuration added to .env.local"
+    # Check if port 1812 is listening
+    if command -v netstat &> /dev/null; then
+        if sudo netstat -tulpn | grep -q ":1812"; then
+            print_success "RADIUS is listening on port 1812"
+        else
+            print_warning "RADIUS port 1812 is not listening"
+        fi
+    elif command -v ss &> /dev/null; then
+        if sudo ss -tulpn | grep -q ":1812"; then
+            print_success "RADIUS is listening on port 1812"
+        else
+            print_warning "RADIUS port 1812 is not listening"
+        fi
     fi
     
-    cat >> database-credentials.txt << RADEOF
-
-FreeRADIUS Configuration
-========================
-RADIUS Server IP: ${RADIUS_HOST}
-RADIUS Secret: ${RADIUS_SECRET}
-Auth Port: 1812
-Accounting Port: 1813
-Config Directory: ${FREERADIUS_DIR}
-
-Important: Configure your MikroTik routers with:
-  /radius add address=${RADIUS_HOST} secret=${RADIUS_SECRET} service=ppp
-
-To test RADIUS from this machine:
-  radtest testuser testpass ${RADIUS_HOST} 0 ${RADIUS_SECRET}
-
-To test from a router:
-  ping ${RADIUS_HOST}
-  (should respond if firewall allows ICMP)
-
-To view logs:
-  sudo tail -f /var/log/freeradius/radius.log
-
-To run in debug mode:
-  sudo freeradius -X
-RADEOF
-    
-    print_success "FreeRADIUS credentials saved to database-credentials.txt"
-    
-    echo ""
-    print_success "FreeRADIUS installation complete!"
-    echo ""
-    print_info "Radius Server IP: ${RADIUS_HOST}"
-    print_info "Auth Port: 1812"
-    print_info "Accounting Port: 1813"
-    print_info "Secret: ${RADIUS_SECRET}"
-    echo ""
-    
-    if [ "$RADIUS_HOST" != "127.0.0.1" ]; then
-        print_success "Physical routers can connect to: ${RADIUS_HOST}"
-        echo ""
-        print_info "Configure MikroTik routers with:"
-        echo "  /radius add address=${RADIUS_HOST} secret=${RADIUS_SECRET} service=ppp"
+    if command -v radtest &> /dev/null; then
+        print_info "Testing RADIUS authentication..."
+        # Create a test user temporarily
+        psql "$DATABASE_URL" << TESTUSER
+INSERT INTO radius_users (username, password_hash, status, created_at) 
+VALUES ('test_install', 'test123', 'active', NOW())
+ON CONFLICT (username) DO UPDATE SET password_hash = 'test123', status = 'active';
+TESTUSER
+        
+        # Test authentication
+        if radtest test_install test123 $RADIUS_HOST 1812 $RADIUS_SECRET &> /dev/null; then
+            print_success "RADIUS authentication test PASSED"
+            print_success "✓ RADIUS server is working correctly"
+        else
+            print_warning "RADIUS authentication test FAILED"
+            print_info "This may be normal if FreeRADIUS needs additional configuration"
+            print_info "You can test manually with: radtest test_install test123 $RADIUS_HOST 1812 $RADIUS_SECRET"
+        fi
+        
+        # Clean up test user
+        psql "$DATABASE_URL" << CLEANUP
+DELETE FROM radius_users WHERE username = 'test_install';
+CLEANUP
     else
-        print_warning "Radius is only accessible locally (127.0.0.1)"
-        print_warning "Update RADIUS_SERVER in .env.local with your network IP"
+        print_info "radtest not available, skipping authentication test"
+        print_info "Install freeradius-utils for testing: sudo apt install freeradius-utils"
     fi
+    
+    print_header "RADIUS Installation Summary"
+    echo ""
+    print_info "RADIUS Server IP: $RADIUS_HOST"
+    print_info "Authentication Port: 1812"
+    print_info "Accounting Port: 1813"
+    print_info "Shared Secret: ${RADIUS_SECRET:0:8}... (view full secret in /settings/servers)"
+    echo ""
+    print_success "RADIUS configuration saved to database"
+    print_info "Access configuration at: http://localhost:3000/settings/servers"
     echo ""
     print_info "Next steps:"
-    echo "  1. RADIUS tables will be created during database setup"
-    echo "  2. Verify routers can ping ${RADIUS_HOST}"
-    echo "  3. Configure routers with the RADIUS secret above"
-    echo "  4. Test connectivity from /network/radius dashboard"
+    print_info "  1. Visit /settings/servers to verify RADIUS configuration"
+    print_info "  2. Add your MikroTik routers in /network/routers"
+    print_info "  3. Configure routers to use RADIUS IP: $RADIUS_HOST"
+    print_info "  4. Use the shared secret displayed in /settings/servers"
+    print_info "  5. Test connectivity using the Router Connectivity Testing tool"
     echo ""
 }
 

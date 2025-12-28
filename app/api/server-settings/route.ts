@@ -12,6 +12,9 @@ export async function GET() {
       WHERE key LIKE 'server.%' OR key LIKE 'network.%'
     `
 
+    console.log("[v0] Loading server settings from database...")
+    console.log("[v0] Found settings:", settings.length)
+
     let detectedHostIp = ""
 
     try {
@@ -116,6 +119,10 @@ export async function GET() {
       }
 
       if (keys[0] === "server" && keys[1] === "radius") {
+        console.log(
+          `[v0] RADIUS setting: ${setting.key} = ${typeof value === "string" ? value.substring(0, 10) + "..." : value}`,
+        )
+
         if (keys[2] === "protocols") {
           serverConfig.radius.protocols = { ...serverConfig.radius.protocols, ...value }
         } else if (keys[2] === "authMethods") {
@@ -139,6 +146,11 @@ export async function GET() {
           serverConfig.network[keys[1]] = value
         }
       }
+    })
+
+    console.log("[v0] Final RADIUS config:", {
+      ...serverConfig.radius,
+      sharedSecret: serverConfig.radius.sharedSecret ? "***SET***" : "NOT SET",
     })
 
     return NextResponse.json(serverConfig)

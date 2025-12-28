@@ -306,6 +306,69 @@ install_freeradius() {
     print_info "Generating RADIUS shared secret..."
     RADIUS_SECRET=$(openssl rand -hex 16)
     print_success "Generated RADIUS secret: ${RADIUS_SECRET:0:8}... (hidden for security)"
+
+    print_info "Creating RADIUS infrastructure tables..."
+    if [ -f "scripts/create_radius_infrastructure.sql" ]; then
+        psql "$DATABASE_URL" -f scripts/create_radius_infrastructure.sql > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            print_success "RADIUS tables created successfully"
+        else
+            print_error "Failed to create RADIUS tables"
+            print_info "Trying alternative method..."
+            sudo -u postgres psql -d "$DB_NAME" -f scripts/create_radius_infrastructure.sql
+        fi
+    else
+        print_warning "RADIUS schema file not found, using inline SQL..."
+        psql "$DATABASE_URL" << 'RADIUSTABLES'
+-- Create basic RADIUS tables inline
+CREATE TABLE IF NOT EXISTS radius_nas (
+    id SERIAL PRIMARY KEY,
+    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    short_name VARCHAR(32) NOT NULL,
+    ip_address INET NOT NULL UNIQUE,
+    secret VARCHAR(255) NOT NULL,
+    type VARCHAR(50) DEFAULT 'mikrotik',
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'active',
+    ip_address INET,
+    download_limit BIGINT,
+    upload_limit BIGINT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_sessions_active (
+    id SERIAL PRIMARY KEY,
+    acct_session_id VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET NOT NULL,
+    framed_ip_address INET,
+    start_time TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_update TIMESTAMP DEFAULT NOW(),
+    session_time INTEGER DEFAULT 0,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username);
+CREATE INDEX IF NOT EXISTS idx_radius_sessions_username ON radius_sessions_active(username);
+RADIUSTABLES
+        if [ $? -eq 0 ]; then
+            print_success "Basic RADIUS tables created"
+        else
+            print_error "Failed to create RADIUS tables"
+        fi
+    fi
     
     print_info "Saving RADIUS configuration to database..."
     psql "$DATABASE_URL" << SAVERADIUS
@@ -332,6 +395,19 @@ SAVERADIUS
     if [ $? -eq 0 ]; then
         print_success "RADIUS configuration saved to database"
         print_info "Configuration is accessible from /settings/servers page"
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║          RADIUS Configuration Summary                      ║"
+        echo "╠════════════════════════════════════════════════════════════╣"
+        echo "║ Host IP:        $RADIUS_HOST                               ║"
+        echo "║ Auth Port:      1812                                       ║"
+        echo "║ Acct Port:      1813                                       ║"
+        echo "║ Shared Secret:  ${RADIUS_SECRET:0:8}************************║"
+        echo "║                                                            ║"
+        echo "║ ⚠️  IMPORTANT: Save this secret securely!                  ║"
+        echo "║ Full secret saved in /settings/servers                     ║"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo ""
     else
         print_warning "Failed to save RADIUS configuration to database"
     fi
@@ -436,7 +512,7 @@ sql {
             username, \
             'Cleartext-Password' AS attribute, \
             password_hash AS value, \
-            '==' AS op \
+            ':=' AS op \
         FROM radius_users \
         WHERE username = '%{SQL-User-Name}' \
         AND status = 'active' \
@@ -504,22 +580,13 @@ sql {
             start {
                 query = "\
                     INSERT INTO radius_sessions_active ( \
-                        acct_session_id, acct_unique_id, username, user_id, \
-                        nas_id, nas_ip_address, nas_port_id, \
-                        service_type, framed_ip_address, calling_station_id, \
-                        called_station_id, start_time, last_update \
+                        acct_session_id, username, nas_ip_address, \
+                        framed_ip_address, start_time, last_update \
                     ) VALUES ( \
                         '%{Acct-Session-Id}', \
-                        '%{Acct-Unique-Session-Id}', \
                         '%{SQL-User-Name}', \
-                        (SELECT id FROM radius_users WHERE username = '%{SQL-User-Name}' LIMIT 1), \
-                        (SELECT id FROM radius_nas WHERE ip_address = '%{NAS-IP-Address}'::inet LIMIT 1), \
                         '%{NAS-IP-Address}'::inet, \
-                        '%{NAS-Port}', \
-                        COALESCE('%{Service-Type}', 'PPPoE'), \
                         NULLIF('%{Framed-IP-Address}', '')::inet, \
-                        '%{Calling-Station-Id}', \
-                        '%{Called-Station-Id}', \
                         NOW(), NOW() \
                     ) ON CONFLICT (acct_session_id) DO UPDATE SET \
                         start_time = NOW(), \
@@ -574,17 +641,13 @@ sql {
                         RETURNING * \
                     ) \
                     INSERT INTO radius_sessions_archive ( \
-                        acct_session_id, acct_unique_id, username, user_id, \
-                        nas_id, nas_ip_address, nas_port_id, \
-                        service_type, framed_ip_address, calling_station_id, \
-                        called_station_id, start_time, stop_time, last_update, \
+                        acct_session_id, username, nas_ip_address, \
+                        framed_ip_address, start_time, stop_time, last_update, \
                         session_time, bytes_in, bytes_out, packets_in, packets_out, \
                         terminate_cause \
                     ) SELECT \
-                        acct_session_id, acct_unique_id, username, user_id, \
-                        nas_id, nas_ip_address, nas_port_id, \
-                        service_type, framed_ip_address, calling_station_id, \
-                        called_station_id, start_time, NOW(), last_update, \
+                        acct_session_id, username, nas_ip_address, \
+                        framed_ip_address, start_time, NOW(), last_update, \
                         COALESCE('%{Acct-Session-Time}', '0')::integer, \
                         COALESCE('%{Acct-Input-Octets}', '0')::bigint + \
                         COALESCE('%{Acct-Input-Gigawords}', '0')::bigint * 4294967296, \
@@ -724,66 +787,89 @@ CLIENTEOF
     
     print_info "Testing RADIUS server connectivity..."
     
-    # Check if port 1812 is listening
-    if command -v netstat &> /dev/null; then
-        if sudo netstat -tulpn | grep -q ":1812"; then
-            print_success "RADIUS is listening on port 1812"
-        else
-            print_warning "RADIUS port 1812 is not listening"
-        fi
-    elif command -v ss &> /dev/null; then
-        if sudo ss -tulpn | grep -q ":1812"; then
-            print_success "RADIUS is listening on port 1812"
-        else
-            print_warning "RADIUS port 1812 is not listening"
-        fi
-    fi
+    # Wait for FreeRADIUS to fully start
+    sleep 3
     
-    if command -v radtest &> /dev/null; then
+    # Test if RADIUS is listening on port 1812
+    if netstat -tuln 2>/dev/null | grep -q ":1812 " || ss -tuln 2>/dev/null | grep -q ":1812 "; then
+        print_success "RADIUS is listening on port 1812"
+        
         print_info "Testing RADIUS authentication..."
-        # Create a test user temporarily
+        TEST_USER="test_install_user_$(date +%s)"
+        TEST_PASS="test_pass_$(openssl rand -hex 8)"
+        
+        # Create test user in database
         psql "$DATABASE_URL" << TESTUSER
-INSERT INTO radius_users (username, password_hash, status, created_at) 
-VALUES ('test_install', 'test123', 'active', NOW())
-ON CONFLICT (username) DO UPDATE SET password_hash = 'test123', status = 'active';
+INSERT INTO radius_users (username, password_hash, status, customer_id) 
+SELECT '$TEST_USER', crypt('$TEST_PASS', gen_salt('bf')), 'active', id 
+FROM customers LIMIT 1
+ON CONFLICT (username) DO NOTHING;
 TESTUSER
         
-        # Test authentication
-        if radtest test_install test123 $RADIUS_HOST 1812 $RADIUS_SECRET &> /dev/null; then
-            print_success "RADIUS authentication test PASSED"
-            print_success "✓ RADIUS server is working correctly"
+        # Test with radtest if available
+        if command -v radtest &> /dev/null; then
+            if radtest "$TEST_USER" "$TEST_PASS" "$RADIUS_HOST" 1812 "$RADIUS_SECRET" &> /dev/null; then
+                print_success "RADIUS authentication test PASSED"
+            else
+                print_warning "RADIUS authentication test FAILED"
+                print_info "This may be normal if radtest is not configured properly"
+            fi
+            
+            # Clean up test user
+            psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = '$TEST_USER';" > /dev/null 2>&1
         else
-            print_warning "RADIUS authentication test FAILED"
-            print_info "This may be normal if FreeRADIUS needs additional configuration"
-            print_info "You can test manually with: radtest test_install test123 $RADIUS_HOST 1812 $RADIUS_SECRET"
+            print_info "radtest not available, skipping authentication test"
+            print_info "You can test manually from /settings/servers page"
         fi
         
-        # Clean up test user
-        psql "$DATABASE_URL" << CLEANUP
-DELETE FROM radius_users WHERE username = 'test_install';
-CLEANUP
+        print_info "Checking for configured routers..."
+        ROUTER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active';")
+        
+        if [ "$ROUTER_COUNT" -gt 0 ]; then
+            print_info "Found $ROUTER_COUNT active router(s)"
+            print_info "Testing connectivity to physical routers..."
+            
+            # Get first router details
+            ROUTER_INFO=$(psql "$DATABASE_URL" -tAc "SELECT ip_address, name FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active' LIMIT 1;")
+            ROUTER_IP=$(echo "$ROUTER_INFO" | cut -d'|' -f1 | tr -d ' ')
+            ROUTER_NAME=$(echo "$ROUTER_INFO" | cut -d'|' -f2)
+            
+            if [ -n "$ROUTER_IP" ]; then
+                print_info "Testing ping to router '$ROUTER_NAME' ($ROUTER_IP)..."
+                if ping -c 2 -W 2 "$ROUTER_IP" > /dev/null 2>&1; then
+                    print_success "Router $ROUTER_IP is reachable"
+                    
+                    # Add router to RADIUS NAS table
+                    psql "$DATABASE_URL" << ADDNAS
+INSERT INTO radius_nas (network_device_id, name, short_name, ip_address, secret, type, status)
+SELECT id, name, SUBSTRING(name FROM 1 FOR 32), ip_address::inet, '$RADIUS_SECRET', type, status
+FROM network_devices 
+WHERE ip_address = '$ROUTER_IP'
+ON CONFLICT (ip_address) DO UPDATE SET
+    secret = EXCLUDED.secret,
+    updated_at = NOW();
+ADDNAS
+                    print_success "Router added to RADIUS NAS configuration"
+                    print_info "Router can now authenticate users via RADIUS"
+                else
+                    print_warning "Router $ROUTER_IP is not reachable"
+                    print_info "Ensure the router is powered on and network is configured"
+                fi
+            fi
+        else
+            print_info "No routers configured yet"
+            print_info "Add routers from /network/routers page"
+            print_info "They will automatically sync to RADIUS NAS table"
+        fi
+        
     else
-        print_info "radtest not available, skipping authentication test"
-        print_info "Install freeradius-utils for testing: sudo apt install freeradius-utils"
+        print_error "RADIUS server is not listening on port 1812"
+        print_info "Check logs: sudo journalctl -u freeradius -n 50"
+        print_info "Or try: sudo freeradius -X"
     fi
     
-    print_header "RADIUS Installation Summary"
-    echo ""
-    print_info "RADIUS Server IP: $RADIUS_HOST"
-    print_info "Authentication Port: 1812"
-    print_info "Accounting Port: 1813"
-    print_info "Shared Secret: ${RADIUS_SECRET:0:8}... (view full secret in /settings/servers)"
-    echo ""
-    print_success "RADIUS configuration saved to database"
-    print_info "Access configuration at: http://localhost:3000/settings/servers"
-    echo ""
-    print_info "Next steps:"
-    print_info "  1. Visit /settings/servers to verify RADIUS configuration"
-    print_info "  2. Add your MikroTik routers in /network/routers"
-    print_info "  3. Configure routers to use RADIUS IP: $RADIUS_HOST"
-    print_info "  4. Use the shared secret displayed in /settings/servers"
-    print_info "  5. Test connectivity using the Router Connectivity Testing tool"
-    echo ""
+    print_success "FreeRADIUS installation completed"
+    print_info "Visit /settings/servers to view and manage RADIUS configuration"
 }
 
 setup_database() {
@@ -1937,8 +2023,6 @@ CREATE TABLE IF NOT EXISTS radius_sessions_active (
     session_time INTEGER DEFAULT 0,
     bytes_in BIGINT DEFAULT 0,
     bytes_out BIGINT DEFAULT 0,
-    packets_in BIGINT DEFAULT 0,
-    packets_out BIGINT DEFAULT 0,
     UNIQUE (username, nas_ip_address, start_time) -- Prevent duplicate entries for same user session from same NAS
 );
 

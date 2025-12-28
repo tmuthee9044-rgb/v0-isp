@@ -136,6 +136,11 @@ export default function ServerConfigurationPage() {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
       const data = await response.json()
+
+      console.log("[v0] Fetched server config from API")
+      console.log("[v0] RADIUS host:", data?.radius?.host)
+      console.log("[v0] RADIUS secret present:", !!data?.radius?.sharedSecret)
+
       setServerConfig(data)
     } catch (error) {
       console.error("Error fetching server config:", error)

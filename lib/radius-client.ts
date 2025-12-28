@@ -207,14 +207,17 @@ export class RadiusClient {
 
   /**
    * Get the NAS IP address (the IP of this system)
-   * If not provided in config, auto-detect the primary network interface IP
+   * Auto-detect the primary network interface IP - NEVER use 127.0.0.1
    */
   private getNasIpAddress(): Buffer {
-    // If NAS IP is provided in config, use it
-    if (this.config.nasIp) {
+    const shouldAutoDetect =
+      !this.config.nasIp || this.config.nasIp === "127.0.0.1" || this.config.nasIp === "localhost"
+
+    if (!shouldAutoDetect) {
       try {
         const ipParts = this.config.nasIp.split(".").map((p) => Number.parseInt(p, 10))
         if (ipParts.length === 4 && ipParts.every((p) => p >= 0 && p <= 255)) {
+          console.log(`[v0] RADIUS: Using configured NAS IP:`, this.config.nasIp)
           return Buffer.from(ipParts)
         }
       } catch {
@@ -226,7 +229,7 @@ export class RadiusClient {
       const interfaces = os.networkInterfaces()
 
       // Priority order: eth0, ens, en, wlan
-      const priorityOrder = ["eth0", "ens", "en0", "en1", "wlan0"]
+      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "en0", "en1", "wlan0"]
 
       for (const name of priorityOrder) {
         const iface = interfaces[name]
@@ -234,7 +237,7 @@ export class RadiusClient {
           const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
           if (ipv4) {
             const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
-            console.log(`[v0] RADIUS: Using detected NAS IP from ${name}:`, ipv4.address)
+            console.log(`[v0] RADIUS: Auto-detected NAS IP from ${name}:`, ipv4.address)
             return Buffer.from(ipParts)
           }
         }
@@ -247,7 +250,7 @@ export class RadiusClient {
           const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
           if (ipv4) {
             const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
-            console.log(`[v0] RADIUS: Using detected NAS IP from ${name}:`, ipv4.address)
+            console.log(`[v0] RADIUS: Auto-detected NAS IP from ${name}:`, ipv4.address)
             return Buffer.from(ipParts)
           }
         }
@@ -256,9 +259,11 @@ export class RadiusClient {
       console.error("[v0] RADIUS: Failed to auto-detect NAS IP:", error)
     }
 
-    // Last resort fallback to localhost
-    console.warn("[v0] RADIUS: Could not detect NAS IP, falling back to 127.0.0.1")
-    return Buffer.from([127, 0, 0, 1])
+    throw new Error(
+      "Could not detect network IP address for NAS-IP-Address. " +
+        "Please ensure the server has a network interface with an IP address, " +
+        "or provide the nasIp parameter in the RADIUS client configuration.",
+    )
   }
 }
 

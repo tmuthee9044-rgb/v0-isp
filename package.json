@@ -8,6 +8,8 @@
     "dev:skip-checks": "next dev",
     "lint": "next lint",
     "migrate:dual-db": "node scripts/migrate-all-routes-to-dual-db.js",
+    "radius:setup": "bash scripts/verify-and-create-radius-tables.sh",
+    "radius:verify": "tsx scripts/verify-radius-database.ts",
     "start": "next start"
   },
   "dependencies": {
@@ -86,6 +88,7 @@
     "sql-template-tag": "5.2.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.7.0",
     "url": "latest",
     "util": "latest",
     "vaul": "latest",

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+const os = require("os")
 
 export async function GET() {
   const sql = await getSql()
@@ -11,10 +12,44 @@ export async function GET() {
       WHERE key LIKE 'server.%' OR key LIKE 'network.%'
     `
 
+    let detectedHostIp = ""
+
+    try {
+      const interfaces = os.networkInterfaces()
+      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "en0", "en1"]
+
+      for (const name of priorityOrder) {
+        const iface = interfaces[name]
+        if (iface) {
+          const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
+          if (ipv4) {
+            detectedHostIp = ipv4.address
+            break
+          }
+        }
+      }
+
+      // Fallback to any non-internal IPv4
+      if (!detectedHostIp) {
+        for (const name in interfaces) {
+          const iface = interfaces[name]
+          if (iface) {
+            const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
+            if (ipv4) {
+              detectedHostIp = ipv4.address
+              break
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Failed to detect host IP:", error)
+    }
+
     const serverConfig = {
       radius: {
         enabled: false,
-        host: "",
+        host: detectedHostIp, // Default to detected IP instead of empty string
         authPort: "1812",
         acctPort: "1813",
         timeout: "30",
@@ -86,7 +121,12 @@ export async function GET() {
         } else if (keys[2] === "authMethods") {
           serverConfig.radius.authMethods = { ...serverConfig.radius.authMethods, ...value }
         } else if (keys[2]) {
-          serverConfig.radius[keys[2]] = value
+          if (keys[2] === "host" && (value === "127.0.0.1" || value === "localhost") && detectedHostIp) {
+            serverConfig.radius[keys[2]] = detectedHostIp
+            console.log("[v0] Replaced localhost RADIUS host with detected IP:", detectedHostIp)
+          } else {
+            serverConfig.radius[keys[2]] = value
+          }
         }
       } else if (keys[0] === "server" && keys[1] === "openvpn") {
         if (keys[2]) {

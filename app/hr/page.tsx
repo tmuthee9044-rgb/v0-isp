@@ -52,34 +52,55 @@ export default function HRPage() {
   const [payrollHistory, setPayrollHistory] = useState<any[]>([])
   const [performanceReviews, setPerformanceReviews] = useState<any[]>([])
   const [departments, setDepartments] = useState<any[]>([])
+  const [complianceData, setComplianceData] = useState<any>({
+    compliance: {
+      nssf: { compliant: 0, total: 0, percentage: 0 },
+      sha: { compliant: 0, total: 0, percentage: 0 },
+      kra: { compliant: 0, total: 0 },
+      expiringContracts: 0,
+    },
+    statutory: {
+      totalPaye: 0,
+      totalNssf: 0,
+      totalSha: 0,
+      totalDeductions: 0,
+    },
+  })
 
   useEffect(() => {
-    const fetchAllData = async () => {
-      setLoading(true)
-      const startTime = performance.now()
-      console.log("[v0] Starting parallel data fetch for HR page...")
-
+    const fetchData = async () => {
       try {
-        const [employeesRes, activitiesRes, leaveRes, payrollRes, performanceRes, departmentsRes] = await Promise.all([
-          fetch("/api/employees", { next: { revalidate: 60 } }),
-          fetch("/api/hr/activities"),
-          fetch("/api/hr/leave-requests"),
-          fetch("/api/hr/payroll-history"),
-          fetch("/api/hr/performance-reviews"),
-          fetch("/api/hr/departments"),
-        ])
-
-        const [employeesData, activitiesData, leaveData, payrollData, performanceData, departmentsData] =
+        setLoading(true)
+        const [employeesRes, activitiesRes, leaveRes, payrollRes, performanceRes, departmentsRes, complianceRes] =
           await Promise.all([
-            employeesRes.ok ? employeesRes.json() : { employees: [] },
-            activitiesRes.ok ? activitiesRes.json() : { activities: [] },
-            leaveRes.ok
-              ? leaveRes.json()
-              : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
-            payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
-            performanceRes.ok ? performanceRes.json() : { reviews: [] },
-            departmentsRes.ok ? departmentsRes.json() : { departments: [] },
+            fetch("/api/employees", { next: { revalidate: 60 } }),
+            fetch("/api/hr/activities"),
+            fetch("/api/hr/leave-requests"),
+            fetch("/api/hr/payroll-history"),
+            fetch("/api/hr/performance-reviews"),
+            fetch("/api/hr/departments"),
+            fetch("/api/hr/compliance"),
           ])
+
+        const [
+          employeesData,
+          activitiesData,
+          leaveData,
+          payrollData,
+          performanceData,
+          departmentsData,
+          complianceDataRes,
+        ] = await Promise.all([
+          employeesRes.ok ? employeesRes.json() : { employees: [] },
+          activitiesRes.ok ? activitiesRes.json() : { activities: [] },
+          leaveRes.ok
+            ? leaveRes.json()
+            : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
+          payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
+          performanceRes.ok ? performanceRes.json() : { reviews: [] },
+          departmentsRes.ok ? departmentsRes.json() : { departments: [] },
+          complianceRes.ok ? complianceRes.json() : null,
+        ])
 
         if (employeesData.success) {
           setEmployees(employeesData.employees || [])
@@ -112,28 +133,42 @@ export default function HRPage() {
           setPerformanceReviews(performanceData.reviews || [])
         }
 
-        const endTime = performance.now()
-        console.log(`[v0] HR page data loaded in ${(endTime - startTime).toFixed(2)}ms`)
+        if (complianceDataRes?.success) {
+          setComplianceData(complianceDataRes)
+        }
+
+        setLoading(false)
       } catch (error) {
-        console.error("[v0] Error fetching HR data:", error)
+        console.error("Error fetching data:", error)
         setEmployees([])
         setActivities([])
         setLeaveRequests([])
         setPayrollHistory([])
         setPerformanceReviews([])
         setDepartments([]) // Reset departments on error
-      } finally {
+        setComplianceData({
+          // Reset compliance data on error
+          compliance: {
+            nssf: { compliant: 0, total: 0, percentage: 0 },
+            sha: { compliant: 0, total: 0, percentage: 0 },
+            kra: { compliant: 0, total: 0 },
+            expiringContracts: 0,
+          },
+          statutory: {
+            totalPaye: 0,
+            totalNssf: 0,
+            totalSha: 0,
+            totalDeductions: 0,
+          },
+        })
         setLoading(false)
       }
     }
 
-    fetchAllData()
-  }, [])
+    fetchData()
 
-  useEffect(() => {
     const handleEditEvent = (event: any) => {
-      const employee = event.detail
-      setEditingEmployee(employee)
+      setEditingEmployee(event.detail.employee)
       setShowAddEmployee(true)
     }
 
@@ -150,11 +185,13 @@ export default function HRPage() {
     window.addEventListener("editEmployee", handleEditEvent)
     window.addEventListener("leaveAdded", handleLeaveAdded)
     window.addEventListener("reviewAdded", handleReviewAdded)
+    window.addEventListener("leaveRequestAdded", handleLeaveAdded)
 
     return () => {
       window.removeEventListener("editEmployee", handleEditEvent)
       window.removeEventListener("leaveAdded", handleLeaveAdded)
       window.removeEventListener("reviewAdded", handleReviewAdded)
+      window.removeEventListener("leaveRequestAdded", handleLeaveAdded)
     }
   }, [])
 
@@ -795,8 +832,10 @@ export default function HRPage() {
                 <Shield className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">100%</div>
-                <p className="text-xs text-muted-foreground">All employees registered</p>
+                <div className="text-2xl font-bold">{complianceData.compliance.nssf.percentage}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {complianceData.compliance.nssf.compliant}/{complianceData.compliance.nssf.total} employees registered
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -805,8 +844,10 @@ export default function HRPage() {
                 <UserCheck className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">100%</div>
-                <p className="text-xs text-muted-foreground">All employees covered</p>
+                <div className="text-2xl font-bold">{complianceData.compliance.sha.percentage}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {complianceData.compliance.sha.compliant}/{complianceData.compliance.sha.total} employees covered
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -815,7 +856,9 @@ export default function HRPage() {
                 <FileText className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">24/24</div>
+                <div className="text-2xl font-bold">
+                  {complianceData.compliance.kra.compliant}/{complianceData.compliance.kra.total}
+                </div>
                 <p className="text-xs text-muted-foreground">All PINs verified</p>
               </CardContent>
             </Card>
@@ -825,7 +868,7 @@ export default function HRPage() {
                 <Users className="h-4 w-4 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">2</div>
+                <div className="text-2xl font-bold">{complianceData.compliance.expiringContracts}</div>
                 <p className="text-xs text-muted-foreground">Contracts expiring soon</p>
               </CardContent>
             </Card>
@@ -841,19 +884,21 @@ export default function HRPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">PAYE (Pay As You Earn)</span>
-                    <span className="text-sm">{formatCurrency(payrollSummary.totalPaye)}</span>
+                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalPaye)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">NSSF Contributions</span>
-                    <span className="text-sm">{formatCurrency(payrollSummary.totalNssf)}</span>
+                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalNssf)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">SHA Contributions</span>
-                    <span className="text-sm">{formatCurrency(payrollSummary.totalSha)}</span>
+                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalSha)}</span>
                   </div>
                   <div className="flex items-center justify-between border-t pt-2">
                     <span className="text-sm font-medium">Total Statutory</span>
-                    <span className="text-sm font-bold">{formatCurrency(payrollSummary.totalDeductions)}</span>
+                    <span className="text-sm font-bold">
+                      {formatCurrency(complianceData.statutory.totalDeductions)}
+                    </span>
                   </div>
                 </div>
               </CardContent>

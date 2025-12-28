@@ -35,58 +35,96 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const sql = await getSql()
     const id = Number(params.id)
 
-    let body
+    let body: any
+    const contentType = request.headers.get("content-type")
+
     try {
-      body = await request.json()
+      if (contentType?.includes("application/json")) {
+        body = await request.json()
+      } else {
+        // Handle FormData
+        const formData = await request.formData()
+        body = Object.fromEntries(formData.entries())
+      }
     } catch (parseError) {
-      console.error("Error parsing JSON:", parseError)
-      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 })
+      console.error("[v0] Error parsing request body:", parseError)
+      return NextResponse.json({ error: "Invalid request body format" }, { status: 400 })
     }
+
+    console.log("[v0] Received employee update data:", body)
 
     const {
       first_name,
+      firstName,
       last_name,
+      lastName,
       email,
       phone,
       department_id,
+      department,
       role_id,
       salary,
+      basicSalary,
       hire_date,
+      startDate,
       status,
       address,
       emergency_contact_name,
+      emergencyContact,
       emergency_contact_phone,
+      emergencyPhone,
     } = body
 
-    const parsedDepartmentId = department_id ? Number(department_id) : null
-    const parsedRoleId = role_id ? Number(role_id) : null
-    const parsedSalary = salary ? Number(salary) : null
+    const finalFirstName = first_name || firstName
+    const finalLastName = last_name || lastName
+    const finalEmergencyName = emergency_contact_name || emergencyContact
+    const finalEmergencyPhone = emergency_contact_phone || emergencyPhone
+    const finalHireDate = hire_date || startDate
+    const finalSalary = salary || basicSalary
+    const finalDepartmentId = department_id || department
 
-    if (department_id && isNaN(parsedDepartmentId)) {
+    const parsedDepartmentId =
+      finalDepartmentId && String(finalDepartmentId).trim() !== "" ? Number(finalDepartmentId) : null
+    const parsedRoleId = role_id && String(role_id).trim() !== "" ? Number(role_id) : null
+    const parsedSalary =
+      finalSalary && String(finalSalary).trim() !== "" && String(finalSalary) !== "-" ? Number(finalSalary) : null
+
+    if (finalDepartmentId && (isNaN(parsedDepartmentId!) || parsedDepartmentId === null)) {
+      console.error("[v0] Invalid department_id:", finalDepartmentId)
       return NextResponse.json({ error: "Invalid department_id" }, { status: 400 })
     }
-    if (role_id && isNaN(parsedRoleId)) {
+    if (role_id && (isNaN(parsedRoleId!) || parsedRoleId === null)) {
+      console.error("[v0] Invalid role_id:", role_id)
       return NextResponse.json({ error: "Invalid role_id" }, { status: 400 })
     }
-    if (salary && isNaN(parsedSalary)) {
-      return NextResponse.json({ error: "Invalid salary" }, { status: 400 })
+    if (finalSalary && (isNaN(parsedSalary!) || parsedSalary === null)) {
+      console.error("[v0] Invalid salary:", finalSalary)
+      return NextResponse.json({ error: "Invalid salary value" }, { status: 400 })
     }
+
+    console.log("[v0] Updating employee with parsed values:", {
+      finalFirstName,
+      finalLastName,
+      parsedDepartmentId,
+      parsedRoleId,
+      parsedSalary,
+    })
 
     const result = await sql`
       UPDATE employees 
       SET 
-        first_name = ${first_name},
-        last_name = ${last_name},
+        first_name = ${finalFirstName},
+        last_name = ${finalLastName},
         email = ${email},
         phone = ${phone},
         department_id = ${parsedDepartmentId},
         role_id = ${parsedRoleId},
         salary = ${parsedSalary},
-        hire_date = ${hire_date},
-        status = ${status},
+        hire_date = ${finalHireDate},
+        status = ${status || "active"},
         address = ${address},
-        emergency_contact_name = ${emergency_contact_name},
-        emergency_contact_phone = ${emergency_contact_phone},
+        emergency_contact_name = ${finalEmergencyName},
+        emergency_contact_phone = ${finalEmergencyPhone},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING id
@@ -96,10 +134,17 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Employee not found" }, { status: 404 })
     }
 
+    console.log("[v0] Employee updated successfully:", result[0].id)
     return NextResponse.json({ success: true, id: result[0].id })
   } catch (error) {
-    console.error("Error updating employee:", error)
-    return NextResponse.json({ error: "Failed to update employee" }, { status: 500 })
+    console.error("[v0] Error updating employee:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to update employee",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
   }
 }
 

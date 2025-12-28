@@ -22,7 +22,7 @@ export async function GET() {
     // Get SHA compliance - employees with SHA/NHIF numbers
     const shaCompliant = await sql`
       SELECT COUNT(*) as count FROM employees 
-      WHERE status = 'active' AND nhif_number IS NOT NULL AND nhif_number != ''
+      WHERE status = 'active' AND sha_number IS NOT NULL AND sha_number != ''
     `
     const shaCount = Number.parseInt(shaCompliant[0]?.count || "0")
     const shaPercentage = employeeCount > 0 ? Math.round((shaCount / employeeCount) * 100) : 0

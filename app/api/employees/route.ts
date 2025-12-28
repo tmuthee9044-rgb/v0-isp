@@ -116,6 +116,23 @@ export async function POST(request: NextRequest) {
       userRole,
     } = data
 
+    const existingEmployee = await sql`
+      SELECT id, employee_id, first_name, last_name 
+      FROM employees 
+      WHERE email = ${email}
+    `
+
+    if (existingEmployee.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `An employee with email ${email} already exists (${existingEmployee[0].first_name} ${existingEmployee[0].last_name} - ${existingEmployee[0].employee_id})`,
+          error: "DUPLICATE_EMAIL",
+        },
+        { status: 409 }, // 409 Conflict status code
+      )
+    }
+
     const finalEmployeeId = employeeId || `EMP${Date.now().toString().slice(-6)}`
 
     const result = await sql`

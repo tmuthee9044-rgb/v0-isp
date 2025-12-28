@@ -10,21 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Activity,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Database,
-  Network,
-  Router,
-  Server,
-  Shield,
-  Wifi,
-  XCircle,
-  Eye,
-  EyeOff,
-} from "lucide-react"
+import { Activity, AlertCircle, CheckCircle, Clock, Router, Server, Shield, XCircle, Eye, EyeOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 // Define a more specific type for serverConfig if possible, otherwise use 'any'
@@ -117,7 +103,9 @@ interface ServerConfig {
 export default function ServerConfigurationPage() {
   const { toast } = useToast()
   const [isPending, setIsPending] = useState(false)
-  const [activeNetworkTab, setActiveNetworkTab] = useState("configuration")
+  const [testResults, setTestResults] = useState<any>(null)
+  const [isTesting, setIsTesting] = useState(false)
+
   const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null) // Initialize with null, and provide a type
   const [isLoading, setIsLoading] = useState(true)
   const [showSecret, setShowSecret] = useState(false) // State for toggling password visibility
@@ -314,9 +302,9 @@ export default function ServerConfigurationPage() {
             <Server className="h-4 w-4" />
             <span>OpenVPN</span>
           </TabsTrigger>
-          <TabsTrigger value="network" className="flex items-center space-x-2">
-            <Network className="h-4 w-4" />
-            <span>Network</span>
+          <TabsTrigger value="logs" className="flex items-center space-x-2">
+            <Activity className="h-4 w-4" />
+            <span>Logs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1441,386 +1429,22 @@ export default function ServerConfigurationPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="network" className="space-y-4">
+        <TabsContent value="logs" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Network className="h-5 w-5" />
-                <span>Network Management</span>
+                <Activity className="h-5 w-5" />
+                <span>System Logs</span>
               </CardTitle>
-              <CardDescription>Configure network infrastructure and monitoring settings</CardDescription>
+              <CardDescription>View recent system and service logs</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs value={activeNetworkTab} onValueChange={setActiveNetworkTab}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="configuration" className="flex items-center space-x-2">
-                    <Router className="h-4 w-4" />
-                    <span>Network Configuration</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="monitoring" className="flex items-center space-x-2">
-                    <Activity className="h-4 w-4" />
-                    <span>Monitoring</span>
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="configuration" className="space-y-6 mt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="gateway">Default Gateway</Label>
-                      <Input
-                        id="gateway"
-                        placeholder="Enter gateway IP"
-                        value={serverConfig?.network?.gateway || ""}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, gateway: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="subnet-mask">Subnet Mask</Label>
-                      <Input
-                        id="subnet-mask"
-                        placeholder="255.255.255.0"
-                        value={serverConfig?.network?.subnetMask || "255.255.255.0"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, subnetMask: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="management-vlan">Management VLAN</Label>
-                      <Input
-                        id="management-vlan"
-                        placeholder="Enter VLAN ID"
-                        value={serverConfig?.network?.managementVlan || ""}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, managementVlan: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="customer-vlan">Customer VLAN Range</Label>
-                      <Input
-                        id="customer-vlan"
-                        placeholder="200-299"
-                        value={serverConfig?.network?.customerVlan || ""}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, customerVlan: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="snmp-community">SNMP Community</Label>
-                    <Input
-                      id="snmp-community"
-                      placeholder="public"
-                      value={serverConfig?.network?.snmpCommunity || "public"}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          network: { ...prev?.network, snmpCommunity: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="ntp-server">NTP Server</Label>
-                    <Input
-                      id="ntp-server"
-                      placeholder="pool.ntp.org"
-                      value={serverConfig?.network?.ntpServer || "pool.ntp.org"}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          network: { ...prev?.network, ntpServer: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-4">
-                    <Label className="text-base">Network Features</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="firewall"
-                          checked={serverConfig?.network?.features?.firewall ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                features: { ...prev?.network?.features, firewall: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="firewall">Firewall</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="ddos-protection"
-                          checked={serverConfig?.network?.features?.ddosProtection ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                features: { ...prev?.network?.features, ddosProtection: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="ddos-protection">DDoS Protection</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="port-scan"
-                          checked={serverConfig?.network?.features?.portScan ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                features: { ...prev?.network?.features, portScan: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="port-scan">Port Scan Detection</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="intrusion-detection"
-                          checked={serverConfig?.network?.features?.intrusionDetection ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                features: { ...prev?.network?.features, intrusionDetection: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="intrusion-detection">Intrusion Detection</Label>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="upload-limit">Default Upload Limit (Mbps)</Label>
-                      <Input
-                        id="upload-limit"
-                        placeholder="10"
-                        value={serverConfig?.network?.uploadLimit || "10"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, uploadLimit: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="download-limit">Default Download Limit (Mbps)</Label>
-                      <Input
-                        id="download-limit"
-                        placeholder="50"
-                        value={serverConfig?.network?.downloadLimit || "50"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, downloadLimit: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="burst-ratio">Burst Ratio</Label>
-                      <Input
-                        id="burst-ratio"
-                        placeholder="1.5"
-                        value={serverConfig?.network?.burstRatio || "1.5"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, burstRatio: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="monitoring" className="space-y-6 mt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Card>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Network Status</CardTitle>
-                        <Wifi className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                          <span className="text-sm">Online</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">All systems operational</p>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Active Connections</CardTitle>
-                        <Database className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold">1,234</div>
-                        <p className="text-xs text-muted-foreground">+12% from last hour</p>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Bandwidth Usage</CardTitle>
-                        <Activity className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold">67%</div>
-                        <p className="text-xs text-muted-foreground">of total capacity</p>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Alerts</CardTitle>
-                        <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold">3</div>
-                        <p className="text-xs text-muted-foreground">2 warnings, 1 critical</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="space-y-4">
-                    <Label className="text-base">Monitoring Settings</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="snmp-monitoring"
-                          checked={serverConfig?.network?.monitoring?.snmpMonitoring ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                monitoring: { ...prev?.network?.monitoring, snmpMonitoring: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="snmp-monitoring">SNMP Monitoring</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="bandwidth-monitoring"
-                          checked={serverConfig?.network?.monitoring?.bandwidthMonitoring ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                monitoring: { ...prev?.network?.monitoring, bandwidthMonitoring: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="bandwidth-monitoring">Bandwidth Monitoring</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="uptime-monitoring"
-                          checked={serverConfig?.network?.monitoring?.uptimeMonitoring ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                monitoring: { ...prev?.network?.monitoring, uptimeMonitoring: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="uptime-monitoring">Uptime Monitoring</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="alert-notifications"
-                          checked={serverConfig?.network?.monitoring?.alertNotifications ?? false}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              network: {
-                                ...prev?.network,
-                                monitoring: { ...prev?.network?.monitoring, alertNotifications: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="alert-notifications">Alert Notifications</Label>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="monitoring-interval">Monitoring Interval (minutes)</Label>
-                      <Input
-                        id="monitoring-interval"
-                        placeholder="5"
-                        value={serverConfig?.network?.monitoringInterval || "5"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, monitoringInterval: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="alert-threshold">Alert Threshold (%)</Label>
-                      <Input
-                        id="alert-threshold"
-                        placeholder="80"
-                        value={serverConfig?.network?.alertThreshold || "80"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            network: { ...prev?.network, alertThreshold: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
+              {/* Placeholder for logs display */}
+              <div className="flex flex-col items-center justify-center h-48">
+                <Activity className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-lg text-muted-foreground">Log viewer not yet implemented.</p>
+                <p className="text-sm text-muted-foreground">This feature will be available in a future update.</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

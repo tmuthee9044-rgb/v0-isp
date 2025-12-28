@@ -690,61 +690,42 @@ SQLEOF
     
     print_info "Configuring FreeRADIUS to listen on all network interfaces..."
     
+    # Configure the main radiusd.conf
     RADIUSD_CONF="$FREERADIUS_DIR/radiusd.conf"
     if [ -f "$RADIUSD_CONF" ]; then
         sudo cp "$RADIUSD_CONF" "$RADIUSD_CONF.backup.$(date +%Y%m%d_%H%M%S)"
         
-        # Ensure FreeRADIUS listens on all interfaces (0.0.0.0)
+        # Ensure FreeRADIUS listens on all interfaces
         sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$RADIUSD_CONF" 2>/dev/null || true
         sudo sed -i 's/ipaddr = ::1/ipaddr = ::/g' "$RADIUSD_CONF" 2>/dev/null || true
-        
-        print_success "FreeRADIUS configured to listen on all interfaces"
     fi
     
-    # Configure NAS clients
-    print_info "Configuring NAS clients..."
-    
-    CLIENTS_CONF="$FREERADIUS_DIR/clients.conf"
-    
-    if [ -f "$CLIENTS_CONF" ]; then
-        sudo cp "$CLIENTS_CONF" "$CLIENTS_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+    # Configure the default site to listen on all interfaces
+    DEFAULT_SITE="$FREERADIUS_DIR/sites-available/default"
+    if [ -f "$DEFAULT_SITE" ]; then
+        sudo cp "$DEFAULT_SITE" "$DEFAULT_SITE.backup.$(date +%Y%m%d_%H%M%S)"
         
-        sudo tee -a "$CLIENTS_CONF" > /dev/null << CLIENTEOF
-
-# ISP Management System - Auto-configured clients
-client localhost {
-    ipaddr = 127.0.0.1
-    secret = ${RADIUS_SECRET}
-    require_message_authenticator = no
-    nas_type = other
-}
-
-# Host machine IP (for local testing and management)
-client host_machine {
-    ipaddr = ${RADIUS_HOST}
-    secret = ${RADIUS_SECRET}
-    require_message_authenticator = no
-    nas_type = other
-}
-
-# Allow all private network ranges (routers will authenticate)
-# You should restrict this to specific router IPs in production
-client private_network {
-    ipaddr = 10.0.0.0/8
-    ipaddr = 172.16.0.0/12
-    ipaddr = 192.168.0.0/16
-    secret = ${RADIUS_SECRET}
-    require_message_authenticator = no
-    nas_type = other
-    shortname = private-nets
-}
-
-# Add more NAS clients from database dynamically
-# Routers will be synced from network_devices table
-CLIENTEOF
+        # Update listen sections to bind to all interfaces (0.0.0.0 or *)
+        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$DEFAULT_SITE" 2>/dev/null || true
+        sudo sed -i 's/ipaddr = ::1/ipaddr = ::/g' "$DEFAULT_SITE" 2>/dev/null || true
         
-        print_success "NAS clients configured"
+        # Also update any listen { } blocks that might have ipv4addr
+        sudo sed -i 's/ipv4addr = 127.0.0.1/ipv4addr = */g' "$DEFAULT_SITE" 2>/dev/null || true
+        sudo sed -i 's/ipv4addr = \*/ipv4addr = 0.0.0.0/g' "$DEFAULT_SITE" 2>/dev/null || true
+        
+        print_success "FreeRADIUS default site configured to listen on all interfaces"
     fi
+    
+    # Configure inner-tunnel site as well
+    INNER_TUNNEL="$FREERADIUS_DIR/sites-available/inner-tunnel"
+    if [ -f "$INNER_TUNNEL" ]; then
+        sudo cp "$INNER_TUNNEL" "$INNER_TUNNEL.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$INNER_TUNNEL" 2>/dev/null || true
+        sudo sed -i 's/ipv4addr = 127.0.0.1/ipv4addr = 0.0.0.0/g' "$INNER_TUNNEL" 2>/dev/null || true
+    fi
+    
+    print_success "FreeRADIUS configured to listen on all interfaces (0.0.0.0)"
     
     # Configure firewall
     print_info "Configuring firewall for RADIUS..."
@@ -859,7 +840,7 @@ ADDNAS
         fi
         
     else
-        print_error "RADIUS server is not listening on port 1812"
+        print_error "Radius server is not listening on port 1812"
         print_info "Check logs: sudo journalctl -u freeradius -n 50"
         print_info "Or try: sudo freeradius -X"
     fi
@@ -1726,7 +1707,7 @@ BEGIN
     END LOOP;
 END $$;
 EOF_OWNERSHIP2
-
+    
     print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
     sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true
     print_success "Superuser privileges granted"
@@ -2362,7 +2343,6 @@ verify_database_connection() {
     print_header "Verifying Database Connection (Comprehensive Test)"
     
     DB_NAME="${DB_NAME:-isp_system}"
-    DB_USER="${DB_USER:-isp_admin}"
     
     print_info "Step 1: Checking PostgreSQL service status..."
     

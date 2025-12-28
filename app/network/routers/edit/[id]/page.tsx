@@ -37,7 +37,18 @@ import {
   Twitch as Switch,
 } from "lucide-react"
 import { toast } from "sonner"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts"
 
 interface Router {
   id: number
@@ -167,6 +178,9 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   const [radiusTestResult, setRadiusTestResult] = useState<any>(null)
   const [radiusTestLoading, setRadiusTestLoading] = useState(false)
 
+  const [portTrafficHistory, setPortTrafficHistory] = useState<any[]>([])
+  const [availablePorts, setAvailablePorts] = useState<string[]>([])
+
   useEffect(() => {
     fetchRouter()
     fetchLocations()
@@ -252,11 +266,13 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchTrafficData = async () => {
     try {
+      console.log("[v0] Fetching traffic data for router", routerId)
       const response = await fetch(`/api/network/routers/${routerId}/monitor`)
       if (response.ok) {
         const data = await response.json()
-        // Convert monitor data to traffic chart format
-        if (data.realtime && data.performance) {
+        console.log("[v0] Monitor API response:", data)
+
+        if (data.performance && data.performance.length > 0) {
           const trafficPoints = data.performance
             .slice(0, 20)
             .reverse()
@@ -265,9 +281,9 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
               tx: point.bandwidth_out || 0,
               rx: point.bandwidth_in || 0,
             }))
+          console.log("[v0] Setting traffic data points:", trafficPoints.length)
           setTrafficData(trafficPoints)
-        } else {
-          // If no historical data, create single current point
+        } else if (data.realtime) {
           setTrafficData([
             {
               time: new Date().toLocaleTimeString(),
@@ -275,12 +291,16 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
               rx: 0,
             },
           ])
+        } else {
+          console.log("[v0] No traffic data available")
+          setTrafficData([])
         }
       } else {
+        console.error("[v0] Monitor API error:", response.status)
         setTrafficData([])
       }
     } catch (error) {
-      console.error("Error fetching traffic data:", error)
+      console.error("[v0] Error fetching traffic data:", error)
       setTrafficData([])
     }
   }
@@ -337,9 +357,26 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleHistoricalRangeChange = (range: "24h" | "7d" | "30d") => {
-    setHistoricalRange(range)
-    fetchHistoricalTraffic(range)
+  const fetchPortTrafficHistory = async (range: string) => {
+    try {
+      const response = await fetch(`/api/network/routers/${routerId}/port-traffic-history?range=${range}`)
+      const data = await response.json()
+
+      console.log("[v0] Port traffic history data:", data)
+
+      if (data.success) {
+        setPortTrafficHistory(data.history || [])
+        setAvailablePorts(data.ports || [])
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching port traffic history:", error)
+    }
+  }
+
+  const handleHistoricalRangeChange = async (value: string) => {
+    setHistoricalRange(value)
+    await fetchHistoricalTraffic(value)
+    await fetchPortTrafficHistory(value)
   }
 
   const fetchLogs = async () => {
@@ -910,238 +947,6 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                     </div>
 
                     {/* Radius Configuration */}
-                    <div className="space-y-4 pt-4 border-t">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">RADIUS Configuration</h3>
-                        {radiusSettings?.enabled && (
-                          <Badge variant="success" className="bg-green-100 text-green-800">
-                            <Activity className="w-3 h-3 mr-1" />
-                            RADIUS Server Active
-                          </Badge>
-                        )}
-                      </div>
-
-                      {radiusSettings?.enabled ? (
-                        <>
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                            <p className="font-medium text-blue-900 mb-1">FreeRADIUS Integration</p>
-                            <p className="text-blue-700">
-                              This router is configured to work with your FreeRADIUS server at{" "}
-                              <span className="font-mono">
-                                {radiusSettings.host}:{radiusSettings.authPort}
-                              </span>
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="radius_secret">RADIUS Shared Secret 🔒</Label>
-                              <Input
-                                id="radius_secret"
-                                type="password"
-                                value={formData.radius_secret || ""}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, radius_secret: e.target.value }))}
-                                placeholder="Enter shared secret"
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Must match the secret configured in FreeRADIUS clients.conf
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="radius_nas_ip">NAS IP Address</Label>
-                              <Input
-                                id="radius_nas_ip"
-                                value={formData.radius_nas_ip || ""}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, radius_nas_ip: e.target.value }))}
-                                placeholder={formData.ip_address || "Router IP address"}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Network Access Server identifier (usually router IP)
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="p-4 bg-gray-50 border rounded-lg space-y-4">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="font-semibold text-sm">RADIUS Test & Troubleshooting</h4>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  Verify router can connect to FreeRADIUS server
-                                </p>
-                              </div>
-                              <Button
-                                onClick={handleTestRadius}
-                                disabled={radiusTestLoading}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 bg-transparent"
-                              >
-                                {radiusTestLoading ? (
-                                  <>
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                    Testing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Activity className="w-4 h-4" />
-                                    Run Test
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-
-                            {radiusTestResult && (
-                              <div className="space-y-3">
-                                {/* Test Results */}
-                                {radiusTestResult.tests?.map((test: any, index: number) => (
-                                  <div
-                                    key={index}
-                                    className={`p-3 rounded-lg border ${
-                                      test.status === "success"
-                                        ? "bg-green-50 border-green-200"
-                                        : test.status === "failed"
-                                          ? "bg-red-50 border-red-200"
-                                          : test.status === "warning"
-                                            ? "bg-amber-50 border-amber-200"
-                                            : "bg-blue-50 border-blue-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-start gap-2">
-                                      {test.status === "success" && (
-                                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
-                                      )}
-                                      {test.status === "failed" && (
-                                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                                      )}
-                                      {test.status === "warning" && (
-                                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
-                                      )}
-                                      {test.status === "info" && <Info className="w-4 h-4 text-blue-600 mt-0.5" />}
-                                      <div className="flex-1">
-                                        <p className="font-medium text-sm">{test.name}</p>
-                                        <p className="text-xs text-muted-foreground mt-0.5">{test.message}</p>
-
-                                        {test.details && (
-                                          <div className="mt-2 text-xs font-mono bg-white p-2 rounded border">
-                                            <div>Host: {test.details.host}</div>
-                                            <div>Port: {test.details.port}</div>
-                                            {test.details.responseTime && (
-                                              <div>Response Time: {test.details.responseTime}</div>
-                                            )}
-                                            <div>Status: {test.details.status}</div>
-                                            {test.details.error && (
-                                              <div className="text-red-600">Error: {test.details.error}</div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {test.checks && (
-                                          <div className="mt-2 space-y-1">
-                                            {test.checks.map((check: any, idx: number) => (
-                                              <div key={idx} className="flex items-center gap-2 text-xs">
-                                                {check.status === "success" && (
-                                                  <CheckCircle className="w-3 h-3 text-green-600" />
-                                                )}
-                                                {check.status === "error" && (
-                                                  <AlertCircle className="w-3 h-3 text-red-600" />
-                                                )}
-                                                {check.status === "warning" && (
-                                                  <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                                )}
-                                                <span className="font-medium">{check.item}:</span>
-                                                <span className="text-muted-foreground">{check.message}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {/* MikroTik Configuration Commands */}
-                                {radiusTestResult.mikrotikConfig && (
-                                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                    <p className="text-sm font-medium text-amber-900 mb-2">
-                                      MikroTik Configuration Commands
-                                    </p>
-                                    <div className="space-y-1 text-xs font-mono bg-white p-3 rounded border max-h-48 overflow-y-auto">
-                                      {radiusTestResult.mikrotikConfig.commands.map((cmd: string, idx: number) => (
-                                        <div
-                                          key={idx}
-                                          className={cmd.startsWith("#") ? "text-amber-800 font-semibold mt-2" : ""}
-                                        >
-                                          {cmd}
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <p className="text-xs text-amber-700 mt-2">
-                                      Copy these commands and paste them into your MikroTik terminal
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Troubleshooting Tips */}
-                                <div className="p-3 bg-slate-50 border rounded-lg">
-                                  <p className="text-sm font-medium mb-2">Troubleshooting Checklist</p>
-                                  <ul className="text-xs space-y-1 text-muted-foreground">
-                                    <li>✓ Verify RADIUS secret matches on both router and server</li>
-                                    <li>✓ Ensure router can ping RADIUS server IP: {radiusSettings.host}</li>
-                                    <li>
-                                      ✓ Check firewall allows UDP ports {radiusSettings.authPort} and{" "}
-                                      {radiusSettings.acctPort}
-                                    </li>
-                                    <li>✓ Confirm FreeRADIUS service is running: systemctl status freeradius</li>
-                                    <li>✓ Check FreeRADIUS logs: tail -f /var/log/freeradius/radius.log</li>
-                                    <li>✓ Test from MikroTik: /radius incoming print</li>
-                                  </ul>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                            <p className="text-sm font-medium text-amber-900">MikroTik Configuration Commands</p>
-                            <div className="space-y-1 text-xs font-mono bg-white p-2 rounded border">
-                              <div className="text-amber-800"># Add RADIUS server to MikroTik</div>
-                              <div>
-                                /radius add service=ppp,login address={radiusSettings.host} secret=
-                                {formData.radius_secret || "YOUR_SECRET"}
-                              </div>
-                              <div className="text-amber-800 mt-2"># Enable RADIUS authentication</div>
-                              <div>/ppp aaa set use-radius=yes</div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="p-2 bg-gray-50 rounded">
-                              <p className="text-muted-foreground">Auth Port</p>
-                              <p className="font-medium font-mono">{radiusSettings.authPort}</p>
-                            </div>
-                            <div className="p-2 bg-gray-50 rounded">
-                              <p className="text-muted-foreground">Accounting Port</p>
-                              <p className="font-medium font-mono">{radiusSettings.acctPort}</p>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <div className="flex items-start gap-3">
-                            <Shield className="w-5 h-5 text-yellow-600 mt-0.5" />
-                            <div>
-                              <p className="font-medium text-yellow-900">RADIUS Server Not Configured</p>
-                              <p className="text-sm text-yellow-700 mt-1">
-                                Configure your FreeRADIUS server in{" "}
-                                <a href="/settings/servers" className="underline font-medium">
-                                  Settings → Servers
-                                </a>{" "}
-                                to enable AAA (Authentication, Authorization, Accounting) for this router.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </form>
               </CardContent>
@@ -1440,7 +1245,6 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           )}
         </TabsContent>
 
-        {/* Security Configuration */}
         <TabsContent value="security">
           <Card>
             <CardHeader>
@@ -1855,6 +1659,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
         <TabsContent value="graphics">
           <div className="space-y-6">
+            {/* Current Traffic (Live Traffic Usage) Card */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Live Traffic Usage</CardTitle>
@@ -1987,6 +1792,104 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
               </CardContent>
             </Card>
 
+            {/* Traffic History - Per Port Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Traffic History - Per Port</CardTitle>
+                <CardDescription>Historical bandwidth usage across all router ports/interfaces</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <Label>Time Range:</Label>
+                  <Select value={historicalRange} onValueChange={(value: any) => handleHistoricalRangeChange(value)}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1h">Last 1 Hour</SelectItem>
+                      <SelectItem value="6h">Last 6 Hours</SelectItem>
+                      <SelectItem value="12h">Last 12 Hours</SelectItem>
+                      <SelectItem value="24h">Last 24 Hours</SelectItem>
+                      <SelectItem value="7d">Last 7 Days</SelectItem>
+                      <SelectItem value="30d">Last 30 Days</SelectItem>
+                      <SelectItem value="90d">Last 90 Days</SelectItem>
+                      <SelectItem value="1y">Last 1 Year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant="outline" onClick={() => fetchPortTrafficHistory(historicalRange)}>
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {portTrafficHistory.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="h-96">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={portTrafficHistory}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="time"
+                            tickFormatter={(time) => {
+                              const date = new Date(time)
+                              if (historicalRange === "1h" || historicalRange === "6h") {
+                                return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                              } else if (historicalRange === "24h" || historicalRange === "7d") {
+                                return date.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit" })
+                              } else {
+                                return date.toLocaleDateString([], { month: "short", day: "numeric" })
+                              }
+                            }}
+                          />
+                          <YAxis label={{ value: "Mbps", angle: -90, position: "insideLeft" }} />
+                          <Tooltip
+                            formatter={(value: any) => `${typeof value === "number" ? value.toFixed(2) : "0.00"} Mbps`}
+                            labelFormatter={(time) => new Date(time).toLocaleString()}
+                          />
+                          <Legend />
+                          {availablePorts.map((port, index) => {
+                            const colors = [
+                              "#3b82f6",
+                              "#ef4444",
+                              "#10b981",
+                              "#f59e0b",
+                              "#8b5cf6",
+                              "#ec4899",
+                              "#14b8a6",
+                              "#f97316",
+                            ]
+                            const colorIndex = index % colors.length
+
+                            return (
+                              <Bar
+                                key={`${port}_rx`}
+                                dataKey={`${port}_rx`}
+                                fill={colors[colorIndex]}
+                                name={`${port} RX`}
+                                stackId="rx"
+                              />
+                            )
+                          })}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      Showing aggregated traffic data for {availablePorts.length} port(s). Each bar represents the
+                      combined traffic from all ports at that time.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Activity className="w-12 h-12 mb-4 opacity-50" />
+                    <p>No port traffic history available</p>
+                    <p className="text-sm">Traffic data will appear once the router starts collecting statistics</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Historical Traffic Usage Card with Table */}
             <Card>
               <CardHeader>
                 <CardTitle>Historical Traffic Usage</CardTitle>

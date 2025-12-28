@@ -11,6 +11,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { radiusHost, radiusPort, radiusSecret } = body
 
+    console.log("[v0] Testing RADIUS routers with config:", { radiusHost, radiusPort })
+
     if (!radiusHost || !radiusPort || !radiusSecret) {
       return NextResponse.json(
         {
@@ -22,6 +24,8 @@ export async function POST(request: NextRequest) {
     }
 
     const sql = await getSql()
+
+    console.log("[v0] Querying for active routers...")
 
     // Get all active routers
     const routers = await sql<
@@ -41,9 +45,22 @@ export async function POST(request: NextRequest) {
       ORDER BY name
     `
 
+    console.log("[v0] Found routers:", routers.length)
+
+    if (routers.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "No active routers found in database",
+        results: [],
+        hint: "Add routers in /network/routers first",
+      })
+    }
+
     const results = []
 
     for (const router of routers) {
+      console.log("[v0] Testing router:", router.name, router.ip_address)
+
       const routerResult: any = {
         routerId: router.id,
         routerName: router.name,
@@ -73,27 +90,43 @@ export async function POST(request: NextRequest) {
       }
 
       // Test 2: Check if router is registered as NAS client
-      const nasClients = await sql`
-        SELECT id, nas_name, nas_ip_address, secret
-        FROM radius_nas
-        WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
-        LIMIT 1
-      `
+      try {
+        const nasClients = await sql`
+          SELECT id, nas_name, nas_ip_address, secret
+          FROM radius_nas
+          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
+          LIMIT 1
+        `
 
-      routerResult.tests.nasRegistration = {
-        success: nasClients.length > 0,
-        registered: nasClients.length > 0,
-        nasName: nasClients[0]?.nas_name || null,
-        secretConfigured: nasClients.length > 0 && !!nasClients[0]?.secret,
+        routerResult.tests.nasRegistration = {
+          success: nasClients.length > 0,
+          registered: nasClients.length > 0,
+          nasName: nasClients[0]?.nas_name || null,
+          secretConfigured: nasClients.length > 0 && !!nasClients[0]?.secret,
+        }
+      } catch (error) {
+        console.error("[v0] Error checking NAS registration:", error)
+        routerResult.tests.nasRegistration = {
+          success: false,
+          registered: false,
+          error: "radius_nas table may not exist - run RADIUS migration",
+        }
       }
 
       // Test 3: Check RADIUS secret match
-      if (router.radius_secret && nasClients.length > 0) {
+      if (router.radius_secret && routerResult.tests.nasRegistration?.registered) {
+        const nasClients = await sql`
+          SELECT secret
+          FROM radius_nas
+          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
+          LIMIT 1
+        `
+
         routerResult.tests.secretMatch = {
-          success: router.radius_secret === nasClients[0].secret,
-          match: router.radius_secret === nasClients[0].secret,
+          success: router.radius_secret === nasClients[0]?.secret,
+          match: router.radius_secret === nasClients[0]?.secret,
           message:
-            router.radius_secret === nasClients[0].secret
+            router.radius_secret === nasClients[0]?.secret
               ? "RADIUS secrets match"
               : "RADIUS secrets mismatch - router cannot authenticate",
         }
@@ -106,33 +139,53 @@ export async function POST(request: NextRequest) {
       }
 
       // Test 4: Check for active sessions from this router
-      const sessions = await sql`
-        SELECT COUNT(*) as count
-        FROM radius_sessions_active
-        WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
-      `
+      try {
+        const sessions = await sql`
+          SELECT COUNT(*) as count
+          FROM radius_sessions_active
+          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
+        `
 
-      routerResult.tests.activeSessions = {
-        success: true,
-        count: Number(sessions[0]?.count || 0),
-        status: Number(sessions[0]?.count || 0) > 0 ? "Router is sending sessions" : "No active sessions",
+        routerResult.tests.activeSessions = {
+          success: true,
+          count: Number(sessions[0]?.count || 0),
+          status: Number(sessions[0]?.count || 0) > 0 ? "Router is sending sessions" : "No active sessions",
+        }
+      } catch (error) {
+        console.error("[v0] Error checking active sessions:", error)
+        routerResult.tests.activeSessions = {
+          success: false,
+          count: 0,
+          status: "radius_sessions_active table may not exist",
+          error: "Run RADIUS migration script",
+        }
       }
 
       // Test 5: Check recent RADIUS accounting records
-      const recentAccounting = await sql`
-        SELECT COUNT(*) as count
-        FROM radius_accounting
-        WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
-        AND created_at > NOW() - INTERVAL '1 hour'
-      `
+      try {
+        const recentAccounting = await sql`
+          SELECT COUNT(*) as count
+          FROM radius_accounting
+          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
+          AND created_at > NOW() - INTERVAL '1 hour'
+        `
 
-      routerResult.tests.recentAccounting = {
-        success: true,
-        count: Number(recentAccounting[0]?.count || 0),
-        status:
-          Number(recentAccounting[0]?.count || 0) > 0
-            ? "Router is sending accounting data"
-            : "No recent accounting records",
+        routerResult.tests.recentAccounting = {
+          success: true,
+          count: Number(recentAccounting[0]?.count || 0),
+          status:
+            Number(recentAccounting[0]?.count || 0) > 0
+              ? "Router is sending accounting data"
+              : "No recent accounting records",
+        }
+      } catch (error) {
+        console.error("[v0] Error checking accounting:", error)
+        routerResult.tests.recentAccounting = {
+          success: false,
+          count: 0,
+          status: "radius_accounting table may not exist",
+          error: "Run RADIUS migration script",
+        }
       }
 
       // Test 6: Test RADIUS authentication with a test user
@@ -166,23 +219,28 @@ export async function POST(request: NextRequest) {
       results.push(routerResult)
     }
 
-    // Log the test
-    await sql`
-      INSERT INTO system_logs (level, source, category, message, details, created_at)
-      VALUES (
-        'INFO',
-        'RADIUS Server',
-        'troubleshooting',
-        'RADIUS-to-routers connectivity test completed',
-        ${JSON.stringify({ testedRouters: routers.length, results })},
-        NOW()
-      )
-    `
+    try {
+      await sql`
+        INSERT INTO system_logs (level, source, category, message, details, created_at)
+        VALUES (
+          'INFO',
+          'RADIUS Server',
+          'troubleshooting',
+          'RADIUS-to-routers connectivity test completed',
+          ${JSON.stringify({ testedRouters: routers.length, results })},
+          NOW()
+        )
+      `
+    } catch (error) {
+      console.error("[v0] Error logging test results:", error)
+      // Continue anyway - logging failure shouldn't stop the test
+    }
 
     return NextResponse.json({
       success: true,
       message: `Tested ${routers.length} router(s)`,
       results,
+      totalRouters: routers.length,
     })
   } catch (error) {
     console.error("[v0] Error testing RADIUS router connectivity:", error)
@@ -191,6 +249,7 @@ export async function POST(request: NextRequest) {
         success: false,
         message: "RADIUS router test failed",
         error: String(error),
+        hint: "Check console logs for details",
       },
       { status: 500 },
     )

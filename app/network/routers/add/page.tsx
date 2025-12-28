@@ -11,8 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { MapPicker } from "@/components/ui/map-picker"
-import { ArrowLeft, Save, Database, Shield, Settings, MapPin, Activity } from "lucide-react"
+import { ArrowLeft, Save, Database, Shield, Settings, Activity } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 
@@ -199,7 +198,7 @@ export default function AddRouterPage() {
 
       <form onSubmit={handleSubmit}>
         <Tabs defaultValue="basic" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="basic" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               Data & Configuration
@@ -211,10 +210,6 @@ export default function AddRouterPage() {
             <TabsTrigger value="mikrotik" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               MikroTik
-            </TabsTrigger>
-            <TabsTrigger value="location" className="flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
-              Location
             </TabsTrigger>
             <TabsTrigger value="monitoring" className="flex items-center gap-2">
               <Activity className="h-4 w-4" />
@@ -573,53 +568,6 @@ export default function AddRouterPage() {
                     onChange={(e) => handleInputChange("blocking_page_url", e.target.value)}
                     placeholder="http://example.com/blocked"
                   />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Location Configuration */}
-          <TabsContent value="location">
-            <Card>
-              <CardHeader>
-                <CardTitle>GPS Location</CardTitle>
-                <CardDescription>Set the precise GPS coordinates for this router</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="latitude">Latitude</Label>
-                    <Input
-                      id="latitude"
-                      type="number"
-                      step="any"
-                      value={formData.latitude}
-                      onChange={(e) => handleInputChange("latitude", Number.parseFloat(e.target.value) || 0)}
-                      placeholder="0.0"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="longitude">Longitude</Label>
-                    <Input
-                      id="longitude"
-                      type="number"
-                      step="any"
-                      value={formData.longitude}
-                      onChange={(e) => handleInputChange("longitude", Number.parseFloat(e.target.value) || 0)}
-                      placeholder="0.0"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Interactive Map</Label>
-                  <div className="border rounded-lg overflow-hidden">
-                    <MapPicker
-                      latitude={formData.latitude}
-                      longitude={formData.longitude}
-                      onLocationChange={handleGPSChange}
-                    />
-                  </div>
                 </div>
               </CardContent>
             </Card>

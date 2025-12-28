@@ -129,6 +129,8 @@ export default function ServerConfigurationPage() {
     setIsTestingRouters(true)
     setRadiusTestResults(null)
 
+    console.log("[v0] Starting RADIUS router test...")
+
     try {
       const response = await fetch("/api/server-settings/test-radius-routers", {
         method: "POST",
@@ -141,21 +143,32 @@ export default function ServerConfigurationPage() {
       })
 
       const result = await response.json()
+      console.log("[v0] RADIUS router test result:", result)
 
       if (result.success) {
         setRadiusTestResults(result)
-        toast({
-          title: "Test Complete",
-          description: result.message,
-        })
+
+        if (result.totalRouters === 0) {
+          toast({
+            title: "No Routers Found",
+            description: "Add routers in /network/routers first before testing RADIUS connectivity",
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Test Complete",
+            description: result.message,
+          })
+        }
       } else {
         toast({
           title: "Test Failed",
-          description: result.message || "Failed to test router connectivity",
+          description: result.message || result.error || "Failed to test router connectivity",
           variant: "destructive",
         })
       }
     } catch (error) {
+      console.error("[v0] Error testing routers:", error)
       toast({
         title: "Error",
         description: "Failed to run RADIUS router test",
@@ -862,9 +875,23 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center justify-between mb-4">
                         <h5 className="font-semibold">Test Results</h5>
                         <span className="text-sm text-muted-foreground">
-                          {radiusTestResults.results?.length || 0} router(s) tested
+                          {radiusTestResults.totalRouters || radiusTestResults.results?.length || 0} router(s) tested
                         </span>
                       </div>
+
+                      {(!radiusTestResults.results || radiusTestResults.results.length === 0) && (
+                        <div className="text-center py-8">
+                          <Server className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-sm text-muted-foreground mb-2">No active routers found</p>
+                          <p className="text-xs text-muted-foreground">
+                            Add routers in{" "}
+                            <a href="/network/routers" className="text-primary hover:underline">
+                              /network/routers
+                            </a>{" "}
+                            first
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-4">
                         {radiusTestResults.results?.map((router: any) => (

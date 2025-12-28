@@ -1,11 +1,13 @@
 import dgram from "dgram"
 import crypto from "crypto"
+import os from "os"
 
 interface RadiusConfig {
   host: string
   port: number
   secret: string
   timeout?: number
+  nasIp?: string // Optional NAS IP address (defaults to auto-detect)
 }
 
 interface RadiusTestResult {
@@ -161,19 +163,7 @@ export class RadiusClient {
     const passwordAttr = Buffer.concat([Buffer.from([2, encryptedPassword.length + 2]), encryptedPassword])
     attributes.push(passwordAttr)
 
-    // Parse the host to get the IP bytes
-    let nasIpBytes: Buffer
-    try {
-      const ipParts = this.config.host.split(".").map((p) => Number.parseInt(p, 10))
-      if (ipParts.length === 4 && ipParts.every((p) => p >= 0 && p <= 255)) {
-        nasIpBytes = Buffer.from(ipParts)
-      } else {
-        // Fallback to localhost if invalid IP
-        nasIpBytes = Buffer.from([127, 0, 0, 1])
-      }
-    } catch {
-      nasIpBytes = Buffer.from([127, 0, 0, 1])
-    }
+    const nasIpBytes = this.getNasIpAddress()
     const nasIpAttr = Buffer.concat([Buffer.from([4, 6]), nasIpBytes])
     attributes.push(nasIpAttr)
 
@@ -214,6 +204,62 @@ export class RadiusClient {
 
     return encrypted
   }
+
+  /**
+   * Get the NAS IP address (the IP of this system)
+   * If not provided in config, auto-detect the primary network interface IP
+   */
+  private getNasIpAddress(): Buffer {
+    // If NAS IP is provided in config, use it
+    if (this.config.nasIp) {
+      try {
+        const ipParts = this.config.nasIp.split(".").map((p) => Number.parseInt(p, 10))
+        if (ipParts.length === 4 && ipParts.every((p) => p >= 0 && p <= 255)) {
+          return Buffer.from(ipParts)
+        }
+      } catch {
+        // Fall through to auto-detection
+      }
+    }
+
+    try {
+      const interfaces = os.networkInterfaces()
+
+      // Priority order: eth0, ens, en, wlan
+      const priorityOrder = ["eth0", "ens", "en0", "en1", "wlan0"]
+
+      for (const name of priorityOrder) {
+        const iface = interfaces[name]
+        if (iface) {
+          const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
+          if (ipv4) {
+            const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
+            console.log(`[v0] RADIUS: Using detected NAS IP from ${name}:`, ipv4.address)
+            return Buffer.from(ipParts)
+          }
+        }
+      }
+
+      // Fallback: find any non-internal IPv4 address
+      for (const name in interfaces) {
+        const iface = interfaces[name]
+        if (iface) {
+          const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
+          if (ipv4) {
+            const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
+            console.log(`[v0] RADIUS: Using detected NAS IP from ${name}:`, ipv4.address)
+            return Buffer.from(ipParts)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[v0] RADIUS: Failed to auto-detect NAS IP:", error)
+    }
+
+    // Last resort fallback to localhost
+    console.warn("[v0] RADIUS: Could not detect NAS IP, falling back to 127.0.0.1")
+    return Buffer.from([127, 0, 0, 1])
+  }
 }
 
 /**
@@ -224,7 +270,8 @@ export async function testRadiusServer(
   port: number,
   secret: string,
   timeout?: number,
+  nasIp?: string, // Optional NAS IP to use
 ): Promise<RadiusTestResult> {
-  const client = new RadiusClient({ host, port, secret, timeout })
+  const client = new RadiusClient({ host, port, secret, timeout, nasIp })
   return await client.testConnection()
 }

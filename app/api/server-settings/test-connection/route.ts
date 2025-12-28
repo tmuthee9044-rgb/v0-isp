@@ -15,8 +15,9 @@ export async function POST(request: NextRequest) {
       const host = config.host
       const authPort = config.authPort
       const secret = config.secret || config.sharedSecret
+      const nasIp = config.nasIp // Optional NAS IP from config
 
-      console.log("[v0] RADIUS test config:", { host, authPort, hasSecret: !!secret })
+      console.log("[v0] RADIUS test config:", { host, authPort, nasIp, hasSecret: !!secret })
 
       if (!host || !authPort || !secret) {
         return NextResponse.json(
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
         Number.parseInt(authPort),
         secret,
         5000, // 5 second timeout
+        nasIp, // Pass the NAS IP (optional)
       )
 
       console.log("[v0] RADIUS test result:", testResult)

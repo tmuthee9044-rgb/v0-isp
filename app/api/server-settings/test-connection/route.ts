@@ -28,12 +28,16 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      console.log("[v0] Testing RADIUS server at:", `${host}:${authPort}`)
+
       const testResult = await testRadiusServer(
         host,
         Number.parseInt(authPort),
         secret,
         5000, // 5 second timeout
       )
+
+      console.log("[v0] RADIUS test result:", testResult)
 
       // Log the test
       const logLevel = testResult.success ? "INFO" : "ERROR"

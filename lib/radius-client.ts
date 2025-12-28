@@ -161,9 +161,20 @@ export class RadiusClient {
     const passwordAttr = Buffer.concat([Buffer.from([2, encryptedPassword.length + 2]), encryptedPassword])
     attributes.push(passwordAttr)
 
-    // NAS-IP-Address attribute (type 4)
-    const nasIp = Buffer.from([127, 0, 0, 1])
-    const nasIpAttr = Buffer.concat([Buffer.from([4, 6]), nasIp])
+    // Parse the host to get the IP bytes
+    let nasIpBytes: Buffer
+    try {
+      const ipParts = this.config.host.split(".").map((p) => Number.parseInt(p, 10))
+      if (ipParts.length === 4 && ipParts.every((p) => p >= 0 && p <= 255)) {
+        nasIpBytes = Buffer.from(ipParts)
+      } else {
+        // Fallback to localhost if invalid IP
+        nasIpBytes = Buffer.from([127, 0, 0, 1])
+      }
+    } catch {
+      nasIpBytes = Buffer.from([127, 0, 0, 1])
+    }
+    const nasIpAttr = Buffer.concat([Buffer.from([4, 6]), nasIpBytes])
     attributes.push(nasIpAttr)
 
     // Concatenate all attributes

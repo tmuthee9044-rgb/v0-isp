@@ -22,15 +22,105 @@ import {
   Shield,
   Wifi,
   XCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+
+// Define a more specific type for serverConfig if possible, otherwise use 'any'
+interface ServerConfig {
+  radius?: {
+    enabled?: boolean
+    host?: string
+    authPort?: string
+    acctPort?: string
+    timeout?: string
+    sharedSecret?: string
+    protocols?: {
+      pppoe?: boolean
+      ipoe?: boolean
+      hotspot?: boolean
+      wireless?: boolean
+    }
+    authMethods?: {
+      pap?: boolean
+      chap?: boolean
+      mschap?: boolean
+      mschapv2?: boolean
+    }
+    vendors?: {
+      mikrotik?: boolean
+      ubiquiti?: boolean
+      cisco?: boolean
+      juniper?: boolean
+      cambium?: boolean
+      huawei?: boolean
+    }
+    bandwidth?: {
+      enableRateLimit?: boolean
+      rateLimitAttr?: string
+      burstMode?: string
+    }
+    accounting?: {
+      enabled?: boolean
+      interimInterval?: string
+      sessionTimeout?: string
+      trackMacAddress?: boolean
+    }
+    failover?: {
+      enabled?: boolean
+      backupHost?: string
+      timeout?: string
+    }
+  }
+  openvpn?: {
+    enabled?: boolean
+    serverIp?: string
+    port?: string
+    protocol?: string
+    cipher?: string
+    network?: string
+    primaryDns?: string
+    secondaryDns?: string
+    tlsAuth?: boolean
+    clientToClient?: boolean
+    duplicateCn?: boolean
+    compression?: boolean
+  }
+  network?: {
+    gateway?: string
+    subnetMask?: string
+    managementVlan?: string
+    customerVlan?: string
+    snmpCommunity?: string
+    ntpServer?: string
+    features?: {
+      firewall?: boolean
+      ddosProtection?: boolean
+      portScan?: boolean
+      intrusionDetection?: boolean
+    }
+    uploadLimit?: string
+    downloadLimit?: string
+    burstRatio?: string
+    monitoring?: {
+      snmpMonitoring?: boolean
+      bandwidthMonitoring?: boolean
+      uptimeMonitoring?: boolean
+      alertNotifications?: boolean
+    }
+    monitoringInterval?: string
+    alertThreshold?: string
+  }
+}
 
 export default function ServerConfigurationPage() {
   const { toast } = useToast()
   const [isPending, setIsPending] = useState(false)
   const [activeNetworkTab, setActiveNetworkTab] = useState("configuration")
-  const [serverConfig, setServerConfig] = useState(null)
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null) // Initialize with null, and provide a type
   const [isLoading, setIsLoading] = useState(true)
+  const [showSecret, setShowSecret] = useState(false) // State for toggling password visibility
 
   const [radiusTestResults, setRadiusTestResults] = useState<any>(null)
   const [isTestingRouters, setIsTestingRouters] = useState(false)
@@ -42,6 +132,9 @@ export default function ServerConfigurationPage() {
   const fetchServerConfig = async () => {
     try {
       const response = await fetch("/api/server-settings")
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
       const data = await response.json()
       setServerConfig(data)
     } catch (error) {
@@ -72,12 +165,13 @@ export default function ServerConfigurationPage() {
         })
         await fetchServerConfig()
       } else {
-        throw new Error("Failed to save settings")
+        const errorData = await response.json()
+        throw new Error(errorData.message || "Failed to save settings")
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to save server settings",
+        description: `Failed to save server settings: ${error.message}`,
         variant: "destructive",
       })
     } finally {
@@ -142,6 +236,10 @@ export default function ServerConfigurationPage() {
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const result = await response.json()
       console.log("[v0] RADIUS router test result:", result)
 
@@ -167,11 +265,11 @@ export default function ServerConfigurationPage() {
           variant: "destructive",
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("[v0] Error testing routers:", error)
       toast({
         title: "Error",
-        description: "Failed to run RADIUS router test",
+        description: `Failed to run RADIUS router test: ${error.message}`,
         variant: "destructive",
       })
     } finally {
@@ -248,11 +346,11 @@ export default function ServerConfigurationPage() {
                   </div>
                 </div>
                 <Switch
-                  checked={serverConfig?.radius?.enabled || false}
+                  checked={serverConfig?.radius?.enabled ?? false}
                   onCheckedChange={(checked) =>
-                    setServerConfig((prev) => ({
+                    setServerConfig((prev: any) => ({
                       ...prev,
-                      radius: { ...prev.radius, enabled: checked },
+                      radius: { ...prev?.radius, enabled: checked },
                     }))
                   }
                 />
@@ -267,15 +365,18 @@ export default function ServerConfigurationPage() {
                     <Label htmlFor="radius-host">RADIUS Server Host *</Label>
                     <Input
                       id="radius-host"
-                      placeholder="127.0.0.1 or radius.company.com"
+                      placeholder="192.168.1.100 or radius.company.com"
                       value={serverConfig?.radius?.host || ""}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          radius: { ...prev.radius, host: e.target.value },
+                          radius: { ...prev?.radius, host: e.target.value },
                         }))
                       }
                     />
+                    <p className="text-xs text-muted-foreground">
+                      This IP was auto-detected during installation. Physical routers must be able to reach this IP.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="auth-port">Authentication Port</Label>
@@ -285,9 +386,9 @@ export default function ServerConfigurationPage() {
                       type="number"
                       value={serverConfig?.radius?.authPort || "1812"}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          radius: { ...prev.radius, authPort: e.target.value },
+                          radius: { ...prev?.radius, authPort: e.target.value },
                         }))
                       }
                     />
@@ -300,9 +401,9 @@ export default function ServerConfigurationPage() {
                       type="number"
                       value={serverConfig?.radius?.acctPort || "1813"}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          radius: { ...prev.radius, acctPort: e.target.value },
+                          radius: { ...prev?.radius, acctPort: e.target.value },
                         }))
                       }
                     />
@@ -315,9 +416,9 @@ export default function ServerConfigurationPage() {
                       type="number"
                       value={serverConfig?.radius?.timeout || "30"}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          radius: { ...prev.radius, timeout: e.target.value },
+                          radius: { ...prev?.radius, timeout: e.target.value },
                         }))
                       }
                     />
@@ -327,20 +428,31 @@ export default function ServerConfigurationPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="shared-secret">Shared Secret *</Label>
-                <Input
-                  id="shared-secret"
-                  type="password"
-                  placeholder="Enter strong RADIUS shared secret"
-                  value={serverConfig?.radius?.sharedSecret || ""}
-                  onChange={(e) =>
-                    setServerConfig((prev) => ({
-                      ...prev,
-                      radius: { ...prev.radius, sharedSecret: e.target.value },
-                    }))
-                  }
-                />
+                <div className="relative">
+                  <Input
+                    id="shared-secret"
+                    type={showSecret ? "text" : "password"}
+                    placeholder="Enter strong RADIUS shared secret"
+                    value={serverConfig?.radius?.sharedSecret || ""}
+                    onChange={(e) =>
+                      setServerConfig((prev: any) => ({
+                        ...prev,
+                        radius: { ...prev?.radius, sharedSecret: e.target.value },
+                      }))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full"
+                    onClick={() => setShowSecret(!showSecret)}
+                  >
+                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Must match the secret configured on your network devices (MikroTik, Ubiquiti, etc.)
+                  This was auto-generated during installation. Must match the secret configured on your network devices.
                 </p>
               </div>
 
@@ -354,11 +466,11 @@ export default function ServerConfigurationPage() {
                       id="pppoe-protocol"
                       checked={serverConfig?.radius?.protocols?.pppoe ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            protocols: { ...prev.radius?.protocols, pppoe: checked },
+                            ...prev?.radius,
+                            protocols: { ...prev?.radius?.protocols, pppoe: checked },
                           },
                         }))
                       }
@@ -372,11 +484,11 @@ export default function ServerConfigurationPage() {
                       id="ipoe-protocol"
                       checked={serverConfig?.radius?.protocols?.ipoe ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            protocols: { ...prev.radius?.protocols, ipoe: checked },
+                            ...prev?.radius,
+                            protocols: { ...prev?.radius?.protocols, ipoe: checked },
                           },
                         }))
                       }
@@ -390,11 +502,11 @@ export default function ServerConfigurationPage() {
                       id="hotspot-protocol"
                       checked={serverConfig?.radius?.protocols?.hotspot ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            protocols: { ...prev.radius?.protocols, hotspot: checked },
+                            ...prev?.radius,
+                            protocols: { ...prev?.radius?.protocols, hotspot: checked },
                           },
                         }))
                       }
@@ -408,11 +520,11 @@ export default function ServerConfigurationPage() {
                       id="wireless-protocol"
                       checked={serverConfig?.radius?.protocols?.wireless ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            protocols: { ...prev.radius?.protocols, wireless: checked },
+                            ...prev?.radius,
+                            protocols: { ...prev?.radius?.protocols, wireless: checked },
                           },
                         }))
                       }
@@ -434,11 +546,11 @@ export default function ServerConfigurationPage() {
                       id="pap"
                       checked={serverConfig?.radius?.authMethods?.pap ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            authMethods: { ...prev.radius?.authMethods, pap: checked },
+                            ...prev?.radius,
+                            authMethods: { ...prev?.radius?.authMethods, pap: checked },
                           },
                         }))
                       }
@@ -452,11 +564,11 @@ export default function ServerConfigurationPage() {
                       id="chap"
                       checked={serverConfig?.radius?.authMethods?.chap ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            authMethods: { ...prev.radius?.authMethods, chap: checked },
+                            ...prev?.radius,
+                            authMethods: { ...prev?.radius?.authMethods, chap: checked },
                           },
                         }))
                       }
@@ -470,11 +582,11 @@ export default function ServerConfigurationPage() {
                       id="mschap"
                       checked={serverConfig?.radius?.authMethods?.mschap ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            authMethods: { ...prev.radius?.authMethods, mschap: checked },
+                            ...prev?.radius,
+                            authMethods: { ...prev?.radius?.authMethods, mschap: checked },
                           },
                         }))
                       }
@@ -488,11 +600,11 @@ export default function ServerConfigurationPage() {
                       id="mschapv2"
                       checked={serverConfig?.radius?.authMethods?.mschapv2 ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            authMethods: { ...prev.radius?.authMethods, mschapv2: checked },
+                            ...prev?.radius,
+                            authMethods: { ...prev?.radius?.authMethods, mschapv2: checked },
                           },
                         }))
                       }
@@ -517,11 +629,11 @@ export default function ServerConfigurationPage() {
                       id="mikrotik-vsa"
                       checked={serverConfig?.radius?.vendors?.mikrotik ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, mikrotik: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, mikrotik: checked },
                           },
                         }))
                       }
@@ -535,11 +647,11 @@ export default function ServerConfigurationPage() {
                       id="ubiquiti-vsa"
                       checked={serverConfig?.radius?.vendors?.ubiquiti ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, ubiquiti: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, ubiquiti: checked },
                           },
                         }))
                       }
@@ -553,11 +665,11 @@ export default function ServerConfigurationPage() {
                       id="cisco-vsa"
                       checked={serverConfig?.radius?.vendors?.cisco ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, cisco: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, cisco: checked },
                           },
                         }))
                       }
@@ -571,11 +683,11 @@ export default function ServerConfigurationPage() {
                       id="juniper-vsa"
                       checked={serverConfig?.radius?.vendors?.juniper ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, juniper: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, juniper: checked },
                           },
                         }))
                       }
@@ -589,11 +701,11 @@ export default function ServerConfigurationPage() {
                       id="cambium-vsa"
                       checked={serverConfig?.radius?.vendors?.cambium ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, cambium: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, cambium: checked },
                           },
                         }))
                       }
@@ -607,11 +719,11 @@ export default function ServerConfigurationPage() {
                       id="huawei-vsa"
                       checked={serverConfig?.radius?.vendors?.huawei ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            vendors: { ...prev.radius?.vendors, huawei: checked },
+                            ...prev?.radius,
+                            vendors: { ...prev?.radius?.vendors, huawei: checked },
                           },
                         }))
                       }
@@ -633,11 +745,11 @@ export default function ServerConfigurationPage() {
                       id="enable-rate-limit"
                       checked={serverConfig?.radius?.bandwidth?.enableRateLimit ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            bandwidth: { ...prev.radius?.bandwidth, enableRateLimit: checked },
+                            ...prev?.radius,
+                            bandwidth: { ...prev?.radius?.bandwidth, enableRateLimit: checked },
                           },
                         }))
                       }
@@ -650,11 +762,11 @@ export default function ServerConfigurationPage() {
                       <Select
                         value={serverConfig?.radius?.bandwidth?.rateLimitAttr || "mikrotik"}
                         onValueChange={(value) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
                             radius: {
-                              ...prev.radius,
-                              bandwidth: { ...prev.radius?.bandwidth, rateLimitAttr: value },
+                              ...prev?.radius,
+                              bandwidth: { ...prev?.radius?.bandwidth, rateLimitAttr: value },
                             },
                           }))
                         }
@@ -674,11 +786,11 @@ export default function ServerConfigurationPage() {
                       <Select
                         value={serverConfig?.radius?.bandwidth?.burstMode || "auto"}
                         onValueChange={(value) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
                             radius: {
-                              ...prev.radius,
-                              bandwidth: { ...prev.radius?.bandwidth, burstMode: value },
+                              ...prev?.radius,
+                              bandwidth: { ...prev?.radius?.bandwidth, burstMode: value },
                             },
                           }))
                         }
@@ -707,11 +819,11 @@ export default function ServerConfigurationPage() {
                       id="enable-accounting"
                       checked={serverConfig?.radius?.accounting?.enabled ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            accounting: { ...prev.radius?.accounting, enabled: checked },
+                            ...prev?.radius,
+                            accounting: { ...prev?.radius?.accounting, enabled: checked },
                           },
                         }))
                       }
@@ -727,11 +839,11 @@ export default function ServerConfigurationPage() {
                         placeholder="300"
                         value={serverConfig?.radius?.accounting?.interimInterval || "300"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
                             radius: {
-                              ...prev.radius,
-                              accounting: { ...prev.radius?.accounting, interimInterval: e.target.value },
+                              ...prev?.radius,
+                              accounting: { ...prev?.radius?.accounting, interimInterval: e.target.value },
                             },
                           }))
                         }
@@ -748,11 +860,11 @@ export default function ServerConfigurationPage() {
                         placeholder="24"
                         value={serverConfig?.radius?.accounting?.sessionTimeout || "24"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
                             radius: {
-                              ...prev.radius,
-                              accounting: { ...prev.radius?.accounting, sessionTimeout: e.target.value },
+                              ...prev?.radius,
+                              accounting: { ...prev?.radius?.accounting, sessionTimeout: e.target.value },
                             },
                           }))
                         }
@@ -764,11 +876,11 @@ export default function ServerConfigurationPage() {
                       id="track-mac-address"
                       checked={serverConfig?.radius?.accounting?.trackMacAddress ?? true}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            accounting: { ...prev.radius?.accounting, trackMacAddress: checked },
+                            ...prev?.radius,
+                            accounting: { ...prev?.radius?.accounting, trackMacAddress: checked },
                           },
                         }))
                       }
@@ -788,11 +900,11 @@ export default function ServerConfigurationPage() {
                       id="enable-failover"
                       checked={serverConfig?.radius?.failover?.enabled ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
                           radius: {
-                            ...prev.radius,
-                            failover: { ...prev.radius?.failover, enabled: checked },
+                            ...prev?.radius,
+                            failover: { ...prev?.radius?.failover, enabled: checked },
                           },
                         }))
                       }
@@ -808,11 +920,11 @@ export default function ServerConfigurationPage() {
                           placeholder="backup-radius.company.com"
                           value={serverConfig?.radius?.failover?.backupHost || ""}
                           onChange={(e) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               radius: {
-                                ...prev.radius,
-                                failover: { ...prev.radius?.failover, backupHost: e.target.value },
+                                ...prev?.radius,
+                                failover: { ...prev?.radius?.failover, backupHost: e.target.value },
                               },
                             }))
                           }
@@ -826,11 +938,11 @@ export default function ServerConfigurationPage() {
                           placeholder="5"
                           value={serverConfig?.radius?.failover?.timeout || "5"}
                           onChange={(e) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               radius: {
-                                ...prev.radius,
-                                failover: { ...prev.radius?.failover, timeout: e.target.value },
+                                ...prev?.radius,
+                                failover: { ...prev?.radius?.failover, timeout: e.target.value },
                               },
                             }))
                           }
@@ -931,7 +1043,9 @@ export default function ServerConfigurationPage() {
                                 <div>
                                   <p className="font-medium">Network Connectivity</p>
                                   <p className="text-muted-foreground">
-                                    {router.tests.ping?.status} - {router.tests.ping?.packetLoss || "N/A"} loss
+                                    {router.tests.ping?.status}
+                                    {router.tests.ping?.packetLoss !== undefined &&
+                                      ` - ${router.tests.ping.packetLoss}% loss`}
                                   </p>
                                 </div>
                               </div>
@@ -1117,11 +1231,11 @@ export default function ServerConfigurationPage() {
                   <div className="text-sm text-muted-foreground">Enable VPN server for remote access</div>
                 </div>
                 <Switch
-                  checked={serverConfig?.openvpn?.enabled || false}
+                  checked={serverConfig?.openvpn?.enabled ?? false}
                   onCheckedChange={(checked) =>
-                    setServerConfig((prev) => ({
+                    setServerConfig((prev: any) => ({
                       ...prev,
-                      openvpn: { ...prev.openvpn, enabled: checked },
+                      openvpn: { ...prev?.openvpn, enabled: checked },
                     }))
                   }
                 />
@@ -1137,9 +1251,9 @@ export default function ServerConfigurationPage() {
                     placeholder="Enter VPN server IP"
                     value={serverConfig?.openvpn?.serverIp || ""}
                     onChange={(e) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, serverIp: e.target.value },
+                        openvpn: { ...prev?.openvpn, serverIp: e.target.value },
                       }))
                     }
                   />
@@ -1151,9 +1265,9 @@ export default function ServerConfigurationPage() {
                     placeholder="1194"
                     value={serverConfig?.openvpn?.port || "1194"}
                     onChange={(e) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, port: e.target.value },
+                        openvpn: { ...prev?.openvpn, port: e.target.value },
                       }))
                     }
                   />
@@ -1161,11 +1275,11 @@ export default function ServerConfigurationPage() {
                 <div className="space-y-2">
                   <Label htmlFor="vpn-protocol">Protocol</Label>
                   <Select
-                    defaultValue={serverConfig?.openvpn?.protocol || "udp"}
+                    value={serverConfig?.openvpn?.protocol || "udp"}
                     onValueChange={(value) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, protocol: value },
+                        openvpn: { ...prev?.openvpn, protocol: value },
                       }))
                     }
                   >
@@ -1181,11 +1295,11 @@ export default function ServerConfigurationPage() {
                 <div className="space-y-2">
                   <Label htmlFor="vpn-cipher">Cipher</Label>
                   <Select
-                    defaultValue={serverConfig?.openvpn?.cipher || "aes-256-cbc"}
+                    value={serverConfig?.openvpn?.cipher || "aes-256-cbc"}
                     onValueChange={(value) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, cipher: value },
+                        openvpn: { ...prev?.openvpn, cipher: value },
                       }))
                     }
                   >
@@ -1208,9 +1322,9 @@ export default function ServerConfigurationPage() {
                   placeholder="10.8.0.0/24"
                   value={serverConfig?.openvpn?.network || "10.8.0.0/24"}
                   onChange={(e) =>
-                    setServerConfig((prev) => ({
+                    setServerConfig((prev: any) => ({
                       ...prev,
-                      openvpn: { ...prev.openvpn, network: e.target.value },
+                      openvpn: { ...prev?.openvpn, network: e.target.value },
                     }))
                   }
                 />
@@ -1224,9 +1338,9 @@ export default function ServerConfigurationPage() {
                     placeholder="8.8.8.8"
                     value={serverConfig?.openvpn?.primaryDns || "8.8.8.8"}
                     onChange={(e) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, primaryDns: e.target.value },
+                        openvpn: { ...prev?.openvpn, primaryDns: e.target.value },
                       }))
                     }
                   />
@@ -1238,9 +1352,9 @@ export default function ServerConfigurationPage() {
                     placeholder="8.8.4.4"
                     value={serverConfig?.openvpn?.secondaryDns || "8.8.4.4"}
                     onChange={(e) =>
-                      setServerConfig((prev) => ({
+                      setServerConfig((prev: any) => ({
                         ...prev,
-                        openvpn: { ...prev.openvpn, secondaryDns: e.target.value },
+                        openvpn: { ...prev?.openvpn, secondaryDns: e.target.value },
                       }))
                     }
                   />
@@ -1253,11 +1367,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="tls-auth"
-                      checked={serverConfig?.openvpn?.tlsAuth || false}
+                      checked={serverConfig?.openvpn?.tlsAuth ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          openvpn: { ...prev.openvpn, tlsAuth: checked },
+                          openvpn: { ...prev?.openvpn, tlsAuth: checked },
                         }))
                       }
                     />
@@ -1266,11 +1380,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="client-to-client"
-                      checked={serverConfig?.openvpn?.clientToClient || false}
+                      checked={serverConfig?.openvpn?.clientToClient ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          openvpn: { ...prev.openvpn, clientToClient: checked },
+                          openvpn: { ...prev?.openvpn, clientToClient: checked },
                         }))
                       }
                     />
@@ -1279,11 +1393,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="duplicate-cn"
-                      checked={serverConfig?.openvpn?.duplicateCn || false}
+                      checked={serverConfig?.openvpn?.duplicateCn ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          openvpn: { ...prev.openvpn, duplicateCn: checked },
+                          openvpn: { ...prev?.openvpn, duplicateCn: checked },
                         }))
                       }
                     />
@@ -1292,11 +1406,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="compression"
-                      checked={serverConfig?.openvpn?.compression || false}
+                      checked={serverConfig?.openvpn?.compression ?? false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          openvpn: { ...prev.openvpn, compression: checked },
+                          openvpn: { ...prev?.openvpn, compression: checked },
                         }))
                       }
                     />
@@ -1353,9 +1467,9 @@ export default function ServerConfigurationPage() {
                         placeholder="Enter gateway IP"
                         value={serverConfig?.network?.gateway || ""}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, gateway: e.target.value },
+                            network: { ...prev?.network, gateway: e.target.value },
                           }))
                         }
                       />
@@ -1367,9 +1481,9 @@ export default function ServerConfigurationPage() {
                         placeholder="255.255.255.0"
                         value={serverConfig?.network?.subnetMask || "255.255.255.0"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, subnetMask: e.target.value },
+                            network: { ...prev?.network, subnetMask: e.target.value },
                           }))
                         }
                       />
@@ -1381,9 +1495,9 @@ export default function ServerConfigurationPage() {
                         placeholder="Enter VLAN ID"
                         value={serverConfig?.network?.managementVlan || ""}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, managementVlan: e.target.value },
+                            network: { ...prev?.network, managementVlan: e.target.value },
                           }))
                         }
                       />
@@ -1395,9 +1509,9 @@ export default function ServerConfigurationPage() {
                         placeholder="200-299"
                         value={serverConfig?.network?.customerVlan || ""}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, customerVlan: e.target.value },
+                            network: { ...prev?.network, customerVlan: e.target.value },
                           }))
                         }
                       />
@@ -1411,9 +1525,9 @@ export default function ServerConfigurationPage() {
                       placeholder="public"
                       value={serverConfig?.network?.snmpCommunity || "public"}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          network: { ...prev.network, snmpCommunity: e.target.value },
+                          network: { ...prev?.network, snmpCommunity: e.target.value },
                         }))
                       }
                     />
@@ -1426,9 +1540,9 @@ export default function ServerConfigurationPage() {
                       placeholder="pool.ntp.org"
                       value={serverConfig?.network?.ntpServer || "pool.ntp.org"}
                       onChange={(e) =>
-                        setServerConfig((prev) => ({
+                        setServerConfig((prev: any) => ({
                           ...prev,
-                          network: { ...prev.network, ntpServer: e.target.value },
+                          network: { ...prev?.network, ntpServer: e.target.value },
                         }))
                       }
                     />
@@ -1440,13 +1554,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="firewall"
-                          checked={serverConfig?.network?.features?.firewall || false}
+                          checked={serverConfig?.network?.features?.firewall ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                features: { ...prev.network.features, firewall: checked },
+                                ...prev?.network,
+                                features: { ...prev?.network?.features, firewall: checked },
                               },
                             }))
                           }
@@ -1456,13 +1570,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="ddos-protection"
-                          checked={serverConfig?.network?.features?.ddosProtection || false}
+                          checked={serverConfig?.network?.features?.ddosProtection ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                features: { ...prev.network.features, ddosProtection: checked },
+                                ...prev?.network,
+                                features: { ...prev?.network?.features, ddosProtection: checked },
                               },
                             }))
                           }
@@ -1472,13 +1586,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="port-scan"
-                          checked={serverConfig?.network?.features?.portScan || false}
+                          checked={serverConfig?.network?.features?.portScan ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                features: { ...prev.network.features, portScan: checked },
+                                ...prev?.network,
+                                features: { ...prev?.network?.features, portScan: checked },
                               },
                             }))
                           }
@@ -1488,13 +1602,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="intrusion-detection"
-                          checked={serverConfig?.network?.features?.intrusionDetection || false}
+                          checked={serverConfig?.network?.features?.intrusionDetection ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                features: { ...prev.network.features, intrusionDetection: checked },
+                                ...prev?.network,
+                                features: { ...prev?.network?.features, intrusionDetection: checked },
                               },
                             }))
                           }
@@ -1512,9 +1626,9 @@ export default function ServerConfigurationPage() {
                         placeholder="10"
                         value={serverConfig?.network?.uploadLimit || "10"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, uploadLimit: e.target.value },
+                            network: { ...prev?.network, uploadLimit: e.target.value },
                           }))
                         }
                       />
@@ -1526,9 +1640,9 @@ export default function ServerConfigurationPage() {
                         placeholder="50"
                         value={serverConfig?.network?.downloadLimit || "50"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, downloadLimit: e.target.value },
+                            network: { ...prev?.network, downloadLimit: e.target.value },
                           }))
                         }
                       />
@@ -1540,9 +1654,9 @@ export default function ServerConfigurationPage() {
                         placeholder="1.5"
                         value={serverConfig?.network?.burstRatio || "1.5"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, burstRatio: e.target.value },
+                            network: { ...prev?.network, burstRatio: e.target.value },
                           }))
                         }
                       />
@@ -1606,13 +1720,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="snmp-monitoring"
-                          checked={serverConfig?.network?.monitoring?.snmpMonitoring || false}
+                          checked={serverConfig?.network?.monitoring?.snmpMonitoring ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                monitoring: { ...prev.network.monitoring, snmpMonitoring: checked },
+                                ...prev?.network,
+                                monitoring: { ...prev?.network?.monitoring, snmpMonitoring: checked },
                               },
                             }))
                           }
@@ -1622,13 +1736,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="bandwidth-monitoring"
-                          checked={serverConfig?.network?.monitoring?.bandwidthMonitoring || false}
+                          checked={serverConfig?.network?.monitoring?.bandwidthMonitoring ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                monitoring: { ...prev.network.monitoring, bandwidthMonitoring: checked },
+                                ...prev?.network,
+                                monitoring: { ...prev?.network?.monitoring, bandwidthMonitoring: checked },
                               },
                             }))
                           }
@@ -1638,13 +1752,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="uptime-monitoring"
-                          checked={serverConfig?.network?.monitoring?.uptimeMonitoring || false}
+                          checked={serverConfig?.network?.monitoring?.uptimeMonitoring ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                monitoring: { ...prev.network.monitoring, uptimeMonitoring: checked },
+                                ...prev?.network,
+                                monitoring: { ...prev?.network?.monitoring, uptimeMonitoring: checked },
                               },
                             }))
                           }
@@ -1654,13 +1768,13 @@ export default function ServerConfigurationPage() {
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="alert-notifications"
-                          checked={serverConfig?.network?.monitoring?.alertNotifications || false}
+                          checked={serverConfig?.network?.monitoring?.alertNotifications ?? false}
                           onCheckedChange={(checked) =>
-                            setServerConfig((prev) => ({
+                            setServerConfig((prev: any) => ({
                               ...prev,
                               network: {
-                                ...prev.network,
-                                monitoring: { ...prev.network.monitoring, alertNotifications: checked },
+                                ...prev?.network,
+                                monitoring: { ...prev?.network?.monitoring, alertNotifications: checked },
                               },
                             }))
                           }
@@ -1678,9 +1792,9 @@ export default function ServerConfigurationPage() {
                         placeholder="5"
                         value={serverConfig?.network?.monitoringInterval || "5"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, monitoringInterval: e.target.value },
+                            network: { ...prev?.network, monitoringInterval: e.target.value },
                           }))
                         }
                       />
@@ -1692,9 +1806,9 @@ export default function ServerConfigurationPage() {
                         placeholder="80"
                         value={serverConfig?.network?.alertThreshold || "80"}
                         onChange={(e) =>
-                          setServerConfig((prev) => ({
+                          setServerConfig((prev: any) => ({
                             ...prev,
-                            network: { ...prev.network, alertThreshold: e.target.value },
+                            network: { ...prev?.network, alertThreshold: e.target.value },
                           }))
                         }
                       />

@@ -303,6 +303,37 @@ install_freeradius() {
         print_info "Physical routers will connect to this IP address"
     fi
     
+    # Generate RADIUS shared secret if not exists
+    RADIUS_SECRET=$(openssl rand -hex 16)
+    
+    print_info "Saving RADIUS configuration to database..."
+    psql "$DATABASE_URL" << SAVERADIUS
+-- Save RADIUS server configuration
+INSERT INTO system_config (key, value, created_at, updated_at) VALUES
+    ('server.radius.enabled', 'true', NOW(), NOW()),
+    ('server.radius.host', '"$RADIUS_HOST"', NOW(), NOW()),
+    ('server.radius.authPort', '1812', NOW(), NOW()),
+    ('server.radius.acctPort', '1813', NOW(), NOW()),
+    ('server.radius.sharedSecret', '"$RADIUS_SECRET"', NOW(), NOW()),
+    ('server.radius.timeout', '30', NOW(), NOW())
+ON CONFLICT (key) DO UPDATE SET 
+    value = EXCLUDED.value,
+    updated_at = NOW();
+
+-- Log the installation
+INSERT INTO system_logs (level, source, category, message, details, created_at) VALUES
+    ('INFO', 'Installation', 'radius_setup', 
+     'FreeRADIUS installed and configured', 
+     '{"host": "$RADIUS_HOST", "authPort": 1812, "acctPort": 1813}', 
+     NOW());
+SAVERADIUS
+    
+    if [ $? -eq 0 ]; then
+        print_success "RADIUS configuration saved to database"
+    else
+        print_warning "Failed to save RADIUS configuration to database"
+    fi
+
     # Check if FreeRADIUS is already installed
     if command -v radiusd &> /dev/null || command -v freeradius &> /dev/null; then
         print_success "FreeRADIUS already installed"
@@ -585,7 +616,7 @@ sql {
     }
 }
 SQLEOF
-    
+
     sudo sed -i "s/DB_USER_PLACEHOLDER/${DB_USER}/g" "$SQL_CONF"
     sudo sed -i "s/DB_PASSWORD_PLACEHOLDER/${DB_PASSWORD}/g" "$SQL_CONF"
     sudo sed -i "s/DB_NAME_PLACEHOLDER/${DB_NAME}/g" "$SQL_CONF"
@@ -2749,6 +2780,11 @@ main() {
             exit 1
             ;;
     esac
+}
+
+# Run main function with all arguments
+main "$@"
+
 }
 
 # Run main function with all arguments

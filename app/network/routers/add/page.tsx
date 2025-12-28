@@ -50,6 +50,7 @@ export default function AddRouterPage() {
     longitude: 0,
     blocking_page_url: "",
     status: "active",
+    customer_auth_method: "pppoe_radius",
   })
 
   // Load locations
@@ -534,6 +535,48 @@ export default function AddRouterPage() {
                       placeholder="Enter API password"
                     />
                   </div>
+                </div>
+
+                {/* Customer Authorization Method dropdown */}
+                <div className="space-y-2">
+                  <Label htmlFor="customer_auth_method">Customer Authorization Method</Label>
+                  <Select
+                    value={formData.customer_auth_method || "pppoe_radius"}
+                    onValueChange={(value) => handleInputChange("customer_auth_method", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select authorization method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dhcp_lease">
+                        <div className="flex flex-col">
+                          <span className="font-medium">DHCP Lease</span>
+                          <span className="text-xs text-muted-foreground">
+                            Customers get IP addresses via DHCP without authentication
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="pppoe_radius">
+                        <div className="flex flex-col">
+                          <span className="font-medium">PPPoE with DHCP and RADIUS Authentication</span>
+                          <span className="text-xs text-muted-foreground">
+                            Customers authenticate via PPPoE using RADIUS server (Recommended)
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="pppoe_secrets">
+                        <div className="flex flex-col">
+                          <span className="font-medium">PPPoE Secrets</span>
+                          <span className="text-xs text-muted-foreground">
+                            Customers authenticate via PPPoE using local router secrets
+                          </span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    This setting determines how customers will be authorized to browse the internet
+                  </p>
                 </div>
 
                 <div className="space-y-4">

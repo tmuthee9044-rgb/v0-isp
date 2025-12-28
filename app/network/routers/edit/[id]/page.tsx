@@ -1,23 +1,13 @@
 "use client"
 
-import { TableCell } from "@/components/ui/table"
-
-import { TableBody } from "@/components/ui/table"
-
-import { TableHead } from "@/components/ui/table"
-
-import { TableRow } from "@/components/ui/table"
-
-import { TableHeader } from "@/components/ui/table"
-
-import { Table } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -45,7 +35,7 @@ import {
   Loader2,
   AlertTriangle,
   Twitch as Switch,
-} from "lucide-react" // Added missing imports
+} from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 
@@ -71,6 +61,7 @@ interface Router {
   save_visited_ips?: boolean
   radius_secret?: string
   radius_nas_ip?: string
+  customer_auth_method?: string // Added customer_auth_method to Router interface
 }
 
 interface Location {
@@ -140,6 +131,7 @@ interface FormData {
   trafficking_record: string
   speed_control: string
   save_visited_ips: boolean
+  customer_auth_method: string // Added customer_auth_method to FormData interface
   radius_secret: string
   radius_nas_ip: string
   gps_latitude: number
@@ -227,6 +219,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           trafficking_record: data.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
           speed_control: data.speed_control || "PCQ + Addresslist",
           save_visited_ips: data.save_visited_ips ?? true,
+          customer_auth_method: data.customer_auth_method || "pppoe_radius", // Load customer auth method from database
           radius_secret: data.radius_secret || "",
           radius_nas_ip: data.radius_nas_ip || "",
           gps_latitude: data.gps_latitude || -1.2921,
@@ -457,6 +450,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     trafficking_record: "Traffic Flow (RouterOS V6x,V7.x)",
     speed_control: "PCQ + Addresslist",
     save_visited_ips: true,
+    customer_auth_method: "pppoe_radius", // Added default customer authorization method
     radius_secret: "",
     radius_nas_ip: "",
     gps_latitude: -1.2921,
@@ -716,7 +710,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
       {/* Main Content */}
       <Tabs defaultValue="data-config" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="data-config" className="flex items-center gap-2">
             <Database className="w-4 h-4" />
             Data & Configuration
@@ -724,6 +718,11 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           <TabsTrigger value="router-details" className="flex items-center gap-2">
             <Info className="w-4 h-4" />
             Router Details
+          </TabsTrigger>
+          {/* Security tab added */}
+          <TabsTrigger value="security" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Security
           </TabsTrigger>
           <TabsTrigger value="mikrotik" className="flex items-center gap-2">
             <RouterIcon className="w-4 h-4" />
@@ -1413,6 +1412,200 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           )}
         </TabsContent>
 
+        {/* Security Configuration */}
+        <TabsContent value="security">
+          <Card>
+            <CardHeader>
+              <CardTitle>Security Configuration</CardTitle>
+              <CardDescription>Configure authentication and security settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Router Authentication */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">Router Authentication</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      placeholder="admin"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Enter password"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="connection_type">Connection Method</Label>
+                  <Select
+                    value={formData.connection_type}
+                    onValueChange={(value: any) => setFormData({ ...formData, connection_type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="public_ip">Public IP (Recommended)</SelectItem>
+                      <SelectItem value="private_ip">Private IP</SelectItem>
+                      <SelectItem value="vpn">VPN</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">RADIUS Authentication (FreeRADIUS)</h3>
+                  {radiusSettings?.enabled && (
+                    <Badge className="bg-green-100 text-green-800">
+                      <Activity className="w-3 h-3 mr-1" />
+                      Server Active
+                    </Badge>
+                  )}
+                </div>
+
+                {radiusSettings?.enabled ? (
+                  <>
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm space-y-2">
+                      <p className="font-medium text-blue-900">FreeRADIUS Server Detected</p>
+                      <div className="space-y-1 text-blue-700">
+                        <p>
+                          Server:{" "}
+                          <span className="font-mono">
+                            {radiusSettings.host}:{radiusSettings.authPort}
+                          </span>
+                        </p>
+                        <p>Protocols: PPPoE, IPoE, Hotspot, Wireless</p>
+                        <p>Accounting: {radiusSettings.acctPort}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="radius_secret">RADIUS Shared Secret 🔒</Label>
+                        <Input
+                          id="radius_secret"
+                          type="password"
+                          value={formData.radius_secret}
+                          onChange={(e) => setFormData({ ...formData, radius_secret: e.target.value })}
+                          placeholder="Enter shared secret"
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Must match the secret configured in FreeRADIUS clients.conf
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="radius_nas_ip">NAS IP Address</Label>
+                        <Input
+                          id="radius_nas_ip"
+                          value={formData.radius_nas_ip}
+                          onChange={(e) => setFormData({ ...formData, radius_nas_ip: e.target.value })}
+                          placeholder={routerData?.ip_address || "Router IP address"}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Network Access Server identifier (usually router IP)
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 border rounded-lg space-y-2">
+                      <p className="text-sm font-medium">Configure MikroTik RADIUS:</p>
+                      <div className="space-y-1 text-xs font-mono bg-white p-2 rounded border">
+                        <div className="text-muted-foreground"># Add RADIUS server</div>
+                        <div>/radius add service=ppp,login address={radiusSettings.host} secret=[YOUR_SECRET]</div>
+                        <div className="text-muted-foreground mt-2"># Enable RADIUS AAA</div>
+                        <div>/ppp aaa set use-radius=yes accounting=yes</div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-900">
+                        <strong>Supported Features:</strong> User authentication, bandwidth control via vendor-specific
+                        attributes (Mikrotik-Rate-Limit), session accounting, and failover redundancy.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="radius_secret">RADIUS Secret (Optional)</Label>
+                        <Input
+                          id="radius_secret"
+                          type="password"
+                          value={formData.radius_secret}
+                          onChange={(e) => setFormData({ ...formData, radius_secret: e.target.value })}
+                          placeholder="Leave empty if not using RADIUS"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="radius_nas_ip">NAS IP Address (Optional)</Label>
+                        <Input
+                          id="radius_nas_ip"
+                          value={formData.radius_nas_ip}
+                          onChange={(e) => setFormData({ ...formData, radius_nas_ip: e.target.value })}
+                          placeholder="Leave empty if not using RADIUS"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <Shield className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium text-yellow-900">FreeRADIUS Not Configured</p>
+                          <p className="text-sm text-yellow-700 mt-1">
+                            To enable centralized AAA (Authentication, Authorization, Accounting) with FreeRADIUS,
+                            configure your RADIUS server in{" "}
+                            <a
+                              href="/settings/servers"
+                              target="_blank"
+                              className="underline font-medium"
+                              rel="noreferrer"
+                            >
+                              Settings → Servers
+                            </a>
+                            .
+                          </p>
+                          <p className="text-sm text-yellow-700 mt-2">
+                            <strong>Benefits:</strong> Centralized user management, PPPoE/IPoE/Hotspot authentication,
+                            dynamic bandwidth control, session tracking, and multi-vendor support (MikroTik, Ubiquiti,
+                            Cisco, Juniper, Cambium, Huawei).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="blocking" className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -1538,6 +1731,47 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="customer-auth-method">Customer Authorization Method</Label>
+                    <Select
+                      value={formData.customer_auth_method}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, customer_auth_method: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select authorization method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dhcp_lease">
+                          <div className="flex flex-col">
+                            <span className="font-medium">DHCP Lease</span>
+                            <span className="text-xs text-muted-foreground">
+                              Customers get IP addresses via DHCP without authentication
+                            </span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="pppoe_radius">
+                          <div className="flex flex-col">
+                            <span className="font-medium">PPPoE with DHCP and RADIUS Authentication</span>
+                            <span className="text-xs text-muted-foreground">
+                              Customers authenticate via PPPoE using RADIUS server (Recommended)
+                            </span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="pppoe_secrets">
+                          <div className="flex flex-col">
+                            <span className="font-medium">PPPoE Secrets</span>
+                            <span className="text-xs text-muted-foreground">
+                              Customers authenticate via PPPoE using local router secrets
+                            </span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      This setting determines how customers will be authorized to browse the internet
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -1933,7 +2167,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                             <FileText className="w-8 h-8 opacity-50" />
                             <p>No logs available from the physical MikroTik router</p>
                             <p className="text-xs">
-                              Make sure the REST API is enabled on the router (IP → Services → www/www-ssl)
+                              Make sure the REST API is enabled on the router (IP → Services → www/ssl)
                             </p>
                             <Button size="sm" variant="outline" onClick={fetchLogs} className="mt-2 bg-transparent">
                               <RefreshCw className="w-4 h-4 mr-1" />

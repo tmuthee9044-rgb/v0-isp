@@ -272,34 +272,34 @@ install_freeradius() {
     print_info "Detecting host network IP address..."
     
     # Try to detect the primary network IP (not localhost)
-    RADIUS_HOST=""
+    DETECTED_IP=""
     
     # Method 1: Get IP from default route interface
     if command -v ip &> /dev/null; then
         DEFAULT_INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
         if [ -n "$DEFAULT_INTERFACE" ]; then
-            RADIUS_HOST=$(ip addr show "$DEFAULT_INTERFACE" | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
+            DETECTED_IP=$(ip addr show "$DEFAULT_INTERFACE" | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
         fi
     fi
     
     # Method 2: Use hostname -I (fallback)
-    if [ -z "$RADIUS_HOST" ] && command -v hostname &> /dev/null; then
-        RADIUS_HOST=$(hostname -I | awk '{print $1}')
+    if [ -z "$DETECTED_IP" ] && command -v hostname &> /dev/null; then
+        DETECTED_IP=$(hostname -I | awk '{print $1}')
     fi
     
     # Method 3: Use ifconfig (fallback for older systems)
-    if [ -z "$RADIUS_HOST" ] && command -v ifconfig &> /dev/null; then
-        RADIUS_HOST=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -n1)
+    if [ -z "$DETECTED_IP" ] && command -v ifconfig &> /dev/null; then
+        DETECTED_IP=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -n1)
     fi
     
     # Fallback to localhost if detection fails
-    if [ -z "$RADIUS_HOST" ]; then
-        RADIUS_HOST="127.0.0.1"
+    if [ -z "$DETECTED_IP" ]; then
+        DETECTED_IP="127.0.0.1"
         print_warning "Could not detect network IP, using localhost (127.0.0.1)"
         print_warning "Physical routers will NOT be able to connect!"
         print_info "Please update RADIUS configuration in /settings/servers with your actual IP"
     else
-        print_success "Detected host IP: $RADIUS_HOST"
+        print_success "Detected host IP: $DETECTED_IP"
         print_info "Physical routers will connect to this IP address"
     fi
     
@@ -375,7 +375,7 @@ RADIUSTABLES
 -- Save RADIUS server configuration
 INSERT INTO system_config (key, value, created_at, updated_at) VALUES
     ('server.radius.enabled', 'true', NOW(), NOW()),
-    ('server.radius.host', '$RADIUS_HOST', NOW(), NOW()),
+    ('server.radius.host', '$DETECTED_IP', NOW(), NOW()),
     ('server.radius.authPort', '1812', NOW(), NOW()),
     ('server.radius.acctPort', '1813', NOW(), NOW()),
     ('server.radius.sharedSecret', '$RADIUS_SECRET', NOW(), NOW()),
@@ -388,7 +388,7 @@ ON CONFLICT (key) DO UPDATE SET
 INSERT INTO system_logs (level, source, category, message, details, created_at) VALUES
     ('INFO', 'Installation', 'radius_setup', 
      'FreeRADIUS installed and configured', 
-     '{"host": "$RADIUS_HOST", "authPort": 1812, "acctPort": 1813}', 
+     '{"host": "$DETECTED_IP", "authPort": 1812, "acctPort": 1813}', 
      NOW());
 SAVERADIUS
     
@@ -399,7 +399,7 @@ SAVERADIUS
         echo "╔════════════════════════════════════════════════════════════╗"
         echo "║          RADIUS Configuration Summary                      ║"
         echo "╠════════════════════════════════════════════════════════════╣"
-        echo "║ Host IP:        $RADIUS_HOST                               ║"
+        echo "║ Host IP:        $DETECTED_IP                               ║"
         echo "║ Auth Port:      1812                                       ║"
         echo "║ Acct Port:      1813                                       ║"
         echo "║ Shared Secret:  $RADIUS_SECRET                             ║"
@@ -463,6 +463,85 @@ SAVERADIUS
     
     sudo mkdir -p "$FREERADIUS_DIR/mods-available"
     sudo mkdir -p "$FREERADIUS_DIR/mods-enabled"
+    
+    # Configure clients.conf to accept connections from detected IP and database clients
+    print_info "Configuring RADIUS clients (clients.conf)..."
+    CLIENTS_CONF="$FREERADIUS_DIR/clients.conf"
+    
+    if [ -f "$CLIENTS_CONF" ]; then
+        sudo cp "$CLIENTS_CONF" "$CLIENTS_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Create new clients.conf with detected IP and database integration
+        sudo tee "$CLIENTS_CONF.tmp" > /dev/null <<EOF_CLIENTS
+# FreeRADIUS Clients Configuration
+# Configured by ISP Management System
+
+# Localhost client (for testing)
+client localhost {
+    ipaddr = 127.0.0.1
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+}
+
+# IPv6 localhost
+client localhost_ipv6 {
+    ipv6addr = ::1
+    secret = $RADIUS_SECRET
+}
+
+# ISP Management System Server (detected IP: $DETECTED_IP)
+client isp_server {
+    ipaddr = $DETECTED_IP
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "isp-server"
+}
+
+# Allow all private network ranges (for testing - tighten in production)
+client private_network_10 {
+    ipaddr = 10.0.0.0
+    netmask = 8
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-10"
+}
+
+client private_network_172 {
+    ipaddr = 172.16.0.0
+    netmask = 12
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-172"
+}
+
+client private_network_192 {
+    ipaddr = 192.168.0.0
+    netmask = 16
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-192"
+}
+
+# Dynamic clients from database (requires SQL module)
+# FreeRADIUS will read additional clients from radius_nas table
+EOF_CLIENTS
+
+        sudo mv "$CLIENTS_CONF.tmp" "$CLIENTS_CONF"
+        sudo chmod 644 "$CLIENTS_CONF"
+        print_success "RADIUS clients configured with detected IP ($DETECTED_IP) and private networks"
+    fi
+
+    # Enable SQL module for dynamic client loading
+    print_info "Enabling SQL module for dynamic client management..."
+    if [ -f "$FREERADIUS_DIR/mods-available/sql" ]; then
+        sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql" 2>/dev/null || true
+        print_success "SQL module enabled"
+    fi
     
     # Configure SQL module
     print_info "Configuring FreeRADIUS SQL module..."
@@ -688,7 +767,7 @@ SQLEOF
         print_success "SQL module enabled"
     fi
     
-    print_info "Configuring FreeRADIUS to listen on detected IP: $RADIUS_HOST"
+    print_info "Configuring FreeRADIUS to listen on detected IP: $DETECTED_IP"
     
     # Configure the default site to listen on the detected IP
     DEFAULT_SITE="$FREERADIUS_DIR/sites-available/default"
@@ -868,74 +947,113 @@ EOF_INNER
     sudo ln -sf "$FREERADIUS_DIR/sites-available/inner-tunnel" "$FREERADIUS_DIR/sites-enabled/inner-tunnel" 2>/dev/null || true
     
     print_success "FreeRADIUS now configured to listen on all network interfaces (0.0.0.0)"
-    print_info "External routers can connect to: $RADIUS_HOST:1812"
+    print_info "External routers can connect to: $DETECTED_IP:1812"
     
-    print_info "Fixing FreeRADIUS file permissions..."
+    print_info "Setting correct permissions for FreeRADIUS files..."
     
-    # Set correct ownership
-    sudo chown -R freerad:freerad "$FREERADIUS_DIR" 2>/dev/null || sudo chown -R radius:radius "$FREERADIUS_DIR" 2>/dev/null || true
-    sudo chown -R freerad:freerad /var/log/freeradius 2>/dev/null || sudo chown -R radius:radius /var/log/freeradius 2>/dev/null || true
-    sudo chown -R freerad:freerad /var/run/freeradius 2>/dev/null || sudo chown -R radius:radius /var/run/freeradius 2>/dev/null || true
+    # Fix ownership
+    sudo chown -R freerad:freerad /etc/freeradius/3.0 2>/dev/null || \
+        sudo chown -R radius:radius /etc/freeradius/3.0 2>/dev/null || true
     
-    # Set correct permissions for directories
-    sudo find "$FREERADIUS_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    # Fix directory permissions (755 = readable and executable)
+    sudo find /etc/freeradius/3.0 -type d -exec chmod 755 {} \; 2>/dev/null || true
     
-    # Set correct permissions for files
-    sudo find "$FREERADIUS_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    # Fix file permissions (644 = readable)
+    sudo find /etc/freeradius/3.0 -type f -exec chmod 644 {} \; 2>/dev/null || true
+    
+    print_info "Configuring certificate permissions..."
+    CERTS_DIR="$FREERADIUS_DIR/certs"
+    if [ -d "$CERTS_DIR" ]; then
+        # Set ownership for certs directory
+        sudo chown -R freerad:freerad "$CERTS_DIR" 2>/dev/null || \
+            sudo chown -R radius:radius "$CERTS_DIR" 2>/dev/null || true
+        
+        # Directory should be readable and executable
+        sudo chmod 750 "$CERTS_DIR"
+        
+        # Private keys should be readable only by freerad user
+        sudo find "$CERTS_DIR" -name "*.key" -exec chmod 640 {} \; 2>/dev/null || true
+        sudo find "$CERTS_DIR" -name "*.pem" -type f -exec chmod 640 {} \; 2>/dev/null || true
+        
+        # Certificates can be more permissive
+        sudo find "$CERTS_DIR" -name "*.crt" -exec chmod 644 {} \; 2>/dev/null || true
+        sudo find "$CERTS_DIR" -name "*.der" -exec chmod 644 {} \; 2>/dev/null || true
+        
+        # CA certificates should be readable
+        if [ -f "$CERTS_DIR/ca.pem" ]; then
+            sudo chmod 644 "$CERTS_DIR/ca.pem"
+        fi
+        
+        print_success "Certificate permissions configured securely"
+    else
+        print_warning "Certificate directory not found at $CERTS_DIR"
+    fi
     
     # Make binaries executable
     sudo chmod 755 /usr/sbin/freeradius 2>/dev/null || true
     sudo chmod 755 /usr/sbin/radiusd 2>/dev/null || true
     
-    # Ensure mods-config has proper permissions
-    if [ -d "$FREERADIUS_DIR/mods-config" ]; then
-        sudo chmod -R 755 "$FREERADIUS_DIR/mods-config" 2>/dev/null || true
-    fi
+    # Fix log directory permissions
+    sudo mkdir -p /var/log/freeradius
+    sudo chown -R freerad:freerad /var/log/freeradius 2>/dev/null || \
+        sudo chown -R radius:radius /var/log/freeradius 2>/dev/null || true
+    sudo chmod 755 /var/log/freeradius
     
-    print_success "FreeRADIUS permissions fixed"
+    print_success "FreeRADIUS permissions set correctly"
     
     # Test configuration before starting
     print_info "Testing FreeRADIUS configuration..."
-    if sudo freeradius -C 2>/dev/null; then
+    if sudo freeradius -C > /dev/null 2>&1; then
         print_success "FreeRADIUS configuration is valid"
     else
-        print_warning "FreeRADIUS configuration test failed, but will attempt to start anyway"
-        print_info "You can manually test with: sudo freeradius -X"
+        print_warning "FreeRADIUS configuration test failed - will attempt to start anyway"
+        print_info "Run 'sudo freeradius -X' to see detailed error messages"
     fi
     
-    # Configure firewall
+    # Open firewall ports
     print_info "Configuring firewall for RADIUS..."
-    if [[ "$OS" == "linux" ]] && command -v ufw &> /dev/null; then
-        sudo ufw allow 1812/udp comment 'RADIUS Authentication'
-        sudo ufw allow 1813/udp comment 'RADIUS Accounting'
-        print_success "Firewall configured (UFW)"
-    elif [[ "$OS" == "linux" ]] && command -v firewall-cmd &> /dev/null; then
-        sudo firewall-cmd --add-port=1812/udp --permanent
-        sudo firewall-cmd --add-port=1813/udp --permanent
-        sudo firewall-cmd --reload
-        print_success "Firewall configured (firewalld)"
-    fi
-    
+    sudo ufw allow 1812/udp comment "RADIUS Authentication" 2>/dev/null || true
+    sudo ufw allow 1813/udp comment "RADIUS Accounting" 2>/dev/null || true
+    print_success "Firewall configured for RADIUS (ports 1812, 1813)"
+
     print_info "Starting FreeRADIUS service..."
-    if [[ "$OS" == "linux" ]]; then
-        if command -v systemctl &> /dev/null; then
-            sudo systemctl enable freeradius
-            sudo systemctl restart freeradius
-            
-            # Wait for service to start
-            sleep 2
-            
-            if sudo systemctl is-active --quiet freeradius; then
-                print_success "FreeRADIUS service is running"
-            else
-                print_error "FreeRADIUS service failed to start"
-                print_info "Check logs: sudo journalctl -u freeradius -n 50"
-                return 1
-            fi
+    
+    # Stop any existing instance
+    sudo systemctl stop freeradius 2>/dev/null || true
+    sleep 2
+    
+    # Enable and start service
+    sudo systemctl enable freeradius
+    sudo systemctl start freeradius
+    
+    # Wait for service to start
+    sleep 3
+    
+    # Verify service is running
+    if sudo systemctl is-active --quiet freeradius; then
+        print_success "FreeRADIUS service started successfully"
+        
+        # Verify it's listening on network interface
+        print_info "Verifying RADIUS is listening on network..."
+        if sudo netstat -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0" || \
+           sudo ss -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0"; then
+            print_success "RADIUS is listening on all network interfaces (0.0.0.0:1812)"
         else
-            sudo service freeradius restart
-            print_info "FreeRADIUS service restarted"
+            print_warning "RADIUS may not be listening on all interfaces"
+            print_info "Check with: sudo netstat -ulnp | grep 1812"
         fi
+        
+        # Show RADIUS status
+        print_info "FreeRADIUS Status:"
+        sudo systemctl status freeradius --no-pager | head -10
+    else
+        print_error "FreeRADIUS service failed to start"
+        print_info "Check errors with: sudo journalctl -xeu freeradius.service"
+        print_info "Or run debug mode: sudo freeradius -X"
+        print_info "Common issues:"
+        echo "  1. Permission errors - Run: sudo chmod -R 644 /etc/freeradius/3.0"
+        echo "  2. Port conflicts - Check: sudo netstat -ulnp | grep 1812"
+        echo "  3. SQL configuration - Verify DATABASE_URL is set correctly"
     fi
     
     print_info "Testing RADIUS server connectivity..."
@@ -961,7 +1079,7 @@ TESTUSER
         
         # Test with radtest if available
         if command -v radtest &> /dev/null; then
-            if radtest "$TEST_USER" "$TEST_PASS" "$RADIUS_HOST" 1812 "$RADIUS_SECRET" &> /dev/null; then
+            if radtest "$TEST_USER" "$TEST_PASS" "$DETECTED_IP" 1812 "$RADIUS_SECRET" &> /dev/null; then
                 print_success "RADIUS authentication test PASSED"
             else
                 print_warning "RADIUS authentication test FAILED"
@@ -2535,6 +2653,175 @@ FIXSQL
     fi
 }
 
+verify_database_tables() {
+    print_header "Verifying Database Tables"
+    
+    DB_NAME="${DB_NAME:-isp_system}"
+    
+    print_info "Checking if required tables exist..."
+    
+    # List of required tables
+    REQUIRED_TABLES=(
+        "customers"
+        "service_plans"
+        "customer_services"
+        "payments"
+        "invoices"
+        "network_devices"
+        "ip_addresses"
+        "employees"
+        "payroll"
+        "leave_requests"
+        "activity_logs"
+        "schema_migrations"
+        # Added FreeRADIUS tables
+        "radius_users"
+        "radius_sessions_active"
+        "radius_sessions_archive"
+        "radius_nas" # Added radius_nas
+    )
+    
+    MISSING_TABLES=()
+    
+    for table in "${REQUIRED_TABLES[@]}"; do
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+            print_success "Table exists: $table"
+        else
+            print_warning "Table missing: $table"
+            MISSING_TABLES+=("$table")
+        fi
+    done
+    
+    if [ ${#MISSING_TABLES[@]} -eq 0 ]; then
+        print_success "All required tables exist"
+        
+        # Count total tables
+        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+        print_info "Total tables in database: $TABLE_COUNT"
+        
+    else
+        print_error "Missing ${#MISSING_TABLES[@]} required tables"
+        print_info "Missing tables: ${MISSING_TABLES[*]}"
+        print_info "Attempting to create missing tables..."
+        
+        # Run migrations to create tables
+        apply_database_fixes
+        
+        # Verify again
+        print_info "Re-checking tables after migration..."
+        STILL_MISSING=()
+        
+        for table in "${MISSING_TABLES[@]}"; do
+            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+                STILL_MISSING+=("$table")
+            fi
+        done
+        
+        if [ ${#STILL_MISSING[@]} -eq 0 ]; then
+            print_success "All tables created successfully"
+        else
+            print_error "Failed to create tables: ${STILL_MISSING[*]}"
+            print_info "Please check the migration files in scripts/ directory"
+            print_info "You can manually run: sudo -u postgres psql -d $DB_NAME -f scripts/001_initial_schema.sql"
+            exit 1
+        fi
+    fi
+}
+
+test_database_operations() {
+    print_header "Testing Database Operations"
+    
+    DB_NAME="${DB_NAME:-isp_system}"
+    
+    print_info "Testing INSERT operation..."
+    if sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO activity_logs (action, entity_type, details) VALUES ('test_install', 'system', '{\"test\": true}') RETURNING id;" > /dev/null 2>&1; then
+        print_success "INSERT operation successful"
+    else
+        print_error "INSERT operation failed"
+        exit 1
+    fi
+    
+    print_info "Testing SELECT operation..."
+    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT COUNT(*) FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
+        print_success "SELECT operation successful"
+    else
+        print_error "SELECT operation failed"
+        exit 1
+    fi
+    
+    print_info "Testing UPDATE operation..."
+    if sudo -u postgres psql -d "$DB_NAME" -c "UPDATE activity_logs SET details = '{\"test\": true, \"verified\": true}' WHERE action = 'test_install';" > /dev/null 2>&1; then
+        print_success "UPDATE operation successful"
+    else
+        print_error "UPDATE operation failed"
+        exit 1
+    fi
+    
+    print_info "Testing DELETE operation..."
+    if sudo -u postgres psql -d "$DB_NAME" -c "DELETE FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
+        print_success "DELETE operation successful"
+    else
+        print_error "DELETE operation failed"
+        exit 1
+    fi
+    
+    print_success "All database operations working correctly"
+}
+
+run_performance_optimizations() {
+    print_header "Applying Performance Optimizations"
+    
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    
+    if [ ! -d "$SCRIPT_DIR/scripts" ]; then
+        print_warning "scripts/ directory not found, skipping performance optimizations..."
+        return 0
+    fi
+    
+    if [ ! -f "$SCRIPT_DIR/scripts/performance_indexes.sql" ]; then
+        print_warning "Performance optimization script not found at: $SCRIPT_DIR/scripts/performance_indexes.sql"
+        print_info "Skipping performance optimizations..."
+        return 0
+    fi
+    
+    print_info "Creating performance indexes..."
+    
+    DB_NAME="${DB_NAME:-isp_system}"
+    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        print_error "Database '$DB_NAME' does not exist"
+        print_info "Please run full installation first: ./install.sh"
+        exit 1
+    fi
+    
+    print_info "Preparing performance optimization file..."
+    TEMP_PERF_DIR="/tmp/isp_performance_$$"
+    mkdir -p "$TEMP_PERF_DIR"
+    chmod 755 "$TEMP_PERF_DIR"
+    
+    cp "$SCRIPT_DIR/scripts/performance_indexes.sql" "$TEMP_PERF_DIR/performance_indexes.sql"
+    chmod 644 "$TEMP_PERF_DIR/performance_indexes.sql"
+    
+    if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_PERF_DIR/performance_indexes.sql") 2>&1 | tee /tmp/performance_output.log; then
+        print_success "Performance optimizations applied"
+        
+        # Show summary
+        INDEX_COUNT=$(grep -c "CREATE INDEX" /tmp/performance_output.log || echo "0")
+        if [ "$INDEX_COUNT" -gt 0 ]; then
+            print_info "Created/verified $INDEX_COUNT performance indexes"
+        fi
+    else
+        print_warning "Some performance optimizations may have failed"
+        print_info "This is usually not critical and the system will still work"
+        print_info "Check the log: /tmp/performance_output.log"
+    fi
+    
+    print_info "Cleaning up temporary files..."
+    rm -rf "$TEMP_PERF_DIR"
+    rm -f /tmp/performance_output.log
+    
+    print_success "Performance optimization process complete"
+}
+
 verify_database_connection() {
     print_header "Verifying Database Connection (Comprehensive Test)"
     
@@ -2717,175 +3004,6 @@ AND table_type = 'BASE TABLE';
     print_success "Database schema verification complete!"
     
     print_success "Database connection verification complete!"
-}
-
-verify_database_tables() {
-    print_header "Verifying Database Tables"
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    
-    print_info "Checking if required tables exist..."
-    
-    # List of required tables
-    REQUIRED_TABLES=(
-        "customers"
-        "service_plans"
-        "customer_services"
-        "payments"
-        "invoices"
-        "network_devices"
-        "ip_addresses"
-        "employees"
-        "payroll"
-        "leave_requests"
-        "activity_logs"
-        "schema_migrations"
-        # Added FreeRADIUS tables
-        "radius_users"
-        "radius_sessions_active"
-        "radius_sessions_archive"
-        "radius_nas" # Added radius_nas
-    )
-    
-    MISSING_TABLES=()
-    
-    for table in "${REQUIRED_TABLES[@]}"; do
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
-            print_success "Table exists: $table"
-        else
-            print_warning "Table missing: $table"
-            MISSING_TABLES+=("$table")
-        fi
-    done
-    
-    if [ ${#MISSING_TABLES[@]} -eq 0 ]; then
-        print_success "All required tables exist"
-        
-        # Count total tables
-        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-        print_info "Total tables in database: $TABLE_COUNT"
-        
-    else
-        print_error "Missing ${#MISSING_TABLES[@]} required tables"
-        print_info "Missing tables: ${MISSING_TABLES[*]}"
-        print_info "Attempting to create missing tables..."
-        
-        # Run migrations to create tables
-        apply_database_fixes
-        
-        # Verify again
-        print_info "Re-checking tables after migration..."
-        STILL_MISSING=()
-        
-        for table in "${MISSING_TABLES[@]}"; do
-            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
-                STILL_MISSING+=("$table")
-            fi
-        done
-        
-        if [ ${#STILL_MISSING[@]} -eq 0 ]; then
-            print_success "All tables created successfully"
-        else
-            print_error "Failed to create tables: ${STILL_MISSING[*]}"
-            print_info "Please check the migration files in scripts/ directory"
-            print_info "You can manually run: sudo -u postgres psql -d $DB_NAME -f scripts/001_initial_schema.sql"
-            exit 1
-        fi
-    fi
-}
-
-test_database_operations() {
-    print_header "Testing Database Operations"
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    
-    print_info "Testing INSERT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO activity_logs (action, entity_type, details) VALUES ('test_install', 'system', '{\"test\": true}') RETURNING id;" > /dev/null 2>&1; then
-        print_success "INSERT operation successful"
-    else
-        print_error "INSERT operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing SELECT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT COUNT(*) FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "SELECT operation successful"
-    else
-        print_error "SELECT operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing UPDATE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "UPDATE activity_logs SET details = '{\"test\": true, \"verified\": true}' WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "UPDATE operation successful"
-    else
-        print_error "UPDATE operation failed"
-        exit 1
-    fi
-    
-    print_info "Testing DELETE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "DELETE FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "DELETE operation successful"
-    else
-        print_error "DELETE operation failed"
-        exit 1
-    fi
-    
-    print_success "All database operations working correctly"
-}
-
-run_performance_optimizations() {
-    print_header "Applying Performance Optimizations"
-    
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    
-    if [ ! -d "$SCRIPT_DIR/scripts" ]; then
-        print_warning "scripts/ directory not found, skipping performance optimizations..."
-        return 0
-    fi
-    
-    if [ ! -f "$SCRIPT_DIR/scripts/performance_indexes.sql" ]; then
-        print_warning "Performance optimization script not found at: $SCRIPT_DIR/scripts/performance_indexes.sql"
-        print_info "Skipping performance optimizations..."
-        return 0
-    fi
-    
-    print_info "Creating performance indexes..."
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_error "Database '$DB_NAME' does not exist"
-        print_info "Please run full installation first: ./install.sh"
-        exit 1
-    fi
-    
-    print_info "Preparing performance optimization file..."
-    TEMP_PERF_DIR="/tmp/isp_performance_$$"
-    mkdir -p "$TEMP_PERF_DIR"
-    chmod 755 "$TEMP_PERF_DIR"
-    
-    cp "$SCRIPT_DIR/scripts/performance_indexes.sql" "$TEMP_PERF_DIR/performance_indexes.sql"
-    chmod 644 "$TEMP_PERF_DIR/performance_indexes.sql"
-    
-    if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_PERF_DIR/performance_indexes.sql") 2>&1 | tee /tmp/performance_output.log; then
-        print_success "Performance optimizations applied"
-        
-        # Show summary
-        INDEX_COUNT=$(grep -c "CREATE INDEX" /tmp/performance_output.log || echo "0")
-        if [ "$INDEX_COUNT" -gt 0 ]; then
-            print_info "Created/verified $INDEX_COUNT performance indexes"
-        fi
-    else
-        print_warning "Some performance optimizations may have failed"
-        print_info "This is usually not critical and the system will still work"
-        print_info "Check the log: /tmp/performance_output.log"
-    fi
-    
-    print_info "Cleaning up temporary files..."
-    rm -rf "$TEMP_PERF_DIR"
-    rm -f /tmp/performance_output.log
-    
-    print_success "Performance optimization process complete"
 }
 
 # ============================================

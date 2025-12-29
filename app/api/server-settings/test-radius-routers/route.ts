@@ -98,16 +98,16 @@ export async function POST(request: NextRequest) {
       // Test 2: Check if router is registered as NAS client
       try {
         const nasClients = await sql`
-          SELECT id, name, ip_address, secret
-          FROM radius_nas
-          WHERE ip_address = ${router.nas_ip_address || router.ip_address}
+          SELECT id, nasname as name, nasidentifier, secret
+          FROM nas
+          WHERE nasidentifier = ${router.nas_ip_address || router.ip_address}
           LIMIT 1
         `
 
         routerResult.tests.nasRegistration = {
           success: nasClients.length > 0,
           registered: nasClients.length > 0,
-          nasName: nasClients[0]?.name || null,
+          nasName: nasClients[0]?.name || nasClients[0]?.nasname || null,
           secretConfigured: nasClients.length > 0 && !!nasClients[0]?.secret,
         }
       } catch (error) {
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         routerResult.tests.nasRegistration = {
           success: false,
           registered: false,
-          error: "radius_nas table may not exist - run RADIUS migration",
+          error: "nas table may not exist - run FreeRADIUS schema migration",
         }
       }
 
@@ -123,8 +123,8 @@ export async function POST(request: NextRequest) {
       if (router.radius_secret && routerResult.tests.nasRegistration?.registered) {
         const nasClients = await sql`
           SELECT secret
-          FROM radius_nas
-          WHERE ip_address = ${router.nas_ip_address || router.ip_address}
+          FROM nas
+          WHERE nasidentifier = ${router.nas_ip_address || router.ip_address}
           LIMIT 1
         `
 
@@ -134,13 +134,19 @@ export async function POST(request: NextRequest) {
           message:
             router.radius_secret === nasClients[0]?.secret
               ? "RADIUS secrets match"
-              : "RADIUS secrets mismatch - router cannot authenticate",
+              : "RADIUS secrets mismatch - update router or database",
+        }
+      } else if (!router.radius_secret) {
+        routerResult.tests.secretMatch = {
+          success: false,
+          match: false,
+          message: "RADIUS secret not configured in network_devices table",
         }
       } else {
         routerResult.tests.secretMatch = {
           success: false,
           match: false,
-          message: "RADIUS secret not configured on router or NAS",
+          message: "Router not registered in RADIUS nas table",
         }
       }
 
@@ -148,22 +154,23 @@ export async function POST(request: NextRequest) {
       try {
         const sessions = await sql`
           SELECT COUNT(*) as count
-          FROM radius_sessions_active
-          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
+          FROM radacct
+          WHERE nasipaddress = ${router.nas_ip_address || router.ip_address}
+          AND acctstoptime IS NULL
         `
 
         routerResult.tests.activeSessions = {
           success: true,
           count: Number(sessions[0]?.count || 0),
-          status: Number(sessions[0]?.count || 0) > 0 ? "Router is sending sessions" : "No active sessions",
+          status: Number(sessions[0]?.count || 0) > 0 ? "Router has active sessions" : "No active sessions",
         }
       } catch (error) {
         console.error("[v0] Error checking active sessions:", error)
         routerResult.tests.activeSessions = {
           success: false,
           count: 0,
-          status: "radius_sessions_active table may not exist",
-          error: "Run RADIUS migration script",
+          status: "radacct table may not exist",
+          error: "Run FreeRADIUS schema migration",
         }
       }
 
@@ -171,9 +178,9 @@ export async function POST(request: NextRequest) {
       try {
         const recentAccounting = await sql`
           SELECT COUNT(*) as count
-          FROM radius_accounting
-          WHERE nas_ip_address = ${router.nas_ip_address || router.ip_address}
-          AND created_at > NOW() - INTERVAL '1 hour'
+          FROM radacct
+          WHERE nasipaddress = ${router.nas_ip_address || router.ip_address}
+          AND acctstarttime > NOW() - INTERVAL '1 hour'
         `
 
         routerResult.tests.recentAccounting = {
@@ -182,15 +189,15 @@ export async function POST(request: NextRequest) {
           status:
             Number(recentAccounting[0]?.count || 0) > 0
               ? "Router is sending accounting data"
-              : "No recent accounting records",
+              : "No recent accounting records (past hour)",
         }
       } catch (error) {
         console.error("[v0] Error checking accounting:", error)
         routerResult.tests.recentAccounting = {
           success: false,
           count: 0,
-          status: "radius_accounting table may not exist",
-          error: "Run RADIUS migration script",
+          status: "radacct table may not exist",
+          error: "Run FreeRADIUS schema migration",
         }
       }
 

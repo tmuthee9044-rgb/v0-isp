@@ -14,11 +14,12 @@ export async function GET() {
           WHEN severity = 'high' THEN 'warning'
           ELSE 'info'
         END as alert_type,
-        message,
+        alert_type || ': ' || COALESCE(current_value::text, 'N/A') || ' exceeds threshold ' || COALESCE(threshold_value::text, 'N/A') as message,
         created_at as time,
         severity
       FROM capacity_alerts
       WHERE created_at >= NOW() - INTERVAL '24 hours'
+      AND status != 'resolved'
       ORDER BY created_at DESC
       LIMIT 10
     `
@@ -38,18 +39,26 @@ export async function GET() {
     `
 
     // Get server resource alerts
-    const resourceAlerts = await sql`
-      SELECT 
-        'warning' as alert_type,
-        'Server ' || name || ' high resource usage' as message,
-        updated_at as time,
-        'medium' as severity
-      FROM servers
-      WHERE (cpu_usage > 80 OR memory_usage > 80 OR disk_usage > 80)
-      AND status = 'online'
-      ORDER BY updated_at DESC
-      LIMIT 5
-    `
+    let resourceAlerts = []
+    try {
+      resourceAlerts = await sql`
+        SELECT 
+          'warning' as alert_type,
+          'Server ' || name || ' high resource usage' as message,
+          updated_at as time,
+          'medium' as severity
+        FROM servers
+        WHERE (cpu_usage > 80 OR memory_usage > 80 OR disk_usage > 80)
+        AND status = 'online'
+        ORDER BY updated_at DESC
+        LIMIT 5
+      `
+    } catch (error: any) {
+      // If servers table doesn't exist or columns missing, skip silently
+      if (error?.code !== "42P01" && error?.code !== "42703") {
+        throw error
+      }
+    }
 
     // Combine and format all alerts
     const allAlerts = [...recentAlerts, ...offlineRouters, ...resourceAlerts]

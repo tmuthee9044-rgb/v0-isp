@@ -58,6 +58,14 @@ interface ServerConfig {
       backupHost?: string
       timeout?: string
     }
+    scheduledReboot?: {
+      enabled?: boolean
+      interval?: string
+      time?: string
+      autoReconnectRouters?: boolean
+      lastReboot?: string
+      nextReboot?: string
+    }
   }
   openvpn?: {
     enabled?: boolean
@@ -941,6 +949,108 @@ export default function ServerConfigurationPage() {
                           }
                         />
                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Scheduled Reboot section */}
+              <div className="border-t pt-6">
+                <h4 className="font-semibold mb-3">Scheduled Reboot</h4>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Automatically reboot the FreeRADIUS server at regular intervals to maintain optimal performance. After
+                  reboot, the system will automatically reconnect to all configured routers.
+                </p>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="enable-reboot-schedule"
+                      checked={serverConfig?.radius?.scheduledReboot?.enabled ?? false}
+                      onCheckedChange={(checked) =>
+                        setServerConfig((prev: any) => ({
+                          ...prev,
+                          radius: {
+                            ...prev?.radius,
+                            scheduledReboot: { ...prev?.radius?.scheduledReboot, enabled: checked },
+                          },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="enable-reboot-schedule">Enable Scheduled Reboot</Label>
+                  </div>
+                  {serverConfig?.radius?.scheduledReboot?.enabled && (
+                    <div className="space-y-4 pl-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="reboot-interval">Reboot Interval</Label>
+                        <select
+                          id="reboot-interval"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          value={serverConfig?.radius?.scheduledReboot?.interval || "7d"}
+                          onChange={(e) =>
+                            setServerConfig((prev: any) => ({
+                              ...prev,
+                              radius: {
+                                ...prev?.radius,
+                                scheduledReboot: { ...prev?.radius?.scheduledReboot, interval: e.target.value },
+                              },
+                            }))
+                          }
+                        >
+                          <option value="24h">Every 24 Hours</option>
+                          <option value="7d">Every 7 Days (Weekly)</option>
+                          <option value="14d">Every 14 Days (Bi-weekly)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="reboot-time">Preferred Reboot Time (HH:MM)</Label>
+                        <Input
+                          id="reboot-time"
+                          type="time"
+                          value={serverConfig?.radius?.scheduledReboot?.time || "03:00"}
+                          onChange={(e) =>
+                            setServerConfig((prev: any) => ({
+                              ...prev,
+                              radius: {
+                                ...prev?.radius,
+                                scheduledReboot: { ...prev?.radius?.scheduledReboot, time: e.target.value },
+                              },
+                            }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Schedule reboots during off-peak hours to minimize service disruption
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="auto-reconnect-routers"
+                          checked={serverConfig?.radius?.scheduledReboot?.autoReconnectRouters ?? true}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev: any) => ({
+                              ...prev,
+                              radius: {
+                                ...prev?.radius,
+                                scheduledReboot: { ...prev?.radius?.scheduledReboot, autoReconnectRouters: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="auto-reconnect-routers">Automatically reconnect to routers after reboot</Label>
+                      </div>
+                      {serverConfig?.radius?.scheduledReboot?.lastReboot && (
+                        <div className="p-3 bg-muted rounded-md">
+                          <p className="text-sm">
+                            <span className="font-medium">Last Reboot:</span>{" "}
+                            {new Date(serverConfig.radius.scheduledReboot.lastReboot).toLocaleString()}
+                          </p>
+                          {serverConfig?.radius?.scheduledReboot?.nextReboot && (
+                            <p className="text-sm mt-1">
+                              <span className="font-medium">Next Scheduled Reboot:</span>{" "}
+                              {new Date(serverConfig.radius.scheduledReboot.nextReboot).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

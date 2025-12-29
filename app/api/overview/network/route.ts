@@ -26,7 +26,7 @@ export async function GET() {
         ROUND(AVG(packet_loss)::numeric, 2) as avg_packet_loss,
         ROUND(AVG(uptime_percentage)::numeric, 1) as avg_uptime
       FROM router_performance_history
-      WHERE recorded_at >= NOW() - INTERVAL '1 hour'
+      WHERE timestamp >= NOW() - INTERVAL '1 hour'
     `
 
     const bandwidthStats = await sql`

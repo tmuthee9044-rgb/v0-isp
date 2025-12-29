@@ -554,8 +554,8 @@ EOF_CLIENTS
     fi
     
     print_info "Creating SQL module configuration..."
-    sudo tee "$SQL_CONF" > /dev/null << 'SQLEOF'
-# SQL Module Configuration for Trust Waves ISP
+    cat > /tmp/freeradius_sql.conf << SQLCONF
+# PostgreSQL configuration for FreeRADIUS
 # Connects to PostgreSQL database for AAA operations
 
 sql {
@@ -565,9 +565,9 @@ sql {
     # PostgreSQL connection
     server = "localhost"
     port = 5432
-    login = "DB_USER_PLACEHOLDER"
-    password = "DB_PASSWORD_PLACEHOLDER"
-    radius_db = "DB_NAME_PLACEHOLDER"
+    login = "$DB_USER"
+    password = "$DB_PASSWORD"
+    radius_db = "$DB_NAME"
     
     # Connection pool settings (optimized for performance - rule 6)
     pool {
@@ -581,182 +581,61 @@ sql {
         idle_timeout = 60
     }
     
-    # Read database configuration from clients
+    # Read NAS clients from database
     read_clients = yes
-    client_table = "radius_nas"
+    client_table = "nas"
     
-    # Authentication - Check user credentials
-    authorize_check_query = "\
-        SELECT \
-            username, \
-            'Cleartext-Password' AS attribute, \
-            password_hash AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND status = 'active' \
-        AND (expiry_date IS NULL OR expiry_date > NOW()) \
-        LIMIT 1"
+    # Standard FreeRADIUS authorization queries
+    authorize_check_query = "SELECT id, username, attribute, value, op FROM radcheck WHERE username = '%{SQL-User-Name}' ORDER BY id"
     
-    # Authorization - Return user attributes (bandwidth limits, IP address, etc.)
-    authorize_reply_query = "\
-        SELECT \
-            'Mikrotik-Rate-Limit' AS attribute, \
-            CONCAT(download_limit::text, 'M/', upload_limit::text, 'M') AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND download_limit IS NOT NULL \
-        UNION ALL \
-        SELECT \
-            'Session-Timeout' AS attribute, \
-            session_timeout::text AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND session_timeout IS NOT NULL \
-        UNION ALL \
-        SELECT \
-            'Idle-Timeout' AS attribute, \
-            idle_timeout::text AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND idle_timeout IS NOT NULL \
-        UNION ALL \
-        SELECT \
-            'Framed-IP-Address' AS attribute, \
-            ip_address::text AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND ip_address IS NOT NULL \
-        UNION ALL \
-        SELECT \
-            'Simultaneous-Use' AS attribute, \
-            simultaneous_use::text AS value, \
-            ':=' AS op \
-        FROM radius_users \
-        WHERE username = '%{SQL-User-Name}' \
-        AND status = 'active'"
+    authorize_reply_query = "SELECT id, username, attribute, value, op FROM radreply WHERE username = '%{SQL-User-Name}' ORDER BY id"
     
-    # Post-Auth - Update last login time
-    post_auth_query = "\
-        UPDATE radius_users \
-        SET updated_at = NOW() \
-        WHERE username = '%{SQL-User-Name}'"
+    authorize_group_check_query = "SELECT id, groupname, attribute, value, op FROM radgroupcheck WHERE groupname = '%{SQL-Group}' ORDER BY id"
     
-    # Accounting configuration
+    authorize_group_reply_query = "SELECT id, groupname, attribute, value, op FROM radgroupreply WHERE groupname = '%{SQL-Group}' ORDER BY id"
+    
+    # User group membership
+    group_membership_query = "SELECT groupname FROM radusergroup WHERE username='%{SQL-User-Name}' ORDER BY priority"
+    
+    # Accounting queries - track sessions in radacct table
     accounting {
-        reference = "%{tolower:type.%{Acct-Status-Type}}"
+        reference = "%{tolower:type.%{Acct-Status-Type}.query}"
         
-        # Accounting Start - New session
         type {
+            accounting-on {
+                query = "UPDATE radacct SET acctstoptime = NOW(), acctsessiontime = (EXTRACT(EPOCH FROM (NOW() - acctstarttime)))::INTEGER, acctterminatecause = '%{Acct-Terminate-Cause}' WHERE acctstoptime IS NULL AND nasipaddress = '%{NAS-IP-Address}' AND acctstarttime <= NOW()"
+            }
+            
+            accounting-off {
+                query = "\${..accounting-on.query}"
+            }
+            
             start {
-                query = "\
-                    INSERT INTO radius_sessions_active ( \
-                        acct_session_id, username, nas_ip_address, \
-                        framed_ip_address, start_time, last_update \
-                    ) VALUES ( \
-                        '%{Acct-Session-Id}', \
-                        '%{SQL-User-Name}', \
-                        '%{NAS-IP-Address}'::inet, \
-                        NULLIF('%{Framed-IP-Address}', '')::inet, \
-                        NOW(), NOW() \
-                    ) ON CONFLICT (acct_session_id) DO UPDATE SET \
-                        start_time = NOW(), \
-                        last_update = NOW(); \
-                    \
-                    INSERT INTO radius_accounting ( \
-                        acct_session_id, username, nas_ip_address, event_type, \
-                        framed_ip_address, event_time \
-                    ) VALUES ( \
-                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
-                        '%{NAS-IP-Address}'::inet, 'Start', \
-                        NULLIF('%{Framed-IP-Address}', '')::inet, NOW() \
-                    )"
+                query = "INSERT INTO radacct (acctsessionid, acctuniqueid, username, realm, nasipaddress, nasportid, nasporttype, acctstarttime, acctupdatetime, acctstoptime, acctsessiontime, acctauthentic, connectinfo_start, connectinfo_stop, acctinputoctets, acctoutputoctets, calledstationid, callingstationid, acctterminatecause, servicetype, framedprotocol, framedipaddress) VALUES ('%{Acct-Session-Id}', '%{Acct-Unique-Session-Id}', '%{SQL-User-Name}', '%{Realm}', '%{NAS-IP-Address}', '%{NAS-Port}', '%{NAS-Port-Type}', NOW(), NOW(), NULL, 0, '%{Acct-Authentic}', '%{Connect-Info}', '', 0, 0, '%{Called-Station-Id}', '%{Calling-Station-Id}', '', '%{Service-Type}', '%{Framed-Protocol}', NULLIF('%{Framed-IP-Address}', '')::inet)"
             }
             
-            # Accounting Interim Update - Session progress
             interim-update {
-                query = "\
-                    UPDATE radius_sessions_active SET \
-                        session_time = COALESCE('%{Acct-Session-Time}', '0')::integer, \
-                        bytes_in = COALESCE('%{Acct-Input-Octets}', '0')::bigint + \
-                                   COALESCE('%{Acct-Input-Gigawords}', '0')::bigint * 4294967296, \
-                        bytes_out = COALESCE('%{Acct-Output-Octets}', '0')::bigint + \
-                                    COALESCE('%{Acct-Output-Gigawords}', '0')::bigint * 4294967296, \
-                        packets_in = COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
-                        packets_out = COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
-                        last_update = NOW() \
-                    WHERE acct_session_id = '%{Acct-Session-Id}'; \
-                    \
-                    INSERT INTO radius_accounting ( \
-                        acct_session_id, username, nas_ip_address, event_type, \
-                        bytes_in, bytes_out, packets_in, packets_out, \
-                        session_time, event_time \
-                    ) VALUES ( \
-                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
-                        '%{NAS-IP-Address}'::inet, 'Interim-Update', \
-                        COALESCE('%{Acct-Input-Octets}', '0')::bigint, \
-                        COALESCE('%{Acct-Output-Octets}', '0')::bigint, \
-                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
-                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
-                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
-                        NOW() \
-                    )"
+                query = "UPDATE radacct SET acctupdatetime = NOW(), acctinterval = EXTRACT(EPOCH FROM (NOW() - COALESCE(acctupdatetime, acctstarttime)))::INTEGER, acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}'::bigint, acctoutputoctets = '%{Acct-Output-Octets}'::bigint WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}' AND nasipaddress = '%{NAS-IP-Address}'"
             }
             
-            # Accounting Stop - Session ended
             stop {
-                query = "\
-                    WITH deleted AS ( \
-                        DELETE FROM radius_sessions_active \
-                        WHERE acct_session_id = '%{Acct-Session-Id}' \
-                        RETURNING * \
-                    ) \
-                    INSERT INTO radius_sessions_archive ( \
-                        acct_session_id, username, nas_ip_address, \
-                        framed_ip_address, start_time, stop_time, last_update, \
-                        session_time, bytes_in, bytes_out, packets_in, packets_out, \
-                        terminate_cause \
-                    ) SELECT \
-                        acct_session_id, username, nas_ip_address, \
-                        framed_ip_address, start_time, NOW(), last_update, \
-                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
-                        COALESCE('%{Acct-Input-Octets}', '0')::bigint + \
-                        COALESCE('%{Acct-Input-Gigawords}', '0')::bigint * 4294967296, \
-                        COALESCE('%{Acct-Output-Octets}', '0')::bigint + \
-                        COALESCE('%{Acct-Output-Gigawords}', '0')::bigint * 4294967296, \
-                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
-                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
-                        '%{Acct-Terminate-Cause}' \
-                    FROM deleted; \
-                    \
-                    INSERT INTO radius_accounting ( \
-                        acct_session_id, username, nas_ip_address, event_type, \
-                        bytes_in, bytes_out, packets_in, packets_out, \
-                        session_time, terminate_cause, event_time \
-                    ) VALUES ( \
-                        '%{Acct-Session-Id}', '%{SQL-User-Name}', \
-                        '%{NAS-IP-Address}'::inet, 'Stop', \
-                        COALESCE('%{Acct-Input-Octets}', '0')::bigint, \
-                        COALESCE('%{Acct-Output-Octets}', '0')::bigint, \
-                        COALESCE('%{Acct-Input-Packets}', '0')::bigint, \
-                        COALESCE('%{Acct-Output-Packets}', '0')::bigint, \
-                        COALESCE('%{Acct-Session-Time}', '0')::integer, \
-                        '%{Acct-Terminate-Cause}', \
-                        NOW() \
-                    )"
+                query = "UPDATE radacct SET acctstoptime = NOW(), acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}'::bigint, acctoutputoctets = '%{Acct-Output-Octets}'::bigint, acctterminatecause = '%{Acct-Terminate-Cause}', connectinfo_stop = '%{Connect-Info}' WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}' AND nasipaddress = '%{NAS-IP-Address}'"
             }
         }
     }
+    
+    # Post-authentication logging
+    post-auth {
+        query = "INSERT INTO radpostauth (username, pass, reply, authdate) VALUES ('%{User-Name}', '%{%{User-Password}:-%{Chap-Password}}', '%{reply:Packet-Type}', NOW())"
+    }
 }
-SQLEOF
+SQLCONF
 
-    sudo sed -i "s/DB_USER_PLACEHOLDER/${DB_USER}/g" "$SQL_CONF"
-    sudo sed -i "s/DB_PASSWORD_PLACEHOLDER/${DB_PASSWORD}/g" "$SQL_CONF"
-    sudo sed -i "s/DB_NAME_PLACEHOLDER/${DB_NAME}/g" "$SQL_CONF"
+    sudo mv /tmp/freeradius_sql.conf "$SQL_CONF"
+    
+    sudo sed -i "s/DB_USER/$DB_USER/g" "$SQL_CONF"
+    sudo sed -i "s/DB_PASSWORD/$DB_PASSWORD/g" "$SQL_CONF"
+    sudo sed -i "s/DB_NAME/$DB_NAME/g" "$SQL_CONF"
     
     print_success "SQL configuration created and linked to database: ${DB_NAME}"
     
@@ -1215,6 +1094,212 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
     fi
     
     print_success "Database permissions configured with full CRUD access"
+    
+    # Create environment file
+    print_info "Creating .env.local file..."
+    cat > .env.local << 'ENVEOF'
+DATABASE_URL=postgresql://DB_USER_PLACEHOLDER:DB_PASSWORD_PLACEHOLDER@localhost:5432/DB_NAME_PLACEHOLDER
+POSTGRES_URL=postgresql://DB_USER_PLACEHOLDER:DB_PASSWORD_PLACEHOLDER@localhost:5432/DB_NAME_PLACEHOLDER
+POSTGRES_PRISMA_URL=postgresql://DB_USER_PLACEHOLDER:DB_PASSWORD_PLACEHOLDER@localhost:5432/DB_NAME_PLACEHOLDER
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NODE_ENV=development
+ENVEOF
+
+    # Replace placeholders
+    sed -i.bak "s/DB_USER_PLACEHOLDER/${DB_USER}/g" .env.local
+    sed -i.bak "s/DB_PASSWORD_PLACEHOLDER/${DB_PASSWORD}/g" .env.local
+    sed -i.bak "s/DB_NAME_PLACEHOLDER/${DB_NAME}/g" .env.local
+    rm -f .env.local.bak
+    
+    if [ -f ".env.local" ]; then
+        print_success "Environment file created: .env.local"
+        
+        # Export variables for current session
+        export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
+        export POSTGRES_URL="$DATABASE_URL"
+        export POSTGRES_PRISMA_URL="$DATABASE_URL"
+        
+        print_info "Database connection URL exported to environment"
+    else
+        print_error "Failed to create .env.local file"
+        exit 1
+    fi
+    
+    # Save credentials
+    cat > database-credentials.txt << 'CREDEOF'
+ISP Management System - Database Credentials
+=============================================
+Database: DB_NAME_PLACEHOLDER
+User: DB_USER_PLACEHOLDER
+Password: DB_PASSWORD_PLACEHOLDER
+Connection URL: postgresql://DB_USER_PLACEHOLDER:DB_PASSWORD_PLACEHOLDER@localhost:5432/DB_NAME_PLACEHOLDER
+
+IMPORTANT: Keep this file secure and do not commit it to version control.
+CREDEOF
+
+    sed -i.bak "s/DB_NAME_PLACEHOLDER/${DB_NAME}/g" database-credentials.txt
+    sed -i.bak "s/DB_USER_PLACEHOLDER/${DB_USER}/g" database-credentials.txt
+    sed -i.bak "s/DB_PASSWORD_PLACEHOLDER/${DB_PASSWORD}/g" database-credentials.txt
+    rm -f database-credentials.txt.bak
+    
+    chmod 600 database-credentials.txt
+    print_success "Credentials saved to database-credentials.txt"
+    
+    print_info "Testing database connection with credentials..."
+    if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -c "SELECT version();" > /dev/null 2>&1; then
+        print_success "Database connection verified with user credentials"
+    else
+        print_error "Cannot connect to database with user credentials"
+        print_info "Attempting to fix authentication..."
+        
+        # Try to fix pg_hba.conf for local connections
+        if [[ "$OS" == "linux" ]]; then
+            PG_HBA="/etc/postgresql/*/main/pg_hba.conf"
+            if sudo grep -q "local.*all.*all.*peer" $PG_HBA 2>/dev/null; then
+                print_info "Updating pg_hba.conf to allow password authentication..."
+                sudo sed -i.bak 's/local\s*all\s*all\s*peer/local   all             all                                     md5/' $PG_HBA
+                sudo systemctl restart postgresql
+                sleep 3
+                print_info "PostgreSQL restarted with new authentication settings"
+            fi
+        fi
+        
+        # Test again
+        if PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -c "SELECT version();" > /dev/null 2>&1; then
+            print_success "Database connection verified after fix"
+        else
+            print_error "Still cannot connect with user credentials"
+            print_info "Please check PostgreSQL authentication settings"
+            print_info "You may need to edit /etc/postgresql/*/main/pg_hba.conf"
+            exit 1
+        fi
+    fi
+
+    print_info "Creating standard FreeRADIUS schema..."
+    sudo -u postgres psql -d "$DB_NAME" << 'EOF_RADIUS_SCHEMA'
+-- Standard FreeRADIUS PostgreSQL Schema
+-- Based on official FreeRADIUS 3.x schema
+
+-- NAS (Network Access Server) table - stores router/access point information
+CREATE TABLE IF NOT EXISTS nas (
+    id SERIAL PRIMARY KEY,
+    nasname VARCHAR(128) NOT NULL UNIQUE,
+    shortname VARCHAR(32),
+    type VARCHAR(30) DEFAULT 'other',
+    ports INTEGER,
+    secret VARCHAR(60) NOT NULL DEFAULT 'secret',
+    server VARCHAR(64),
+    community VARCHAR(50),
+    description VARCHAR(200) DEFAULT 'RADIUS Client'
+);
+CREATE INDEX IF NOT EXISTS nas_nasname ON nas(nasname);
+
+-- radcheck - User authentication credentials
+CREATE TABLE IF NOT EXISTS radcheck (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(64) NOT NULL DEFAULT '',
+    attribute VARCHAR(64) NOT NULL DEFAULT '',
+    op CHAR(2) NOT NULL DEFAULT '==',
+    value VARCHAR(253) NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS radcheck_username ON radcheck(username);
+
+-- radreply - User reply attributes (bandwidth limits, etc.)
+CREATE TABLE IF NOT EXISTS radreply (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(64) NOT NULL DEFAULT '',
+    attribute VARCHAR(64) NOT NULL DEFAULT '',
+    op CHAR(2) NOT NULL DEFAULT '=',
+    value VARCHAR(253) NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS radreply_username ON radreply(username);
+
+-- radgroupcheck - Group authentication attributes
+CREATE TABLE IF NOT EXISTS radgroupcheck (
+    id SERIAL PRIMARY KEY,
+    groupname VARCHAR(64) NOT NULL DEFAULT '',
+    attribute VARCHAR(64) NOT NULL DEFAULT '',
+    op CHAR(2) NOT NULL DEFAULT '==',
+    value VARCHAR(253) NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS radgroupcheck_groupname ON radgroupcheck(groupname);
+
+-- radgroupreply - Group reply attributes
+CREATE TABLE IF NOT EXISTS radgroupreply (
+    id SERIAL PRIMARY KEY,
+    groupname VARCHAR(64) NOT NULL DEFAULT '',
+    attribute VARCHAR(64) NOT NULL DEFAULT '',
+    op CHAR(2) NOT NULL DEFAULT '=',
+    value VARCHAR(253) NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS radgroupreply_groupname ON radgroupreply(groupname);
+
+-- radusergroup - User to group mapping
+CREATE TABLE IF NOT EXISTS radusergroup (
+    username VARCHAR(64) NOT NULL DEFAULT '',
+    groupname VARCHAR(64) NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS radusergroup_username ON radusergroup(username);
+
+-- radacct - Accounting records for active and historical sessions
+CREATE TABLE IF NOT EXISTS radacct (
+    radacctid BIGSERIAL PRIMARY KEY,
+    acctsessionid VARCHAR(64) NOT NULL,
+    acctuniqueid VARCHAR(32) NOT NULL UNIQUE,
+    username VARCHAR(64),
+    groupname VARCHAR(64),
+    realm VARCHAR(64),
+    nasipaddress INET NOT NULL,
+    nasportid VARCHAR(15),
+    nasporttype VARCHAR(32),
+    acctstarttime TIMESTAMP WITH TIME ZONE,
+    acctupdatetime TIMESTAMP WITH TIME ZONE,
+    acctstoptime TIMESTAMP WITH TIME ZONE,
+    acctinterval INTEGER,
+    acctsessiontime INTEGER,
+    acctauthentic VARCHAR(32),
+    connectinfo_start VARCHAR(50),
+    connectinfo_stop VARCHAR(50),
+    acctinputoctets BIGINT,
+    acctoutputoctets BIGINT,
+    calledstationid VARCHAR(50),
+    callingstationid VARCHAR(50),
+    acctterminatecause VARCHAR(32),
+    servicetype VARCHAR(32),
+    framedprotocol VARCHAR(32),
+    framedipaddress INET,
+    acctstartdelay INTEGER,
+    acctstopdelay INTEGER,
+    xascendsessionsvrkey VARCHAR(10)
+);
+CREATE INDEX IF NOT EXISTS radacct_active_session_idx ON radacct(acctsessionid, username, nasipaddress) WHERE acctstoptime IS NULL;
+CREATE INDEX IF NOT EXISTS radacct_start_user_idx ON radacct(acctstarttime, username);
+
+-- radpostauth - Logging of authentication attempts
+CREATE TABLE IF NOT EXISTS radpostauth (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(64) NOT NULL,
+    pass VARCHAR(64),
+    reply VARCHAR(32),
+    authdate TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS radpostauth_username_idx ON radpostauth(username);
+CREATE INDEX IF NOT EXISTS radpostauth_authdate_idx ON radpostauth(authdate);
+
+-- Grant permissions to application user
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};
+
+EOF_RADIUS_SCHEMA
+
+    if [ $? -eq 0 ]; then
+        print_success "Standard FreeRADIUS schema created successfully"
+        print_info "Tables: nas, radcheck, radreply, radgroupcheck, radgroupreply, radusergroup, radacct, radpostauth"
+    else
+        print_error "Failed to create FreeRADIUS schema"
+        print_warning "RADIUS may not function correctly"
+    fi
     
     # Create environment file
     print_info "Creating .env.local file..."

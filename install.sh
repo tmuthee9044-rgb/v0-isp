@@ -870,6 +870,39 @@ EOF_INNER
     print_success "FreeRADIUS now configured to listen on all network interfaces (0.0.0.0)"
     print_info "External routers can connect to: $RADIUS_HOST:1812"
     
+    print_info "Fixing FreeRADIUS file permissions..."
+    
+    # Set correct ownership
+    sudo chown -R freerad:freerad "$FREERADIUS_DIR" 2>/dev/null || sudo chown -R radius:radius "$FREERADIUS_DIR" 2>/dev/null || true
+    sudo chown -R freerad:freerad /var/log/freeradius 2>/dev/null || sudo chown -R radius:radius /var/log/freeradius 2>/dev/null || true
+    sudo chown -R freerad:freerad /var/run/freeradius 2>/dev/null || sudo chown -R radius:radius /var/run/freeradius 2>/dev/null || true
+    
+    # Set correct permissions for directories
+    sudo find "$FREERADIUS_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    
+    # Set correct permissions for files
+    sudo find "$FREERADIUS_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    
+    # Make binaries executable
+    sudo chmod 755 /usr/sbin/freeradius 2>/dev/null || true
+    sudo chmod 755 /usr/sbin/radiusd 2>/dev/null || true
+    
+    # Ensure mods-config has proper permissions
+    if [ -d "$FREERADIUS_DIR/mods-config" ]; then
+        sudo chmod -R 755 "$FREERADIUS_DIR/mods-config" 2>/dev/null || true
+    fi
+    
+    print_success "FreeRADIUS permissions fixed"
+    
+    # Test configuration before starting
+    print_info "Testing FreeRADIUS configuration..."
+    if sudo freeradius -C 2>/dev/null; then
+        print_success "FreeRADIUS configuration is valid"
+    else
+        print_warning "FreeRADIUS configuration test failed, but will attempt to start anyway"
+        print_info "You can manually test with: sudo freeradius -X"
+    fi
+    
     # Configure firewall
     print_info "Configuring firewall for RADIUS..."
     if [[ "$OS" == "linux" ]] && command -v ufw &> /dev/null; then

@@ -688,44 +688,187 @@ SQLEOF
         print_success "SQL module enabled"
     fi
     
-    print_info "Configuring FreeRADIUS to listen on all network interfaces..."
+    print_info "Configuring FreeRADIUS to listen on detected IP: $RADIUS_HOST"
     
-    # Configure the main radiusd.conf
-    RADIUSD_CONF="$FREERADIUS_DIR/radiusd.conf"
-    if [ -f "$RADIUSD_CONF" ]; then
-        sudo cp "$RADIUSD_CONF" "$RADIUSD_CONF.backup.$(date +%Y%m%d_%H%M%S)"
-        
-        # Ensure FreeRADIUS listens on all interfaces
-        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$RADIUSD_CONF" 2>/dev/null || true
-        sudo sed -i 's/ipaddr = ::1/ipaddr = ::/g' "$RADIUSD_CONF" 2>/dev/null || true
-    fi
-    
-    # Configure the default site to listen on all interfaces
+    # Configure the default site to listen on the detected IP
     DEFAULT_SITE="$FREERADIUS_DIR/sites-available/default"
     if [ -f "$DEFAULT_SITE" ]; then
         sudo cp "$DEFAULT_SITE" "$DEFAULT_SITE.backup.$(date +%Y%m%d_%H%M%S)"
         
-        # Update listen sections to bind to all interfaces (0.0.0.0 or *)
-        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$DEFAULT_SITE" 2>/dev/null || true
-        sudo sed -i 's/ipaddr = ::1/ipaddr = ::/g' "$DEFAULT_SITE" 2>/dev/null || true
-        
-        # Also update any listen { } blocks that might have ipv4addr
-        sudo sed -i 's/ipv4addr = 127.0.0.1/ipv4addr = */g' "$DEFAULT_SITE" 2>/dev/null || true
-        sudo sed -i 's/ipv4addr = \*/ipv4addr = 0.0.0.0/g' "$DEFAULT_SITE" 2>/dev/null || true
-        
-        print_success "FreeRADIUS default site configured to listen on all interfaces"
+        # Create a proper listen section with the detected IP
+        # We'll use a more robust approach with a temporary file
+        sudo tee "$DEFAULT_SITE.tmp" > /dev/null <<'EOF_DEFAULT'
+# FreeRADIUS default site - Configured by ISP Management System
+
+listen {
+    type = auth
+    ipaddr = 0.0.0.0
+    port = 1812
+    limit {
+        max_connections = 16
+        lifetime = 0
+        idle_timeout = 30
+    }
+}
+
+listen {
+    type = acct
+    ipaddr = 0.0.0.0
+    port = 1813
+    limit {
+        max_connections = 16
+        lifetime = 0
+        idle_timeout = 30
+    }
+}
+
+authorize {
+    filter_username
+    preprocess
+    chap
+    mschap
+    digest
+    suffix
+    eap {
+        ok = return
+    }
+    sql
+    expiration
+    logintime
+    pap
+}
+
+authenticate {
+    Auth-Type PAP {
+        pap
+    }
+    Auth-Type CHAP {
+        chap
+    }
+    Auth-Type MS-CHAP {
+        mschap
+    }
+    digest
+    eap
+}
+
+preacct {
+    preprocess
+    acct_unique
+    suffix
+}
+
+accounting {
+    detail
+    sql
+    exec
+    attr_filter.accounting_response
+}
+
+session {
+    sql
+}
+
+post-auth {
+    sql
+    exec
+    Post-Auth-Type REJECT {
+        attr_filter.access_reject
+        eap
+        remove_reply_message_if_eap
+    }
+}
+
+pre-proxy {
+}
+
+post-proxy {
+    eap
+}
+EOF_DEFAULT
+
+        sudo mv "$DEFAULT_SITE.tmp" "$DEFAULT_SITE"
+        sudo chmod 644 "$DEFAULT_SITE"
+        print_success "FreeRADIUS default site configured to listen on 0.0.0.0 (all interfaces)"
     fi
     
-    # Configure inner-tunnel site as well
+    # Configure inner-tunnel site
     INNER_TUNNEL="$FREERADIUS_DIR/sites-available/inner-tunnel"
     if [ -f "$INNER_TUNNEL" ]; then
         sudo cp "$INNER_TUNNEL" "$INNER_TUNNEL.backup.$(date +%Y%m%d_%H%M%S)"
         
-        sudo sed -i 's/ipaddr = 127.0.0.1/ipaddr = */g' "$INNER_TUNNEL" 2>/dev/null || true
-        sudo sed -i 's/ipv4addr = 127.0.0.1/ipv4addr = 0.0.0.0/g' "$INNER_TUNNEL" 2>/dev/null || true
+        sudo tee "$INNER_TUNNEL.tmp" > /dev/null <<'EOF_INNER'
+# FreeRADIUS inner-tunnel site
+
+listen {
+    ipaddr = 127.0.0.1
+    port = 18120
+    type = auth
+}
+
+authorize {
+    filter_username
+    chap
+    mschap
+    suffix
+    update control {
+        &Proxy-To-Realm := LOCAL
+    }
+    eap {
+        ok = return
+    }
+    sql
+    expiration
+    logintime
+    pap
+}
+
+authenticate {
+    Auth-Type PAP {
+        pap
+    }
+    Auth-Type CHAP {
+        chap
+    }
+    Auth-Type MS-CHAP {
+        mschap
+    }
+    eap
+}
+
+session {
+    sql
+}
+
+post-auth {
+    sql
+    Post-Auth-Type REJECT {
+        attr_filter.access_reject
+        eap
+        remove_reply_message_if_eap
+    }
+}
+
+pre-proxy {
+}
+
+post-proxy {
+    eap
+}
+EOF_INNER
+
+        sudo mv "$INNER_TUNNEL.tmp" "$INNER_TUNNEL"
+        sudo chmod 644 "$INNER_TUNNEL"
+        print_success "FreeRADIUS inner-tunnel configured"
     fi
     
-    print_success "FreeRADIUS configured to listen on all interfaces (0.0.0.0)"
+    # Enable the sites
+    print_info "Enabling FreeRADIUS sites..."
+    sudo ln -sf "$FREERADIUS_DIR/sites-available/default" "$FREERADIUS_DIR/sites-enabled/default" 2>/dev/null || true
+    sudo ln -sf "$FREERADIUS_DIR/sites-available/inner-tunnel" "$FREERADIUS_DIR/sites-enabled/inner-tunnel" 2>/dev/null || true
+    
+    print_success "FreeRADIUS now configured to listen on all network interfaces (0.0.0.0)"
+    print_info "External routers can connect to: $RADIUS_HOST:1812"
     
     # Configure firewall
     print_info "Configuring firewall for RADIUS..."
@@ -769,7 +912,7 @@ SQLEOF
     
     # Test if RADIUS is listening on port 1812
     if netstat -tuln 2>/dev/null | grep -q ":1812 " || ss -tuln 2>/dev/null | grep -q ":1812 "; then
-        print_success "RADIUS is listening on port 1812"
+        print_success "Radius is listening on port 1812"
         
         print_info "Testing RADIUS authentication..."
         TEST_USER="test_install_user_$(date +%s)"
@@ -1767,6 +1910,7 @@ verify_database_schema() {
     # Expected tables and their column counts
     declare -A EXPECTED_TABLE_COLUMNS=(
         ["account_balances"]="9"
+        ["account_balances_old"]="5"
         ["admin_logs"]="10"
         ["automation_workflows"]="9"
         ["backup_access_logs"]="11"
@@ -1778,7 +1922,7 @@ verify_database_schema() {
         ["backup_storage_locations"]="16"
         ["balance_sheet_view"]="5"
         ["bandwidth_configs"]="8"
-        ["bandwidth_patterns"]="7"
+        ["bandwidth_patterns"]="10" # Increased from 7 to 10
         ["bank_transactions"]="12"
         ["billing_cycles"]="7"
         ["bonus_campaigns"]="14"
@@ -1787,7 +1931,7 @@ verify_database_schema() {
         ["budgets"]="9"
         ["bus_fare_records"]="12"
         ["capacity_alerts"]="8"
-        ["capacity_predictions"]="6"
+        ["capacity_predictions"]="8" # Increased from 6 to 8
         ["card_transactions"]="11"
         ["cash_flow_categories"]="5"
         ["cash_flow_transactions"]="9"
@@ -1795,7 +1939,7 @@ verify_database_schema() {
         ["chart_of_accounts"]="9"
         ["communication_settings"]="9"
         ["company_content"]="5"
-        ["company_profiles"]="24"
+        ["company_profiles"]="26" # Increased from 24
         ["connection_methods"]="8"
         ["credit_applications"]="6"
         ["credit_notes"]="13"
@@ -1814,7 +1958,7 @@ verify_database_schema() {
         ["customer_phone_numbers"]="6"
         ["customer_services"]="14"
         ["customer_statements"]="14"
-        ["customers"]="32"
+        ["customers"]="35" # Increased from 32
         ["email_logs"]="14"
         ["employees"]="12"
         ["equipment_returns"]="16"
@@ -1844,7 +1988,7 @@ verify_database_schema() {
         ["journal_entries"]="11"
         ["journal_entry_lines"]="8"
         ["knowledge_base"]="10"
-        ["locations"]="8"
+        ["locations"]="11" # Increased from 8
         ["loyalty_redemptions"]="12"
         ["loyalty_transactions"]="10"
         ["maintenance_logs"]="11"
@@ -1863,7 +2007,7 @@ verify_database_schema() {
         ["payment_gateway_configs"]="10"
         ["payment_methods"]="5"
         ["payment_reminders"]="7"
-        ["payments"]="9"
+        ["payments"]="13" # Increased from 9
         ["payroll_records"]="15"
         ["performance_reviews"]="12"
         ["permissions"]="6"
@@ -1872,6 +2016,10 @@ verify_database_schema() {
         ["purchase_order_items"]="7"
         ["purchase_orders"]="9"
         ["radius_logs"]="16"
+        ["radius_nas"]="10" # New table
+        ["radius_sessions_active"]="10" # Increased from 7 to 10
+        ["radius_sessions_archive"]="13" # New table
+        ["radius_users"]="13" # Increased from 0 to 13
         ["refunds"]="9"
         ["revenue_categories"]="6"
         ["revenue_streams"]="6"
@@ -1880,12 +2028,12 @@ verify_database_schema() {
         ["router_logs"]="9"
         ["router_performance_history"]="12"
         ["router_services"]="7"
-        ["router_sync_status"]="11"
-        ["routers"]="26"
+        ["router_sync_status"]="13" # Increased from 11
+        ["routers"]="27" # Increased from 26
         ["server_configurations"]="9"
         ["service_activation_logs"]="8"
         ["service_inventory"]="7"
-        ["service_plans"]="15"
+        ["service_plans"]="17" # Increased from 15
         ["service_requests"]="11"
         ["sms_logs"]="15"
         ["subnets"]="9"
@@ -1899,7 +2047,7 @@ verify_database_schema() {
         ["task_attachments"]="8"
         ["task_categories"]="5"
         ["task_comments"]="5"
-        ["tasks"]="11"
+        ["tasks"]="14" # Increased from 11
         ["tax_configurations"]="8"
         ["tax_periods"]="6"
         ["tax_returns"]="15"
@@ -2047,6 +2195,21 @@ CREATE TABLE IF NOT EXISTS radius_sessions_archive (
     packets_out BIGINT,
     terminate_cause VARCHAR(50)
 );
+
+-- Create radius_nas table if missing (for FreeRADIUS)
+CREATE TABLE IF NOT EXISTS radius_nas (
+    id SERIAL PRIMARY KEY,
+    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    short_name VARCHAR(32) NOT NULL,
+    ip_address INET NOT NULL UNIQUE,
+    secret VARCHAR(255) NOT NULL,
+    type VARCHAR(50) DEFAULT 'mikrotik',
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- Add ALL missing columns to existing tables based on Neon schema
 DO $$ 
@@ -2548,6 +2711,7 @@ verify_database_tables() {
         "radius_users"
         "radius_sessions_active"
         "radius_sessions_archive"
+        "radius_nas" # Added radius_nas
     )
     
     MISSING_TABLES=()

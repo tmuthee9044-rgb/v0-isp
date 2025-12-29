@@ -35,9 +35,13 @@ export async function POST(request: NextRequest) {
         radius_secret: string | null
         nas_ip_address: string | null
         status: string
+        api_port: number | null
+        api_username: string | null
+        api_password: string | null
       }>
     >`
-      SELECT id, name, ip_address, radius_secret, nas_ip_address, status
+      SELECT id, name, ip_address, radius_secret, nas_ip_address, status, 
+             api_port, api_username, api_password
       FROM network_devices
       WHERE (type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other')
         OR type ILIKE '%router%')
@@ -201,20 +205,106 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Test 6: Test RADIUS authentication with a test user
+      // Test 6: Verify router can be reached from RADIUS server perspective
       try {
-        const testResult = await testRadiusServer(radiusHost, Number(radiusPort), radiusSecret, 5000)
+        const { stdout } = await execAsync(`ping -c 2 -W 1 ${router.ip_address}`)
+        const reachable = !stdout.includes("100% packet loss")
 
-        routerResult.tests.radiusAuth = {
-          success: testResult.success,
-          responseTime: testResult.responseTime,
-          status: testResult.success ? "RADIUS server responding" : "RADIUS server not responding",
-          message: testResult.message,
+        routerResult.tests.radiusToRouterReachability = {
+          success: reachable,
+          status: reachable ? "Router reachable from RADIUS server" : "Router unreachable from RADIUS server",
+          message: reachable
+            ? "FreeRADIUS can send packets to router"
+            : "Network issue - router cannot receive RADIUS requests",
         }
       } catch (error) {
-        routerResult.tests.radiusAuth = {
+        routerResult.tests.radiusToRouterReachability = {
           success: false,
-          status: "RADIUS test failed",
+          status: "Failed to test reachability",
+          error: String(error),
+        }
+      }
+
+      // Test 7: Check if router has RADIUS configuration via API
+      if (router.api_username && router.api_password && router.ip_address) {
+        try {
+          const radiusConfigUrl = `http://${router.ip_address}:${router.api_port || 8728}/rest/radius/print`
+          const authString = Buffer.from(`${router.api_username}:${router.api_password}`).toString("base64")
+
+          const response = await fetch(radiusConfigUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${authString}`,
+            },
+            signal: AbortSignal.timeout(5000),
+          })
+
+          if (response.ok) {
+            const radiusServers = await response.json()
+            const hasThisRadius = radiusServers.some(
+              (server: any) =>
+                server.address === radiusHost || server.address === radiusHost.replace("http://", "").split(":")[0],
+            )
+
+            routerResult.tests.routerRadiusConfig = {
+              success: hasThisRadius,
+              configured: hasThisRadius,
+              serversCount: radiusServers.length,
+              status: hasThisRadius
+                ? "Router is configured to use this RADIUS server"
+                : "Router not configured for this RADIUS server",
+              message: hasThisRadius
+                ? "Two-way RADIUS communication confirmed"
+                : "Add this RADIUS server to router configuration",
+            }
+          } else {
+            routerResult.tests.routerRadiusConfig = {
+              success: false,
+              configured: false,
+              status: "Could not query router RADIUS config",
+              error: `HTTP ${response.status}`,
+            }
+          }
+        } catch (error) {
+          routerResult.tests.routerRadiusConfig = {
+            success: false,
+            configured: false,
+            status: "Router API not accessible",
+            message: "Cannot verify router RADIUS configuration - API credentials may be incorrect",
+          }
+        }
+      } else {
+        routerResult.tests.routerRadiusConfig = {
+          success: false,
+          configured: false,
+          status: "Router API credentials not configured",
+          message: "Add router API credentials to verify RADIUS configuration",
+        }
+      }
+
+      // Test 8: Test actual RADIUS authentication to this specific router
+      try {
+        const testResult = await testRadiusServer(
+          radiusHost,
+          Number(radiusPort),
+          radiusSecret,
+          5000,
+          router.nas_ip_address || router.ip_address,
+        )
+
+        routerResult.tests.radiusAuthToRouter = {
+          success: testResult.success,
+          responseTime: testResult.responseTime,
+          status: testResult.success
+            ? "RADIUS server can authenticate for this router"
+            : "RADIUS authentication failed for this router",
+          message: testResult.message,
+          details: testResult.details,
+        }
+      } catch (error) {
+        routerResult.tests.radiusAuthToRouter = {
+          success: false,
+          status: "RADIUS authentication test failed",
           error: String(error),
         }
       }
@@ -224,10 +314,11 @@ export async function POST(request: NextRequest) {
         routerResult.tests.ping?.success &&
         routerResult.tests.nasRegistration?.success &&
         routerResult.tests.secretMatch?.success &&
-        routerResult.tests.radiusAuth?.success
+        routerResult.tests.radiusToRouterReachability?.success &&
+        routerResult.tests.radiusAuthToRouter?.success
 
-      routerResult.overallStatus = allTestsPassed ? "Connected" : "Issues Detected"
-      routerResult.readyForProduction = allTestsPassed
+      routerResult.overallStatus = allTestsPassed ? "Fully Connected" : "Issues Detected"
+      routerResult.readyForProduction = allTestsPassed && routerResult.tests.routerRadiusConfig?.success !== false
 
       results.push(routerResult)
     }

@@ -33,6 +33,33 @@ export async function GET() {
       AND updated_at >= DATE_TRUNC('month', CURRENT_DATE)
     `
 
+    const satisfactionData = await sql`
+      SELECT AVG(rating) as avg_rating
+      FROM customer_feedback
+      WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+    `
+
+    const openTickets = await sql`
+      SELECT COUNT(*) as count
+      FROM support_tickets
+      WHERE status IN ('open', 'pending', 'in_progress')
+    `
+
+    const resolvedTickets = await sql`
+      SELECT COUNT(*) as count
+      FROM support_tickets
+      WHERE status = 'resolved'
+      AND resolved_at >= DATE_TRUNC('week', CURRENT_DATE)
+    `
+
+    const avgResolutionTime = await sql`
+      SELECT 
+        AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/3600) as avg_hours
+      FROM support_tickets
+      WHERE status = 'resolved'
+      AND resolved_at >= CURRENT_DATE - INTERVAL '30 days'
+    `
+
     // Get customer distribution by location
     const distribution = await sql`
       SELECT 
@@ -51,15 +78,19 @@ export async function GET() {
       percentage: total > 0 ? Math.round((Number.parseInt(item.count) / total) * 100) : 0,
     }))
 
+    const avgHours = Number.parseFloat(avgResolutionTime[0]?.avg_hours || 0)
+    const avgTime = avgHours > 0 ? `${avgHours.toFixed(1)} hours` : "N/A"
+    const satisfaction = Number.parseFloat(satisfactionData[0]?.avg_rating || 0)
+
     const customerData = {
       total: total,
       new: Number.parseInt(newCustomers[0]?.new_count || 0),
       churn: Number.parseInt(churnedCustomers[0]?.churned || 0),
-      satisfaction: 4.2 + Math.random() * 0.8, // Mock satisfaction score
+      satisfaction: satisfaction > 0 ? Number.parseFloat(satisfaction.toFixed(1)) : 0,
       support: {
-        open: Math.floor(Math.random() * 20) + 5, // Mock open tickets
-        resolved: Math.floor(Math.random() * 50) + 80, // Mock resolved tickets
-        avgTime: `${(Math.random() * 3 + 1).toFixed(1)} hours`, // Mock avg time
+        open: Number.parseInt(openTickets[0]?.count || 0),
+        resolved: Number.parseInt(resolvedTickets[0]?.count || 0),
+        avgTime: avgTime,
       },
       distribution: distributionWithPercentage,
     }

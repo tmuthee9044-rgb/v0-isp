@@ -302,9 +302,9 @@ export default function ServerConfigurationPage() {
             <Server className="h-4 w-4" />
             <span>OpenVPN</span>
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center space-x-2">
+          <TabsTrigger value="testing" className="flex items-center space-x-2">
             <Activity className="h-4 w-4" />
-            <span>Logs</span>
+            <span>Testing</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1429,21 +1429,33 @@ export default function ServerConfigurationPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="logs" className="space-y-4">
+        <TabsContent value="testing" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Activity className="h-5 w-5" />
-                <span>System Logs</span>
+                <span>Testing Tools</span>
               </CardTitle>
-              <CardDescription>View recent system and service logs</CardDescription>
+              <CardDescription>Tools for testing network connectivity and service responsiveness.</CardDescription>
             </CardHeader>
-            <CardContent>
-              {/* Placeholder for logs display */}
+            <CardContent className="space-y-6">
+              {/* Placeholder for testing tools */}
               <div className="flex flex-col items-center justify-center h-48">
                 <Activity className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg text-muted-foreground">Log viewer not yet implemented.</p>
-                <p className="text-sm text-muted-foreground">This feature will be available in a future update.</p>
+                <p className="text-lg text-muted-foreground">Testing tools not yet implemented.</p>
+                <p className="text-sm text-muted-foreground">
+                  This section will include tools for pinging, traceroute, and service checks.
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="flex space-x-2">
+                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
+                  <Activity className="h-4 w-4" />
+                  <span>Run General Test</span>
+                </Button>
+                <Button disabled>Save Test Results</Button>
               </div>
             </CardContent>
           </Card>

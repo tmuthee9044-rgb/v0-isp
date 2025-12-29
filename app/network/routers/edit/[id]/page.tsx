@@ -1438,7 +1438,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="blocking" className="space-y-6">
+        <TabsContent value="blocking">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Blocking Pages</CardTitle>
@@ -1859,24 +1859,63 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                               "#f97316",
                             ]
                             const colorIndex = index % colors.length
+                            const rxColor = colors[colorIndex]
+                            const txColor = colors[colorIndex] + "99" // Add transparency for TX
 
                             return (
-                              <Bar
-                                key={`${port}_rx`}
-                                dataKey={`${port}_rx`}
-                                fill={colors[colorIndex]}
-                                name={`${port} RX`}
-                                stackId="rx"
-                              />
+                              <>
+                                <Bar
+                                  key={`${port}_rx`}
+                                  dataKey={`${port}_rx`}
+                                  fill={rxColor}
+                                  name={`${port} Download`}
+                                  stackId={`port_${index}`}
+                                />
+                                <Bar
+                                  key={`${port}_tx`}
+                                  dataKey={`${port}_tx`}
+                                  fill={txColor}
+                                  name={`${port} Upload`}
+                                  stackId={`port_${index}`}
+                                />
+                              </>
                             )
                           })}
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
 
-                    <div className="text-sm text-muted-foreground">
-                      Showing aggregated traffic data for {availablePorts.length} port(s). Each bar represents the
-                      combined traffic from all ports at that time.
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Active Ports ({availablePorts.length})</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {availablePorts.map((port, index) => {
+                            const colors = [
+                              "#3b82f6",
+                              "#ef4444",
+                              "#10b981",
+                              "#f59e0b",
+                              "#8b5cf6",
+                              "#ec4899",
+                              "#14b8a6",
+                              "#f97316",
+                            ]
+                            const colorIndex = index % colors.length
+                            return (
+                              <div key={port} className="flex items-center gap-2 text-xs">
+                                <div className="w-3 h-3 rounded" style={{ backgroundColor: colors[colorIndex] }} />
+                                <span>{port}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium mb-1">Legend:</p>
+                        <p>• Solid colors = Download (RX)</p>
+                        <p>• Transparent colors = Upload (TX)</p>
+                        <p>• Each bar shows stacked traffic per port</p>
+                      </div>
                     </div>
                   </div>
                 ) : (

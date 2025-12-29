@@ -31,6 +31,7 @@ import {
   Search,
   Loader2,
   CheckCircle2,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
 import { Input } from "@/components/ui/input"
@@ -223,6 +224,10 @@ export default function SettingsPage() {
   const [allTables, setAllTables] = useState<any[]>([])
   const [isLoadingTables, setIsLoadingTables] = useState(false)
   const [tableSearchQuery, setTableSearchQuery] = useState("")
+  const [selectedTable, setSelectedTable] = useState<string | null>(null)
+  const [tableSchema, setTableSchema] = useState<any[]>([])
+  const [isLoadingSchema, setIsLoadingSchema] = useState(false)
+  const [showTableSchemaDialog, setShowTableSchemaDialog] = useState(false)
 
   const fetchDatabaseStatus = async () => {
     setIsLoadingStatus(true)
@@ -448,6 +453,29 @@ export default function SettingsPage() {
     // @ts-ignore
     link.download = `${templateType}-template.${templateType === "bulk" ? "xlsx" : "csv"}`
     link.click()
+  }
+
+  const viewTableSchema = async (tableName: string) => {
+    setSelectedTable(tableName)
+    setIsLoadingSchema(true)
+    setShowTableSchemaDialog(true)
+    setTableSchema([])
+
+    try {
+      const response = await fetch(`/api/admin/database/tables/${tableName}/schema`)
+      const data = await response.json()
+
+      if (response.ok && data.columns) {
+        setTableSchema(data.columns)
+      } else {
+        toast.error(`Failed to load schema: ${data.error || "Unknown error"}`)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching table schema:", error)
+      toast.error("Failed to load table schema")
+    } finally {
+      setIsLoadingSchema(false)
+    }
   }
 
   const filteredTables = allTables.filter((table) =>
@@ -880,13 +908,8 @@ export default function SettingsPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      toast.info(`Viewing schema for: ${table.table_name}`)
-                                    }}
-                                  >
+                                  <Button variant="ghost" size="sm" onClick={() => viewTableSchema(table.table_name)}>
+                                    <Eye className="h-4 w-4 mr-1" />
                                     View
                                   </Button>
                                 </TableCell>
@@ -1229,6 +1252,76 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showTableSchemaDialog} onOpenChange={setShowTableSchemaDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <TableIcon className="h-5 w-5" />
+              <span className="font-mono">{selectedTable}</span>
+            </DialogTitle>
+            <DialogDescription>Table schema with {tableSchema.length} columns</DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="h-[500px] mt-4">
+            {isLoadingSchema ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : tableSchema.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Column Name</TableHead>
+                      <TableHead>Data Type</TableHead>
+                      <TableHead>Nullable</TableHead>
+                      <TableHead>Default</TableHead>
+                      <TableHead>Extra</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tableSchema.map((column, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono text-sm font-medium">{column.column_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {column.data_type}
+                            {column.character_maximum_length && `(${column.character_maximum_length})`}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={column.is_nullable === "YES" ? "secondary" : "default"}>
+                            {column.is_nullable === "YES" ? "NULL" : "NOT NULL"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {column.column_default || "-"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {column.is_identity === "YES" && (
+                            <Badge variant="outline" className="text-xs">
+                              IDENTITY
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">No columns found</div>
+            )}
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTableSchemaDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

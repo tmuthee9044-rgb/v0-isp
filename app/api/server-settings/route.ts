@@ -19,7 +19,7 @@ export async function GET() {
 
     try {
       const interfaces = os.networkInterfaces()
-      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "en0", "en1"]
+      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "ens160", "en0", "en1"]
 
       for (const name of priorityOrder) {
         const iface = interfaces[name]
@@ -27,6 +27,7 @@ export async function GET() {
           const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
           if (ipv4) {
             detectedHostIp = ipv4.address
+            console.log(`[v0] Detected host IP from ${name}:`, detectedHostIp)
             break
           }
         }
@@ -40,10 +41,15 @@ export async function GET() {
             const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
             if (ipv4) {
               detectedHostIp = ipv4.address
+              console.log(`[v0] Detected host IP from ${name}:`, detectedHostIp)
               break
             }
           }
         }
+      }
+
+      if (!detectedHostIp) {
+        console.warn("[v0] WARNING: Could not detect host IP address!")
       }
     } catch (error) {
       console.error("[v0] Failed to detect host IP:", error)
@@ -52,7 +58,7 @@ export async function GET() {
     const serverConfig = {
       radius: {
         enabled: false,
-        host: detectedHostIp, // Default to detected IP instead of empty string
+        host: detectedHostIp || "", // Use detected IP, never use 127.0.0.1
         authPort: "1812",
         acctPort: "1813",
         timeout: "30",
@@ -128,9 +134,19 @@ export async function GET() {
         } else if (keys[2] === "authMethods") {
           serverConfig.radius.authMethods = { ...serverConfig.radius.authMethods, ...value }
         } else if (keys[2]) {
-          if (keys[2] === "host" && (value === "127.0.0.1" || value === "localhost") && detectedHostIp) {
-            serverConfig.radius[keys[2]] = detectedHostIp
-            console.log("[v0] Replaced localhost RADIUS host with detected IP:", detectedHostIp)
+          if (keys[2] === "host") {
+            if (!value || value === "127.0.0.1" || value === "localhost" || value === "") {
+              if (detectedHostIp) {
+                serverConfig.radius[keys[2]] = detectedHostIp
+                console.log("[v0] Replaced invalid RADIUS host with detected IP:", detectedHostIp)
+              } else {
+                console.warn("[v0] WARNING: No valid RADIUS host IP available!")
+                serverConfig.radius[keys[2]] = ""
+              }
+            } else {
+              serverConfig.radius[keys[2]] = value
+              console.log("[v0] Using stored RADIUS host:", value)
+            }
           } else {
             serverConfig.radius[keys[2]] = value
           }

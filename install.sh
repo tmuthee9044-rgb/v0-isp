@@ -965,7 +965,11 @@ ADDNAS
     fi
     
     print_success "FreeRADIUS installation completed"
-    print_info "Visit /settings/servers to view and manage RADIUS configuration"
+    print_info "Next steps:"
+    print_info "1. Visit /settings/servers to configure RADIUS settings"
+    print_info "2. Add routers via /network/routers/add page"
+    print_info "3. Routers will automatically sync to RADIUS NAS table"
+    print_info "4. Test connectivity in /settings/servers Router Connectivity Testing"
 }
 
 setup_database() {

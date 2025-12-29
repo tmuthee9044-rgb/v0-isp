@@ -14,17 +14,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       SELECT COUNT(*) as subnet_count FROM ip_subnets WHERE router_id = ${routerId}
     `
 
-    const serviceDependencies = await sql`
-      SELECT COUNT(*) as service_count FROM customer_services WHERE device_id = ${routerId}
-    `
-
     const subnetCount = Number(subnetDependencies[0].subnet_count)
-    const serviceCount = Number(serviceDependencies[0].service_count)
 
     return NextResponse.json({
-      hasDependencies: subnetCount > 0 || serviceCount > 0,
+      hasDependencies: subnetCount > 0,
       subnetCount,
-      serviceCount,
+      serviceCount: 0, // Services are not directly linked to routers
     })
   } catch (error) {
     console.error("[v0] Error checking dependencies:", error)

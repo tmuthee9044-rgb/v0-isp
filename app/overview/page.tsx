@@ -60,45 +60,7 @@ export default function OverviewPage() {
     },
   })
   const [loading, setLoading] = useState(true)
-
-  const alerts = [
-    {
-      id: 1,
-      type: "error",
-      message: "Router R-001 offline",
-      time: "5 minutes ago",
-      severity: "high",
-    },
-    {
-      id: 2,
-      type: "warning",
-      message: "High bandwidth usage in Downtown area",
-      time: "15 minutes ago",
-      severity: "medium",
-    },
-    {
-      id: 3,
-      type: "info",
-      message: "Scheduled maintenance completed",
-      time: "1 hour ago",
-      severity: "low",
-    },
-    {
-      id: 4,
-      type: "success",
-      message: "New customer onboarded successfully",
-      time: "2 hours ago",
-      severity: "low",
-    },
-  ]
-
-  const systemHealth = [
-    { name: "Overall System", status: 98, color: "bg-green-500" },
-    { name: "Network", status: 99, color: "bg-green-500" },
-    { name: "Servers", status: 97, color: "bg-green-500" },
-    { name: "Database", status: 95, color: "bg-yellow-500" },
-    { name: "Services", status: 96, color: "bg-green-500" },
-  ]
+  const [alerts, setAlerts] = useState<any[]>([])
 
   const getAlertIcon = (type: string) => {
     switch (type) {
@@ -124,24 +86,27 @@ export default function OverviewPage() {
       try {
         setLoading(true)
 
-        const [networkRes, customerRes, financialRes, infrastructureRes] = await Promise.all([
+        const [networkRes, customerRes, financialRes, infrastructureRes, alertsRes] = await Promise.all([
           fetch("/api/overview/network"),
           fetch("/api/overview/customers"),
           fetch("/api/overview/financial"),
           fetch("/api/overview/infrastructure"),
+          fetch("/api/overview/alerts"), // Fetch real alerts from database
         ])
 
-        const [network, customer, financial, infrastructure] = await Promise.all([
+        const [network, customer, financial, infrastructure, alertsData] = await Promise.all([
           networkRes.json(),
           customerRes.json(),
           financialRes.json(),
           infrastructureRes.json(),
+          alertsRes.json(),
         ])
 
         if (network && !network.error) setNetworkData(network)
         if (customer && !customer.error) setCustomerData(customer)
         if (financial && !financial.error) setFinancialData(financial)
         if (infrastructure && !infrastructure.error) setInfrastructureData(infrastructure)
+        if (alertsData && !alertsData.error) setAlerts(alertsData.alerts || []) // Set real alerts
       } catch (error) {
         console.error("Failed to fetch overview data:", error)
       } finally {
@@ -596,3 +561,11 @@ export default function OverviewPage() {
     </div>
   )
 }
+
+const systemHealth = [
+  { name: "Overall System", status: 98, color: "bg-green-500" },
+  { name: "Network", status: 99, color: "bg-green-500" },
+  { name: "Servers", status: 97, color: "bg-green-500" },
+  { name: "Database", status: 95, color: "bg-yellow-500" },
+  { name: "Services", status: 96, color: "bg-green-500" },
+]

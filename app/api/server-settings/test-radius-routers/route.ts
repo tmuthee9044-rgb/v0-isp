@@ -98,16 +98,16 @@ export async function POST(request: NextRequest) {
       // Test 2: Check if router is registered as NAS client
       try {
         const nasClients = await sql`
-          SELECT id, nasname as name, nasidentifier, secret
+          SELECT id, nasname, shortname, secret
           FROM nas
-          WHERE nasidentifier = ${router.nas_ip_address || router.ip_address}
+          WHERE nasname = ${router.nas_ip_address || router.ip_address}
           LIMIT 1
         `
 
         routerResult.tests.nasRegistration = {
           success: nasClients.length > 0,
           registered: nasClients.length > 0,
-          nasName: nasClients[0]?.name || nasClients[0]?.nasname || null,
+          nasName: nasClients[0]?.nasname || null,
           secretConfigured: nasClients.length > 0 && !!nasClients[0]?.secret,
         }
       } catch (error) {
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
         const nasClients = await sql`
           SELECT secret
           FROM nas
-          WHERE nasidentifier = ${router.nas_ip_address || router.ip_address}
+          WHERE nasname = ${router.nas_ip_address || router.ip_address}
           LIMIT 1
         `
 

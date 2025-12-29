@@ -189,6 +189,48 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Router created successfully:", result[0])
 
+    if (radius_secret) {
+      try {
+        console.log("[v0] Syncing router to FreeRADIUS nas table...")
+
+        const nasIp = nas_ip_address || ip_address
+        const shortname = name.replace(/\s+/g, "_").toLowerCase()
+
+        await sql`
+          INSERT INTO nas (
+            nasname,
+            shortname,
+            type,
+            ports,
+            secret,
+            server,
+            community,
+            description
+          ) VALUES (
+            ${nasIp},
+            ${shortname},
+            'other',
+            1812,
+            ${radius_secret},
+            ${ip_address},
+            'public',
+            ${`Router: ${name} (${type})`}
+          )
+          ON CONFLICT (nasname) 
+          DO UPDATE SET
+            secret = EXCLUDED.secret,
+            shortname = EXCLUDED.shortname,
+            type = EXCLUDED.type,
+            description = EXCLUDED.description
+        `
+
+        console.log("[v0] Router synced to FreeRADIUS nas table successfully")
+      } catch (nasError) {
+        console.error("[v0] Error syncing to nas table:", nasError)
+        // Don't fail router creation if nas sync fails
+      }
+    }
+
     if (type === "mikrotik" && (api_username || username) && (api_password || password)) {
       try {
         console.log("[v0] Applying MikroTik configuration to physical router...")

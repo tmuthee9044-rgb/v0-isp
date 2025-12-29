@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const existingRouter = await sql`
-      SELECT id, configuration, location FROM network_devices 
+      SELECT id, configuration, location, ip_address FROM network_devices 
       WHERE id = ${routerId} 
         AND (type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR type ILIKE '%router%')
     `
@@ -166,6 +166,48 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       WHERE id = ${routerId}
       RETURNING *
     `
+
+    if (radius_secret) {
+      try {
+        console.log("[v0] Syncing updated router to FreeRADIUS nas table...")
+
+        const nasIp = radius_nas_ip || hostname || existingRouter[0].ip_address
+        const shortname = name.replace(/\s+/g, "_").toLowerCase()
+
+        await sql`
+          INSERT INTO nas (
+            nasname,
+            shortname,
+            type,
+            ports,
+            secret,
+            server,
+            community,
+            description
+          ) VALUES (
+            ${nasIp},
+            ${shortname},
+            'other',
+            1812,
+            ${radius_secret},
+            ${hostname || existingRouter[0].ip_address},
+            'public',
+            ${`Router: ${name} (${type})`}
+          )
+          ON CONFLICT (nasname) 
+          DO UPDATE SET
+            secret = EXCLUDED.secret,
+            shortname = EXCLUDED.shortname,
+            type = EXCLUDED.type,
+            description = EXCLUDED.description
+        `
+
+        console.log("[v0] Router synced to FreeRADIUS nas table successfully")
+      } catch (nasError) {
+        console.error("[v0] Error syncing to nas table:", nasError)
+        // Don't fail router update if nas sync fails
+      }
+    }
 
     if (type === "mikrotik" && result[0]) {
       try {

@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { detectRadiusIP } from "@/lib/ip-detection"
 const os = require("os")
 
 export async function GET() {
@@ -19,11 +18,41 @@ export async function GET() {
     let detectedHostIp = ""
 
     try {
-      detectedHostIp = await detectRadiusIP()
-      console.log(`[v0] Detected RADIUS host IP:`, detectedHostIp)
+      const interfaces = os.networkInterfaces()
+      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "ens160", "en0", "en1"]
+
+      for (const name of priorityOrder) {
+        const iface = interfaces[name]
+        if (iface) {
+          const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
+          if (ipv4) {
+            detectedHostIp = ipv4.address
+            console.log(`[v0] Detected host IP from ${name}:`, detectedHostIp)
+            break
+          }
+        }
+      }
+
+      // Fallback to any non-internal IPv4
+      if (!detectedHostIp) {
+        for (const name in interfaces) {
+          const iface = interfaces[name]
+          if (iface) {
+            const ipv4 = iface.find((addr: any) => addr.family === "IPv4" && !addr.internal)
+            if (ipv4) {
+              detectedHostIp = ipv4.address
+              console.log(`[v0] Detected host IP from ${name}:`, detectedHostIp)
+              break
+            }
+          }
+        }
+      }
+
+      if (!detectedHostIp) {
+        console.warn("[v0] WARNING: Could not detect host IP address!")
+      }
     } catch (error) {
-      console.error("[v0] Failed to detect RADIUS host IP:", error)
-      // Continue without IP - user must configure manually
+      console.error("[v0] Failed to detect host IP:", error)
     }
 
     const serverConfig = {
@@ -106,20 +135,12 @@ export async function GET() {
           serverConfig.radius.authMethods = { ...serverConfig.radius.authMethods, ...value }
         } else if (keys[2]) {
           if (keys[2] === "host") {
-            const isInvalidHost =
-              !value ||
-              value === "127.0.0.1" ||
-              value === "localhost" ||
-              value === "::1" ||
-              value === "" ||
-              value.startsWith("127.")
-
-            if (isInvalidHost) {
+            if (!value || value === "127.0.0.1" || value === "localhost" || value === "") {
               if (detectedHostIp) {
                 serverConfig.radius[keys[2]] = detectedHostIp
                 console.log("[v0] Replaced invalid RADIUS host with detected IP:", detectedHostIp)
               } else {
-                console.error("[v0] CRITICAL: No valid RADIUS host IP available!")
+                console.warn("[v0] WARNING: No valid RADIUS host IP available!")
                 serverConfig.radius[keys[2]] = ""
               }
             } else {

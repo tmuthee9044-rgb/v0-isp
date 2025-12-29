@@ -1,7 +1,6 @@
 import dgram from "dgram"
 import crypto from "crypto"
 import os from "os"
-import { detectRadiusIP } from "./ip-detection"
 
 interface RadiusConfig {
   host: string
@@ -208,14 +207,11 @@ export class RadiusClient {
 
   /**
    * Get the NAS IP address (the IP of this system)
-   * NEVER returns 127.0.0.1 - uses production-ready detection
+   * Auto-detect the primary network interface IP - NEVER use 127.0.0.1
    */
-  private async getNasIpAddressAsync(): Promise<Buffer> {
+  private getNasIpAddress(): Buffer {
     const shouldAutoDetect =
-      !this.config.nasIp ||
-      this.config.nasIp === "127.0.0.1" ||
-      this.config.nasIp === "localhost" ||
-      this.config.nasIp === "::1"
+      !this.config.nasIp || this.config.nasIp === "127.0.0.1" || this.config.nasIp === "localhost"
 
     if (!shouldAutoDetect) {
       try {
@@ -230,56 +226,32 @@ export class RadiusClient {
     }
 
     try {
-      const detectedIP = await detectRadiusIP()
-      const ipParts = detectedIP.split(".").map((p) => Number.parseInt(p, 10))
-      console.log(`[v0] RADIUS: Auto-detected NAS IP:`, detectedIP)
-      return Buffer.from(ipParts)
-    } catch (error) {
-      console.error("[v0] RADIUS: Failed to detect NAS IP:", error)
-      throw new Error(
-        "Could not detect network IP address for NAS-IP-Address. " +
-          "The server must have a non-loopback network interface. " +
-          "Please set RADIUS_IP environment variable or configure manually in settings.",
-      )
-    }
-  }
-
-  /**
-   * Get the NAS IP address synchronously (legacy support)
-   * @deprecated Use getNasIpAddressAsync for better IP detection
-   */
-  private getNasIpAddress(): Buffer {
-    try {
       const interfaces = os.networkInterfaces()
 
       // Priority order: eth0, ens, en, wlan
-      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "ens160", "en0", "en1", "wlan0"]
+      const priorityOrder = ["eth0", "ens0", "ens3", "ens33", "en0", "en1", "wlan0"]
 
       for (const name of priorityOrder) {
         const iface = interfaces[name]
         if (iface) {
           const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
-          if (ipv4 && ipv4.address !== "127.0.0.1" && !ipv4.address.startsWith("127.")) {
+          if (ipv4) {
+            const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
             console.log(`[v0] RADIUS: Auto-detected NAS IP from ${name}:`, ipv4.address)
-            return Buffer.from(ipv4.address.split(".").map((p) => Number.parseInt(p, 10)))
+            return Buffer.from(ipParts)
           }
         }
       }
 
-      // Fallback: find any non-internal IPv4 address (excluding loopback)
+      // Fallback: find any non-internal IPv4 address
       for (const name in interfaces) {
         const iface = interfaces[name]
         if (iface) {
-          const ipv4 = iface.find(
-            (addr) =>
-              addr.family === "IPv4" &&
-              !addr.internal &&
-              addr.address !== "127.0.0.1" &&
-              !addr.address.startsWith("127."),
-          )
+          const ipv4 = iface.find((addr) => addr.family === "IPv4" && !addr.internal)
           if (ipv4) {
+            const ipParts = ipv4.address.split(".").map((p) => Number.parseInt(p, 10))
             console.log(`[v0] RADIUS: Auto-detected NAS IP from ${name}:`, ipv4.address)
-            return Buffer.from(ipv4.address.split(".").map((p) => Number.parseInt(p, 10)))
+            return Buffer.from(ipParts)
           }
         }
       }
@@ -289,9 +261,8 @@ export class RadiusClient {
 
     throw new Error(
       "Could not detect network IP address for NAS-IP-Address. " +
-        "The server must have a non-loopback network interface (not 127.0.0.1). " +
         "Please ensure the server has a network interface with an IP address, " +
-        "or set the RADIUS_IP environment variable.",
+        "or provide the nasIp parameter in the RADIUS client configuration.",
     )
   }
 }

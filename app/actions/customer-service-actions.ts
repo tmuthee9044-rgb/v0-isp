@@ -456,10 +456,10 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     const serviceData = await sql`
       SELECT cs.*, c.id as customer_id, c.portal_username,
              ia.ip_address, ia.router_id,
-             r.host, r.port, r.username, r.password, r.use_ssl
+             r.ip_address as router_ip, r.configuration
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN ip_addresses ia ON ia.customer_id = c.id AND ia.status = 'allocated'
+      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.status = 'allocated'
       LEFT JOIN network_devices r ON r.id = ia.router_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
@@ -487,7 +487,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       return { success: false, error: "Service not found" }
     }
 
-    if (service.router_id && service.host && (service.portal_username || service.ip_address)) {
+    if (service.router_id && service.router_ip && (service.portal_username || service.ip_address)) {
       // Fire and forget - don't await
       Promise.resolve().then(async () => {
         try {

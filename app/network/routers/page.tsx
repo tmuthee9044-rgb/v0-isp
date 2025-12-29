@@ -150,25 +150,50 @@ export default function RoutersPage() {
   }
 
   const deleteRouter = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this router? This action cannot be undone.")) return
+    const router = routers.find((r) => r.id === id)
+    if (!router) return
 
-    console.log("[v0] Deleting router with ID:", id)
-
+    // First check for dependencies
     try {
-      const response = await fetch(`/api/network/routers/${id}`, {
-        method: "DELETE",
-      })
-
-      console.log("[v0] Delete response status:", response.status)
-
-      const data = await response.json()
-      console.log("[v0] Delete response data:", data)
-
+      const response = await fetch(`/api/network/routers/${id}/dependencies`)
       if (response.ok) {
-        toast.success("Router deleted successfully")
-        setRouters((prev) => prev.filter((r) => r.id !== id))
-      } else {
-        toast.error(data.message || "Failed to delete router")
+        const dependencies = await response.json()
+
+        if (dependencies.hasDepencies) {
+          const message = `This router has the following dependencies:\n\n${dependencies.subnetCount > 0 ? `• ${dependencies.subnetCount} subnet(s)\n` : ""}${dependencies.serviceCount > 0 ? `• ${dependencies.serviceCount} active service(s)\n` : ""}\nDo you want to delete the router and all its dependencies? This action cannot be undone.`
+
+          if (!confirm(message)) return
+
+          // Delete with cascade
+          const deleteResponse = await fetch(`/api/network/routers/${id}?cascade=true`, {
+            method: "DELETE",
+          })
+
+          const data = await deleteResponse.json()
+
+          if (deleteResponse.ok) {
+            toast.success(data.message || "Router and dependencies deleted successfully")
+            setRouters((prev) => prev.filter((r) => r.id !== id))
+          } else {
+            toast.error(data.message || "Failed to delete router")
+          }
+        } else {
+          // No dependencies, simple delete
+          if (!confirm(`Are you sure you want to delete ${router.name}? This action cannot be undone.`)) return
+
+          const deleteResponse = await fetch(`/api/network/routers/${id}`, {
+            method: "DELETE",
+          })
+
+          const data = await deleteResponse.json()
+
+          if (deleteResponse.ok) {
+            toast.success("Router deleted successfully")
+            setRouters((prev) => prev.filter((r) => r.id !== id))
+          } else {
+            toast.error(data.message || "Failed to delete router")
+          }
+        }
       }
     } catch (error) {
       console.error("[v0] Error deleting router:", error)

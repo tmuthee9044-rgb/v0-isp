@@ -22,7 +22,6 @@ import {
 import { HeadphonesIcon, Plus, MessageSquare, Clock, CheckCircle, Search, Filter, Eye, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { AddKnowledgeBaseModal } from "@/components/add-knowledge-base-modal"
-import { smsService } from "@/lib/sms-service"
 
 export default function SupportPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -72,7 +71,6 @@ export default function SupportPage() {
 
   useEffect(() => {
     fetchData()
-    smsService.loadConfig()
   }, [])
 
   const fetchData = async () => {

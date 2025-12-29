@@ -33,32 +33,54 @@ export async function GET() {
       AND updated_at >= DATE_TRUNC('month', CURRENT_DATE)
     `
 
-    const satisfactionData = await sql`
-      SELECT AVG(rating) as avg_rating
-      FROM customer_feedback
-      WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-    `
+    // Try to get satisfaction data, fallback to 0 if table doesn't exist
+    let satisfaction = 0
+    try {
+      const satisfactionData = await sql`
+        SELECT AVG(rating) as avg_rating
+        FROM customer_feedback
+        WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+      `
+      satisfaction = Number.parseFloat(satisfactionData[0]?.avg_rating || 0)
+    } catch (err: any) {
+      if (err.code !== "42P01") throw err // Re-throw if not "table doesn't exist" error
+      console.log("[v0] customer_feedback table does not exist yet, using default value")
+    }
 
-    const openTickets = await sql`
-      SELECT COUNT(*) as count
-      FROM support_tickets
-      WHERE status IN ('open', 'pending', 'in_progress')
-    `
+    // Try to get ticket data, fallback to 0 if table doesn't exist
+    let openTicketsCount = 0
+    let resolvedTicketsCount = 0
+    let avgTime = "N/A"
 
-    const resolvedTickets = await sql`
-      SELECT COUNT(*) as count
-      FROM support_tickets
-      WHERE status = 'resolved'
-      AND resolved_at >= DATE_TRUNC('week', CURRENT_DATE)
-    `
+    try {
+      const openTickets = await sql`
+        SELECT COUNT(*) as count
+        FROM support_tickets
+        WHERE status IN ('open', 'pending', 'in_progress')
+      `
+      openTicketsCount = Number.parseInt(openTickets[0]?.count || 0)
 
-    const avgResolutionTime = await sql`
-      SELECT 
-        AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/3600) as avg_hours
-      FROM support_tickets
-      WHERE status = 'resolved'
-      AND resolved_at >= CURRENT_DATE - INTERVAL '30 days'
-    `
+      const resolvedTickets = await sql`
+        SELECT COUNT(*) as count
+        FROM support_tickets
+        WHERE status = 'resolved'
+        AND resolved_at >= DATE_TRUNC('week', CURRENT_DATE)
+      `
+      resolvedTicketsCount = Number.parseInt(resolvedTickets[0]?.count || 0)
+
+      const avgResolutionTime = await sql`
+        SELECT 
+          AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/3600) as avg_hours
+        FROM support_tickets
+        WHERE status = 'resolved'
+        AND resolved_at >= CURRENT_DATE - INTERVAL '30 days'
+      `
+      const avgHours = Number.parseFloat(avgResolutionTime[0]?.avg_hours || 0)
+      avgTime = avgHours > 0 ? `${avgHours.toFixed(1)} hours` : "N/A"
+    } catch (err: any) {
+      if (err.code !== "42P01") throw err // Re-throw if not "table doesn't exist" error
+      console.log("[v0] support_tickets table does not exist yet, using default values")
+    }
 
     // Get customer distribution by location
     const distribution = await sql`
@@ -78,18 +100,14 @@ export async function GET() {
       percentage: total > 0 ? Math.round((Number.parseInt(item.count) / total) * 100) : 0,
     }))
 
-    const avgHours = Number.parseFloat(avgResolutionTime[0]?.avg_hours || 0)
-    const avgTime = avgHours > 0 ? `${avgHours.toFixed(1)} hours` : "N/A"
-    const satisfaction = Number.parseFloat(satisfactionData[0]?.avg_rating || 0)
-
     const customerData = {
       total: total,
       new: Number.parseInt(newCustomers[0]?.new_count || 0),
       churn: Number.parseInt(churnedCustomers[0]?.churned || 0),
       satisfaction: satisfaction > 0 ? Number.parseFloat(satisfaction.toFixed(1)) : 0,
       support: {
-        open: Number.parseInt(openTickets[0]?.count || 0),
-        resolved: Number.parseInt(resolvedTickets[0]?.count || 0),
+        open: openTicketsCount,
+        resolved: resolvedTicketsCount,
         avgTime: avgTime,
       },
       distribution: distributionWithPercentage,

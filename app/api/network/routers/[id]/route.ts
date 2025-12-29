@@ -234,7 +234,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
-
     const routerId = Number.parseInt(params.id)
 
     console.log("[v0] Attempting to delete router with ID:", routerId)
@@ -242,6 +241,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     if (isNaN(routerId)) {
       return NextResponse.json({ message: "Invalid router ID. ID must be a number." }, { status: 400 })
     }
+
+    const { searchParams } = new URL(request.url)
+    const cascade = searchParams.get("cascade") === "true"
 
     const subnetDependencies = await sql`
       SELECT COUNT(*) as subnet_count FROM ip_subnets WHERE router_id = ${routerId}
@@ -254,16 +256,32 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const subnetCount = Number(subnetDependencies[0].subnet_count)
     const serviceCount = Number(serviceDependencies[0].service_count)
 
-    console.log("[v0] Router dependencies:", { subnetCount, serviceCount })
+    console.log("[v0] Router dependencies:", { subnetCount, serviceCount, cascade })
 
-    if (subnetCount > 0 || serviceCount > 0) {
+    if (cascade) {
+      const deletedItems: string[] = []
+
+      if (subnetCount > 0) {
+        await sql`DELETE FROM ip_subnets WHERE router_id = ${routerId}`
+        deletedItems.push(`${subnetCount} subnet(s)`)
+        console.log(`[v0] Cascade deleted ${subnetCount} subnets`)
+      }
+
+      if (serviceCount > 0) {
+        await sql`UPDATE customer_services SET device_id = NULL WHERE device_id = ${routerId}`
+        deletedItems.push(`${serviceCount} service(s) unlinked`)
+        console.log(`[v0] Cascade unlinked ${serviceCount} services`)
+      }
+
+      console.log("[v0] Cascade delete completed:", deletedItems)
+    } else if (subnetCount > 0 || serviceCount > 0) {
       const dependencies = []
       if (subnetCount > 0) dependencies.push(`${subnetCount} subnet(s)`)
       if (serviceCount > 0) dependencies.push(`${serviceCount} service(s)`)
 
       return NextResponse.json(
         {
-          message: `Cannot delete router with associated resources: ${dependencies.join(", ")}. Please remove these dependencies first.`,
+          message: `Cannot delete router with associated resources: ${dependencies.join(", ")}. Please remove these dependencies first or use cascade delete.`,
         },
         { status: 400 },
       )
@@ -301,6 +319,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         ${JSON.stringify({
           name: result[0].name,
           ip_address: result[0].ip_address,
+          cascade_delete: cascade,
+          subnets_deleted: cascade ? subnetCount : 0,
+          services_unlinked: cascade ? serviceCount : 0,
         })}, 
         NOW()
       )
@@ -309,7 +330,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     console.log("[v0] Router deleted successfully:", routerId)
 
     return NextResponse.json({
-      message: "Router deleted successfully",
+      message: cascade
+        ? `Router and ${subnetCount} subnet(s) deleted successfully. ${serviceCount} service(s) unlinked.`
+        : "Router deleted successfully",
       success: true,
     })
   } catch (error) {

@@ -774,171 +774,164 @@ SQLEOF
     if [ -f "$DEFAULT_SITE" ]; then
         sudo cp "$DEFAULT_SITE" "$DEFAULT_SITE.backup.$(date +%Y%m%d_%H%M%S)"
         
-        # Create a proper listen section with the detected IP
-        # We'll use a more robust approach with a temporary file
         sudo tee "$DEFAULT_SITE.tmp" > /dev/null <<'EOF_DEFAULT'
-# FreeRADIUS default site - Configured by ISP Management System
+# FreeRADIUS default site - Configured for ISP Management System
+# Optimized for PPPoE, Hotspot, DHCP with PAP/CHAP/MS-CHAP authentication
+# EAP/802.1X disabled (not needed for ISP operations)
 
-listen {
-    type = auth
-    ipaddr = 0.0.0.0
-    port = 1812
-    limit {
-        max_connections = 16
-        lifetime = 0
-        idle_timeout = 30
+server default {
+    listen {
+        type = auth
+        ipaddr = 0.0.0.0
+        port = 1812
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
     }
-}
 
-listen {
-    type = acct
-    ipaddr = 0.0.0.0
-    port = 1813
-    limit {
-        max_connections = 16
-        lifetime = 0
-        idle_timeout = 30
+    listen {
+        type = acct
+        ipaddr = 0.0.0.0
+        port = 1813
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
     }
-}
 
-authorize {
-    filter_username
-    preprocess
-    chap
-    mschap
-    digest
-    suffix
-    eap {
-        ok = return
-    }
-    sql
-    expiration
-    logintime
-    pap
-}
-
-authenticate {
-    Auth-Type PAP {
+    authorize {
+        filter_username
+        preprocess
+        chap
+        mschap
+        suffix
+        sql
+        expiration
+        logintime
         pap
     }
-    Auth-Type CHAP {
-        chap
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+        Auth-Type CHAP {
+            chap
+        }
+        Auth-Type MS-CHAP {
+            mschap
+        }
     }
-    Auth-Type MS-CHAP {
-        mschap
+
+    preacct {
+        preprocess
+        acct_unique
+        suffix
     }
-    digest
-    eap
-}
 
-preacct {
-    preprocess
-    acct_unique
-    suffix
-}
-
-accounting {
-    detail
-    sql
-    exec
-    attr_filter.accounting_response
-}
-
-session {
-    sql
-}
-
-post-auth {
-    sql
-    exec
-    Post-Auth-Type REJECT {
-        attr_filter.access_reject
-        eap
-        remove_reply_message_if_eap
+    accounting {
+        sql
+        exec
     }
-}
 
-pre-proxy {
-}
+    session {
+        sql
+    }
 
-post-proxy {
-    eap
+    post-auth {
+        sql
+        exec
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+        }
+    }
+
+    pre-proxy {
+    }
+
+    post-proxy {
+    }
 }
 EOF_DEFAULT
 
         sudo mv "$DEFAULT_SITE.tmp" "$DEFAULT_SITE"
         sudo chmod 644 "$DEFAULT_SITE"
-        print_success "FreeRADIUS default site configured to listen on 0.0.0.0 (all interfaces)"
+        print_success "FreeRADIUS default site configured for ISP (PAP/CHAP/MS-CHAP only, EAP disabled)"
     fi
     
-    # Configure inner-tunnel site
+    print_info "Disabling EAP module (not needed for ISP operations)..."
+    if [ -L "$FREERADIUS_DIR/mods-enabled/eap" ]; then
+        sudo rm -f "$FREERADIUS_DIR/mods-enabled/eap"
+        print_success "EAP module disabled"
+    fi
+    
+    # Configure inner-tunnel site without EAP
     INNER_TUNNEL="$FREERADIUS_DIR/sites-available/inner-tunnel"
     if [ -f "$INNER_TUNNEL" ]; then
         sudo cp "$INNER_TUNNEL" "$INNER_TUNNEL.backup.$(date +%Y%m%d_%H%M%S)"
         
         sudo tee "$INNER_TUNNEL.tmp" > /dev/null <<'EOF_INNER'
-# FreeRADIUS inner-tunnel site
+# FreeRADIUS inner-tunnel site - ISP Configuration
+# EAP disabled for PPPoE/Hotspot/DHCP authentication
 
-listen {
-    ipaddr = 127.0.0.1
-    port = 18120
-    type = auth
-}
-
-authorize {
-    filter_username
-    chap
-    mschap
-    suffix
-    update control {
-        &Proxy-To-Realm := LOCAL
+server inner-tunnel {
+    listen {
+        ipaddr = 127.0.0.1
+        port = 18120
+        type = auth
     }
-    eap {
-        ok = return
-    }
-    sql
-    expiration
-    logintime
-    pap
-}
 
-authenticate {
-    Auth-Type PAP {
+    authorize {
+        filter_username
+        chap
+        mschap
+        suffix
+        update control {
+            &Proxy-To-Realm := LOCAL
+        }
+        sql
+        expiration
+        logintime
         pap
     }
-    Auth-Type CHAP {
-        chap
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+        Auth-Type CHAP {
+            chap
+        }
+        Auth-Type MS-CHAP {
+            mschap
+        }
     }
-    Auth-Type MS-CHAP {
-        mschap
+
+    session {
+        sql
     }
-    eap
-}
 
-session {
-    sql
-}
-
-post-auth {
-    sql
-    Post-Auth-Type REJECT {
-        attr_filter.access_reject
-        eap
-        remove_reply_message_if_eap
+    post-auth {
+        sql
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+        }
     }
-}
 
-pre-proxy {
-}
+    pre-proxy {
+    }
 
-post-proxy {
-    eap
+    post-proxy {
+    }
 }
 EOF_INNER
 
         sudo mv "$INNER_TUNNEL.tmp" "$INNER_TUNNEL"
         sudo chmod 644 "$INNER_TUNNEL"
-        print_success "FreeRADIUS inner-tunnel configured"
+        print_success "FreeRADIUS inner-tunnel configured without EAP"
     fi
     
     # Enable the sites
@@ -948,58 +941,7 @@ EOF_INNER
     
     print_success "FreeRADIUS now configured to listen on all network interfaces (0.0.0.0)"
     print_info "External routers can connect to: $DETECTED_IP:1812"
-    
-    print_info "Setting correct permissions for FreeRADIUS files..."
-    
-    # Fix ownership
-    sudo chown -R freerad:freerad /etc/freeradius/3.0 2>/dev/null || \
-        sudo chown -R radius:radius /etc/freeradius/3.0 2>/dev/null || true
-    
-    # Fix directory permissions (755 = readable and executable)
-    sudo find /etc/freeradius/3.0 -type d -exec chmod 755 {} \; 2>/dev/null || true
-    
-    # Fix file permissions (644 = readable)
-    sudo find /etc/freeradius/3.0 -type f -exec chmod 644 {} \; 2>/dev/null || true
-    
-    print_info "Configuring certificate permissions..."
-    CERTS_DIR="$FREERADIUS_DIR/certs"
-    if [ -d "$CERTS_DIR" ]; then
-        # Set ownership for certs directory
-        sudo chown -R freerad:freerad "$CERTS_DIR" 2>/dev/null || \
-            sudo chown -R radius:radius "$CERTS_DIR" 2>/dev/null || true
-        
-        # Directory should be readable and executable
-        sudo chmod 750 "$CERTS_DIR"
-        
-        # Private keys should be readable only by freerad user
-        sudo find "$CERTS_DIR" -name "*.key" -exec chmod 640 {} \; 2>/dev/null || true
-        sudo find "$CERTS_DIR" -name "*.pem" -type f -exec chmod 640 {} \; 2>/dev/null || true
-        
-        # Certificates can be more permissive
-        sudo find "$CERTS_DIR" -name "*.crt" -exec chmod 644 {} \; 2>/dev/null || true
-        sudo find "$CERTS_DIR" -name "*.der" -exec chmod 644 {} \; 2>/dev/null || true
-        
-        # CA certificates should be readable
-        if [ -f "$CERTS_DIR/ca.pem" ]; then
-            sudo chmod 644 "$CERTS_DIR/ca.pem"
-        fi
-        
-        print_success "Certificate permissions configured securely"
-    else
-        print_warning "Certificate directory not found at $CERTS_DIR"
-    fi
-    
-    # Make binaries executable
-    sudo chmod 755 /usr/sbin/freeradius 2>/dev/null || true
-    sudo chmod 755 /usr/sbin/radiusd 2>/dev/null || true
-    
-    # Fix log directory permissions
-    sudo mkdir -p /var/log/freeradius
-    sudo chown -R freerad:freerad /var/log/freeradius 2>/dev/null || \
-        sudo chown -R radius:radius /var/log/freeradius 2>/dev/null || true
-    sudo chmod 755 /var/log/freeradius
-    
-    print_success "FreeRADIUS permissions set correctly"
+    print_info "Authentication methods: PAP, CHAP, MS-CHAP (for PPPoE, Hotspot, DHCP)"
     
     # Test configuration before starting
     print_info "Testing FreeRADIUS configuration..."

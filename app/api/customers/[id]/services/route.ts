@@ -104,17 +104,32 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         sp.download_speed,
         sp.upload_speed,
         sp.data_limit,
-        -- Check if customer has active RADIUS session
+        -- Check if customer has active RADIUS session (AcctStopTime IS NULL means session is active)
         EXISTS(
-          SELECT 1 FROM radius_sessions_active rsa
-          WHERE rsa.customer_id = cs.customer_id::text
-          AND rsa.service_id = cs.id
+          SELECT 1 FROM radacct ra
+          WHERE ra."UserName" = c.username
+          AND ra."AcctStopTime" IS NULL
           LIMIT 1
         ) as is_online,
+        -- Get last session timestamp from RADIUS accounting
+        (
+          SELECT ra."AcctStartTime"
+          FROM radacct ra
+          WHERE ra."UserName" = c.username
+          ORDER BY ra."AcctStartTime" DESC
+          LIMIT 1
+        ) as last_session_at,
+        -- Check if user is provisioned in RADIUS (has credentials)
+        EXISTS(
+          SELECT 1 FROM radcheck rc
+          WHERE rc."UserName" = c.username
+          LIMIT 1
+        ) as radius_provisioned,
         -- Get account balance
         COALESCE(ab.balance, 0) as balance
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN customers c ON c.id = cs.customer_id
       LEFT JOIN account_balances ab ON ab.customer_id = cs.customer_id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC

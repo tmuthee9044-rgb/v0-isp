@@ -44,7 +44,7 @@ async function getCustomerServices(customerId: string) {
     const result = await sql`
       SELECT cs.*, sp.name as plan_name, sp.price, sp.speed_download, sp.speed_upload
       FROM customer_services cs
-      LEFT JOIN service_plans sp ON cs.plan_id = sp.id
+      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC
     `

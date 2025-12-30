@@ -42,19 +42,19 @@ export async function GET(request: NextRequest) {
       SELECT 
         c.name,
         sp.name as plan_name,
-        sp.monthly_fee,
+        sp.price as monthly_fee,
         cs.status,
         CASE 
-          WHEN sp.monthly_fee > 5000 THEN 'critical'
-          WHEN sp.monthly_fee > 3000 THEN 'high'
-          WHEN sp.monthly_fee > 1000 THEN 'normal'
+          WHEN sp.price > 5000 THEN 'critical'
+          WHEN sp.price > 3000 THEN 'high'
+          WHEN sp.price > 1000 THEN 'normal'
           ELSE 'low'
         END as usage_status
       FROM customers c
       JOIN customer_services cs ON c.id = cs.customer_id
-      JOIN service_plans sp ON cs.plan_id = sp.id
+      JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.status = 'active'
-      ORDER BY sp.monthly_fee DESC
+      ORDER BY sp.price DESC
       LIMIT 10
     `
 
@@ -63,10 +63,10 @@ export async function GET(request: NextRequest) {
       SELECT 
         sp.name as plan_name,
         COUNT(cs.id) as customers,
-        AVG(sp.monthly_fee) as avg_fee,
-        SUM(sp.monthly_fee) as total_revenue
+        AVG(sp.price) as avg_fee,
+        SUM(sp.price) as total_revenue
       FROM service_plans sp
-      JOIN customer_services cs ON sp.id = cs.plan_id
+      JOIN customer_services cs ON sp.id = cs.service_plan_id
       WHERE cs.status = 'active'
       GROUP BY sp.name
       ORDER BY total_revenue DESC

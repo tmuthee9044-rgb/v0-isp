@@ -40,11 +40,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         body = Object.fromEntries(formData.entries())
       }
     } catch (parseError) {
-      console.error("[v0] Error parsing request body:", parseError)
       return NextResponse.json({ error: "Invalid request body format" }, { status: 400 })
     }
-
-    console.log("[v0] Received employee update data:", body)
 
     const {
       first_name,
@@ -80,17 +77,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       finalSalary && String(finalSalary).trim() !== "" && String(finalSalary) !== "-" ? Number(finalSalary) : null
 
     if (finalSalary && (isNaN(parsedSalary!) || parsedSalary === null)) {
-      console.error("[v0] Invalid salary:", finalSalary)
       return NextResponse.json({ error: "Invalid salary value" }, { status: 400 })
     }
-
-    console.log("[v0] Updating employee with values:", {
-      finalFirstName,
-      finalLastName,
-      finalDepartment,
-      finalPosition,
-      parsedSalary,
-    })
 
     const result = await sql`
       UPDATE employees 
@@ -116,10 +104,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Employee not found" }, { status: 404 })
     }
 
-    console.log("[v0] Employee updated successfully:", result[0].id)
     return NextResponse.json({ success: true, id: result[0].id })
   } catch (error) {
-    console.error("[v0] Error updating employee:", error)
+    console.error("Error updating employee:", error)
     return NextResponse.json(
       {
         error: "Failed to update employee",

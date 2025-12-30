@@ -291,14 +291,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       SELECT COUNT(*) as subnet_count FROM ip_subnets WHERE router_id = ${routerId}
     `
 
-    const serviceDependencies = await sql`
-      SELECT COUNT(*) as service_count FROM customer_services WHERE device_id = ${routerId}
-    `
-
     const subnetCount = Number(subnetDependencies[0].subnet_count)
-    const serviceCount = Number(serviceDependencies[0].service_count)
 
-    console.log("[v0] Router dependencies:", { subnetCount, serviceCount, cascade })
+    console.log("[v0] Router dependencies:", { subnetCount, cascade })
 
     if (cascade) {
       const deletedItems: string[] = []
@@ -309,35 +304,31 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         console.log(`[v0] Cascade deleted ${subnetCount} subnets`)
       }
 
-      if (serviceCount > 0) {
-        await sql`UPDATE customer_services SET device_id = NULL WHERE device_id = ${routerId}`
-        deletedItems.push(`${serviceCount} service(s) unlinked`)
-        console.log(`[v0] Cascade unlinked ${serviceCount} services`)
-      }
-
       console.log("[v0] Cascade delete completed:", deletedItems)
-    } else if (subnetCount > 0 || serviceCount > 0) {
-      const dependencies = []
-      if (subnetCount > 0) dependencies.push(`${subnetCount} subnet(s)`)
-      if (serviceCount > 0) dependencies.push(`${serviceCount} service(s)`)
-
+    } else if (subnetCount > 0) {
       return NextResponse.json(
         {
-          message: `Cannot delete router with associated resources: ${dependencies.join(", ")}. Please remove these dependencies first or use cascade delete.`,
+          message: `Cannot delete router with ${subnetCount} associated subnet(s). Please remove these dependencies first or use cascade delete.`,
         },
         { status: 400 },
       )
     }
 
     try {
-      await sql`
-        DELETE FROM radius_nas WHERE nas_ip_address = (
-          SELECT ip_address FROM network_devices WHERE id = ${routerId}
-        )
+      const routerData = await sql`
+        SELECT ip_address, nas_ip_address FROM network_devices WHERE id = ${routerId}
       `
-      console.log("[v0] Deleted router from radius_nas table")
+
+      if (routerData.length > 0) {
+        const nasIp = routerData[0].nas_ip_address || routerData[0].ip_address
+
+        await sql`
+          DELETE FROM nas WHERE nasname = ${nasIp}
+        `
+        console.log("[v0] Deleted router from FreeRADIUS nas table")
+      }
     } catch (error) {
-      console.log("[v0] No radius_nas entry to delete or table doesn't exist")
+      console.log("[v0] No nas entry to delete or table doesn't exist:", error)
     }
 
     const result = await sql`
@@ -353,18 +344,19 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ message: "Router not found" }, { status: 404 })
     }
 
+    const activityDetails = JSON.stringify({
+      name: result[0].name || "Unknown Router",
+      ip_address: result[0].ip_address || "Unknown IP",
+      cascade_delete: cascade,
+      subnets_deleted: cascade ? subnetCount : 0,
+    })
+
     await sql`
-      INSERT INTO system_logs (
+      INSERT INTO activity_logs (
         action, entity_type, entity_id, details, created_at
       ) VALUES (
         'delete', 'router', ${routerId}, 
-        ${JSON.stringify({
-          name: result[0].name,
-          ip_address: result[0].ip_address,
-          cascade_delete: cascade,
-          subnets_deleted: cascade ? subnetCount : 0,
-          services_unlinked: cascade ? serviceCount : 0,
-        })}, 
+        ${activityDetails}, 
         NOW()
       )
     `
@@ -372,9 +364,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     console.log("[v0] Router deleted successfully:", routerId)
 
     return NextResponse.json({
-      message: cascade
-        ? `Router and ${subnetCount} subnet(s) deleted successfully. ${serviceCount} service(s) unlinked.`
-        : "Router deleted successfully",
+      message: cascade ? `Router and ${subnetCount} subnet(s) deleted successfully.` : "Router deleted successfully",
       success: true,
     })
   } catch (error) {

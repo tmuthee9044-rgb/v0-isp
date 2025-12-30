@@ -153,13 +153,17 @@ export default function RoutersPage() {
     const router = routers.find((r) => r.id === id)
     if (!router) return
 
+    console.log("[v0] Delete router requested:", { id, name: router.name })
+
     // First check for dependencies
     try {
       const response = await fetch(`/api/network/routers/${id}/dependencies`)
       if (response.ok) {
         const dependencies = await response.json()
 
-        if (dependencies.hasDepencies) {
+        console.log("[v0] Dependencies check result:", dependencies)
+
+        if (dependencies.hasDependencies) {
           const message = `This router has the following dependencies:\n\n${dependencies.subnetCount > 0 ? `• ${dependencies.subnetCount} subnet(s)\n` : ""}${dependencies.serviceCount > 0 ? `• ${dependencies.serviceCount} active service(s)\n` : ""}\nDo you want to delete the router and all its dependencies? This action cannot be undone.`
 
           if (!confirm(message)) return
@@ -170,6 +174,8 @@ export default function RoutersPage() {
           })
 
           const data = await deleteResponse.json()
+
+          console.log("[v0] Cascade delete response:", data)
 
           if (deleteResponse.ok) {
             toast.success(data.message || "Router and dependencies deleted successfully")
@@ -187,6 +193,8 @@ export default function RoutersPage() {
 
           const data = await deleteResponse.json()
 
+          console.log("[v0] Simple delete response:", data)
+
           if (deleteResponse.ok) {
             toast.success("Router deleted successfully")
             setRouters((prev) => prev.filter((r) => r.id !== id))
@@ -194,6 +202,10 @@ export default function RoutersPage() {
             toast.error(data.message || "Failed to delete router")
           }
         }
+      } else {
+        const errorData = await response.json()
+        console.error("[v0] Dependencies check failed:", errorData)
+        toast.error(errorData.message || "Failed to check router dependencies")
       }
     } catch (error) {
       console.error("[v0] Error deleting router:", error)

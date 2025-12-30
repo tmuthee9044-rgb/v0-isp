@@ -35,8 +35,28 @@ fi
 echo ""
 echo "=== Port Responsiveness Test ==="
 if command -v radtest &> /dev/null; then
-  echo "Testing RADIUS authentication..."
-  timeout 3 radtest test test 127.0.0.1 0 testing123 2>&1 | grep -E "Sent|Received|Access-Reject|Access-Accept" || echo "RADIUS test sent"
+  echo "Testing RADIUS authentication with test user..."
+  RADIUS_TEST_OUTPUT=$(timeout 5 radtest testing password 127.0.0.1 0 testing123 2>&1)
+  RADIUS_EXIT_CODE=$?
+  
+  echo "$RADIUS_TEST_OUTPUT"
+  
+  if echo "$RADIUS_TEST_OUTPUT" | grep -q "Access-Accept"; then
+    echo "[✓] RADIUS authentication test SUCCESSFUL - Server is responding correctly"
+  elif echo "$RADIUS_TEST_OUTPUT" | grep -q "Access-Reject"; then
+    echo "[✓] RADIUS server responding (Access-Reject received - expected for test user)"
+  elif echo "$RADIUS_TEST_OUTPUT" | grep -q "no response"; then
+    echo "[✗] RADIUS test FAILED - No response from server"
+  elif [ $RADIUS_EXIT_CODE -eq 124 ]; then
+    echo "[✗] RADIUS test TIMED OUT - Server may not be responding"
+  else
+    echo "[?] RADIUS test result unclear - Check output above"
+  fi
 else
-  sudo ss -ulnp | grep 1812 && echo "RADIUS port 1812 is listening" || echo "RADIUS port 1812 is not listening"
+  echo "radtest command not found, checking port status only..."
+  if sudo ss -ulnp | grep -q 1812; then
+    echo "[✓] RADIUS port 1812 is listening on UDP"
+  else
+    echo "[✗] RADIUS port 1812 is NOT listening"
+  fi
 fi

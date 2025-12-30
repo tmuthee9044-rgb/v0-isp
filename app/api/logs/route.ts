@@ -12,6 +12,71 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
+    if (category === "router") {
+      // Fetch logs from router_logs table
+      const routerLogsQuery = `
+        SELECT 
+          id::text,
+          timestamp,
+          level,
+          device_name as source,
+          'router' as category,
+          message,
+          device_ip as ip_address,
+          device_id as user_id,
+          NULL::text as customer_id,
+          jsonb_build_object(
+            'device_id', device_id,
+            'device_name', device_name,
+            'device_ip', device_ip,
+            'event_type', event_type,
+            'cpu_usage', cpu_usage,
+            'memory_usage', memory_usage,
+            'bandwidth_usage', bandwidth_usage,
+            'uptime', uptime,
+            'interface_status', interface_status,
+            'alert_threshold_exceeded', alert_threshold_exceeded
+          ) as details,
+          NULL::text as session_id,
+          NULL::text as user_agent
+        FROM router_logs
+        ${level && level !== "all" ? `WHERE level = '${level}'` : ""}
+        ${search ? `${level && level !== "all" ? "AND" : "WHERE"} (device_name ILIKE '%${search.replace(/'/g, "''")}%' OR message ILIKE '%${search.replace(/'/g, "''")}%' OR device_id ILIKE '%${search.replace(/'/g, "''")}%')` : ""}
+        ORDER BY timestamp DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `
+
+      const routerLogs = await sql.unsafe(routerLogsQuery)
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) as count FROM router_logs
+        ${level && level !== "all" ? `WHERE level = '${level}'` : ""}
+        ${search ? `${level && level !== "all" ? "AND" : "WHERE"} (device_name ILIKE '%${search.replace(/'/g, "''")}%' OR message ILIKE '%${search.replace(/'/g, "''")}%' OR device_id ILIKE '%${search.replace(/'/g, "''")}%')` : ""}
+      `
+      const countResult = await sql.unsafe(countQuery)
+      const routerTotal = Number(countResult[0].count)
+
+      // Get level statistics
+      const levelStats: Record<string, number> = {}
+      routerLogs.forEach((log) => {
+        levelStats[log.level] = (levelStats[log.level] || 0) + 1
+      })
+
+      return NextResponse.json({
+        logs: routerLogs.map((log) => ({
+          ...log,
+          timestamp: new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19),
+        })),
+        total: routerTotal,
+        categoryStats: {
+          router: routerTotal,
+        },
+        levelStats: levelStats,
+      })
+    }
+
     if (category === "radius") {
       // Fetch authentication logs from radpostauth
       const authLogsQuery = `
@@ -32,8 +97,8 @@ export async function GET(request: NextRequest) {
           jsonb_build_object(
             'username', username,
             'reply', reply,
-            'called_station_id', CalledStationId,
-            'calling_station_id', CallingStationId
+            'called_station_id', "CalledStationId",
+            'calling_station_id', "CallingStationId"
           ) as details,
           NULL::text as session_id,
           NULL::text as user_agent
@@ -46,42 +111,42 @@ export async function GET(request: NextRequest) {
       // Fetch accounting logs from radacct (recent sessions)
       const acctLogsQuery = `
         SELECT 
-          RadAcctId::text as id,
-          COALESCE(AcctStopTime, AcctUpdateTime, AcctStartTime) as timestamp,
+          "RadAcctId"::text as id,
+          COALESCE("AcctStopTime", "AcctUpdateTime", "AcctStartTime") as timestamp,
           CASE 
-            WHEN AcctStopTime IS NOT NULL THEN 'INFO'
-            WHEN AcctStartTime IS NOT NULL THEN 'SUCCESS'
+            WHEN "AcctStopTime" IS NOT NULL THEN 'INFO'
+            WHEN "AcctStartTime" IS NOT NULL THEN 'SUCCESS'
             ELSE 'DEBUG'
           END as level,
           'FreeRADIUS Accounting' as source,
           'radius' as category,
           CASE 
-            WHEN AcctStopTime IS NOT NULL THEN 
-              CONCAT('Session ended for ', UserName, ' - ', 
-                     ROUND((AcctOutputOctets + AcctInputOctets) / 1048576.0, 2)::text, ' MB transferred')
-            WHEN AcctStartTime IS NOT NULL THEN 
-              CONCAT('Session started for ', UserName, ' from ', NASIPAddress::text)
+            WHEN "AcctStopTime" IS NOT NULL THEN 
+              CONCAT('Session ended for ', "UserName", ' - ', 
+                     ROUND(("AcctOutputOctets" + "AcctInputOctets") / 1048576.0, 2)::text, ' MB transferred')
+            WHEN "AcctStartTime" IS NOT NULL THEN 
+              CONCAT('Session started for ', "UserName", ' from ', "NASIPAddress"::text)
             ELSE 
-              CONCAT('Session update for ', UserName)
+              CONCAT('Session update for ', "UserName")
           END as message,
-          NASIPAddress as ip_address,
-          UserName as user_id,
+          "NASIPAddress" as ip_address,
+          "UserName" as user_id,
           NULL::text as customer_id,
           jsonb_build_object(
-            'username', UserName,
-            'session_id', AcctSessionId,
-            'nas_ip', NASIPAddress,
-            'session_time', AcctSessionTime,
-            'input_octets', AcctInputOctets,
-            'output_octets', AcctOutputOctets,
-            'terminate_cause', AcctTerminateCause,
-            'framed_ip', FramedIPAddress
+            'username', "UserName",
+            'session_id', "AcctSessionId",
+            'nas_ip', "NASIPAddress",
+            'session_time', "AcctSessionTime",
+            'input_octets', "AcctInputOctets",
+            'output_octets', "AcctOutputOctets",
+            'terminate_cause', "AcctTerminateCause",
+            'framed_ip', "FramedIPAddress"
           ) as details,
-          AcctSessionId as session_id,
+          "AcctSessionId" as session_id,
           NULL::text as user_agent
         FROM radacct
-        ${search ? `WHERE UserName ILIKE '%${search.replace(/'/g, "''")}%' OR AcctSessionId ILIKE '%${search.replace(/'/g, "''")}%'` : ""}
-        ORDER BY COALESCE(AcctStopTime, AcctUpdateTime, AcctStartTime) DESC
+        ${search ? `WHERE "UserName" ILIKE '%${search.replace(/'/g, "''")}%' OR "AcctSessionId" ILIKE '%${search.replace(/'/g, "''")}%'` : ""}
+        ORDER BY COALESCE("AcctStopTime", "AcctUpdateTime", "AcctStartTime") DESC
         LIMIT ${Math.floor(limit / 2)}
       `
 

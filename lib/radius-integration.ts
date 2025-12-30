@@ -580,3 +580,99 @@ export async function calculateAuthorizationPolicy(params: {
     return { success: false, error: error.message, policy: null }
   }
 }
+
+/**
+ * Sync service plan speeds and settings to RADIUS for existing user
+ * Called when service plan is changed or updated
+ */
+export async function syncServicePlanToRadius(
+  customerId: number,
+  servicePlanId: number,
+  username: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sql = await getSql()
+
+    // Fetch service plan configuration
+    const [servicePlan] = await sql`
+      SELECT 
+        speed_download, speed_upload, guaranteed_download, guaranteed_upload,
+        burst_download, burst_upload, burst_duration, priority_level,
+        fup_enabled, data_limit, fup_speed, action_after_limit,
+        qos_enabled, traffic_shaping, bandwidth_allocation,
+        static_ip, concurrent_connections
+      FROM service_plans
+      WHERE id = ${servicePlanId}
+      LIMIT 1
+    `
+
+    if (!servicePlan) {
+      return { success: false, error: "Service plan not found" }
+    }
+
+    // Update RADIUS user with new speeds and configuration
+    await sql`
+      UPDATE radius_users
+      SET 
+        download_limit = ${servicePlan.speed_download},
+        upload_limit = ${servicePlan.speed_upload},
+        burst_download = ${servicePlan.burst_download},
+        burst_upload = ${servicePlan.burst_upload},
+        burst_duration = ${servicePlan.burst_duration || 300},
+        priority_level = ${servicePlan.priority_level || "standard"},
+        fup_enabled = ${servicePlan.fup_enabled || false},
+        fup_limit = ${servicePlan.data_limit},
+        fup_speed = ${servicePlan.fup_speed},
+        simultaneous_use = ${servicePlan.concurrent_connections || 1},
+        updated_at = NOW()
+      WHERE customer_id = ${customerId}
+      AND username = ${username}
+    `
+
+    // Delete existing speed attributes
+    await sql`
+      DELETE FROM radreply
+      WHERE "UserName" = ${username}
+      AND "Attribute" IN ('Mikrotik-Rate-Limit', 'WISPr-Bandwidth-Max-Down', 'WISPr-Bandwidth-Max-Up')
+    `
+
+    // Insert MikroTik speed limit format (rx-rate[/tx-rate] [rx-burst-rate[/tx-burst-rate]])
+    const mikrotikRateLimit = `${servicePlan.speed_upload}M/${servicePlan.speed_download}M ${servicePlan.burst_upload || servicePlan.speed_upload}M/${servicePlan.burst_download || servicePlan.speed_download}M`
+
+    await sql`
+      INSERT INTO radreply ("UserName", "Attribute", "op", "Value")
+      VALUES 
+        (${username}, 'Mikrotik-Rate-Limit', ':=', ${mikrotikRateLimit}),
+        (${username}, 'WISPr-Bandwidth-Max-Down', ':=', ${(servicePlan.speed_download * 1000).toString()}),
+        (${username}, 'WISPr-Bandwidth-Max-Up', ':=', ${(servicePlan.speed_upload * 1000).toString()})
+    `
+
+    console.log("[v0] Synced service plan to RADIUS:", {
+      username,
+      speeds: `${servicePlan.speed_download}/${servicePlan.speed_upload}Mbps`,
+      burst: `${servicePlan.burst_download}/${servicePlan.burst_upload}Mbps`,
+      mikrotik_format: mikrotikRateLimit,
+      fup: servicePlan.fup_enabled ? "enabled" : "disabled",
+    })
+
+    // Log activity per rule 3
+    await sql`
+      INSERT INTO activity_logs (action, entity_type, entity_id, details, created_at)
+      VALUES (
+        'update', 'radius_service_plan', ${servicePlanId}, 
+        ${JSON.stringify({
+          customer_id: customerId,
+          username,
+          speeds: { download: servicePlan.speed_download, upload: servicePlan.speed_upload },
+          features: { fup: servicePlan.fup_enabled, qos: servicePlan.qos_enabled },
+        })}, 
+        CURRENT_TIMESTAMP
+      )
+    `
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("[v0] Error syncing service plan to RADIUS:", error)
+    return { success: false, error: error.message }
+  }
+}

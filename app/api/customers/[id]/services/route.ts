@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import {
+  provisionRadiusUser,
+  suspendRadiusUser,
+  deprovisionRadiusUser,
+  syncServicePlanToRadius,
+} from "@/lib/radius-integration"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const [servicePlan] = await sql`
-      SELECT price, name FROM service_plans WHERE id = ${servicePlanId}
+      SELECT price, name, download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}
     `
 
     if (!servicePlan) {
@@ -76,6 +82,64 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     `
 
     console.log("[v0] Service added successfully:", result[0])
+
+    if (result[0].status === "active") {
+      const [customer] = await sql`
+        SELECT username, first_name, last_name, email FROM customers WHERE id = ${customerId}
+      `
+
+      if (customer && customer.username) {
+        // Generate password (use existing if available, or create new one)
+        const defaultPassword =
+          serviceData.password || `${customer.first_name?.toLowerCase() || "user"}${Math.floor(Math.random() * 10000)}`
+
+        const radiusResult = await provisionRadiusUser({
+          username: customer.username,
+          password: defaultPassword,
+          customerId: Number.parseInt(customerId),
+          serviceId: result[0].id,
+          ipAddress: ipAddress !== "auto" ? ipAddress : undefined,
+          downloadSpeed: servicePlan.download_speed,
+          uploadSpeed: servicePlan.upload_speed,
+        })
+
+        if (radiusResult.success) {
+          console.log("[v0] RADIUS user provisioned successfully for customer:", customer.username)
+
+          // Log activity per rule 3
+          await sql`
+            INSERT INTO activity_logs (action, entity_type, entity_id, details, created_at)
+            VALUES (
+              'create', 'customer_service', ${result[0].id},
+              ${JSON.stringify({
+                customer_id: customerId,
+                service_id: result[0].id,
+                radius_username: customer.username,
+                speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
+                ip_address: ipAddress,
+              })},
+              CURRENT_TIMESTAMP
+            )
+          `
+        } else {
+          console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
+          // Don't fail the whole operation, but log the error
+          await sql`
+            INSERT INTO system_logs (level, category, source, message, details, created_at)
+            VALUES (
+              'ERROR', 'radius', 'provisioning',
+              'Failed to provision RADIUS user for customer service',
+              ${JSON.stringify({
+                customer_id: customerId,
+                service_id: result[0].id,
+                error: radiusResult.error,
+              })},
+              CURRENT_TIMESTAMP
+            )
+          `
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, service: result[0] })
   } catch (error) {
@@ -157,6 +221,21 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         WHERE id = ${serviceId} AND customer_id = ${customerId}
         RETURNING *
       `
+
+      const [customer] = await sql`
+        SELECT username FROM customers WHERE id = ${customerId}
+      `
+
+      if (customer?.username) {
+        const radiusResult = await suspendRadiusUser({
+          customerId: Number.parseInt(customerId),
+          serviceId: Number.parseInt(serviceId),
+          username: customer.username,
+          reason: "Service suspended by admin",
+        })
+
+        console.log("[v0] RADIUS user suspended:", radiusResult)
+      }
     } else if (action === "reactivate") {
       result = await sql`
         UPDATE customer_services 
@@ -164,6 +243,32 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         WHERE id = ${serviceId} AND customer_id = ${customerId}
         RETURNING *
       `
+
+      const [customer] = await sql`
+        SELECT username FROM customers WHERE id = ${customerId}
+      `
+
+      const [service] = await sql`
+        SELECT cs.*, sp.download_speed, sp.upload_speed
+        FROM customer_services cs
+        JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.id = ${serviceId}
+      `
+
+      if (customer?.username && service) {
+        // Re-provision RADIUS user
+        const radiusResult = await provisionRadiusUser({
+          username: customer.username,
+          password: `${customer.username}${Math.floor(Math.random() * 10000)}`, // Generate new password
+          customerId: Number.parseInt(customerId),
+          serviceId: Number.parseInt(serviceId),
+          ipAddress: service.ip_address !== "auto" ? service.ip_address : undefined,
+          downloadSpeed: service.download_speed,
+          uploadSpeed: service.upload_speed,
+        })
+
+        console.log("[v0] RADIUS user reactivated:", radiusResult)
+      }
     } else {
       const allowedFields = [
         "service_plan_id",
@@ -195,6 +300,27 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           RETURNING *
         `
       }
+
+      if (updateData.service_plan_id) {
+        const [customer] = await sql`
+          SELECT username FROM customers WHERE id = ${customerId}
+        `
+
+        if (customer?.username) {
+          console.log("[v0] Service plan changed, syncing to RADIUS...")
+          const radiusResult = await syncServicePlanToRadius(
+            Number.parseInt(customerId),
+            updateData.service_plan_id,
+            customer.username,
+          )
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS speeds updated successfully for:", customer.username)
+          } else {
+            console.error("[v0] Failed to sync RADIUS speeds:", radiusResult.error)
+          }
+        }
+      }
     }
 
     return NextResponse.json({ success: true, service: result?.[0] })
@@ -216,9 +342,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const serviceDetails = await sql`
-      SELECT cs.*, sp.name as service_name, sp.price as service_price
+      SELECT cs.*, sp.name as service_name, sp.price as service_price, c.username
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN customers c ON c.id = cs.customer_id
       WHERE cs.id = ${serviceId} AND cs.customer_id = ${customerId}
     `
 
@@ -227,6 +354,17 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const service = serviceDetails[0]
+
+    if (service.username) {
+      const radiusResult = await deprovisionRadiusUser({
+        customerId: Number.parseInt(customerId),
+        serviceId: Number.parseInt(serviceId),
+        username: service.username,
+        reason: "Service deleted",
+      })
+
+      console.log("[v0] RADIUS user deprovisioned:", radiusResult)
+    }
 
     const creditNoteResult = await sql`
       INSERT INTO invoices (

@@ -61,47 +61,113 @@ export async function POST(request: Request) {
     if (importType === "customers") {
       for (const row of data) {
         try {
-          const accountNumber = row.account_number || `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          const accountNumber =
+            row.account_number || row.login || `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
           const name =
+            row.name ||
             row.business_name ||
             (row.first_name && row.last_name ? `${row.first_name} ${row.last_name}` : null) ||
             row.first_name ||
             row.last_name ||
             "Unknown Customer"
 
+          const parseDate = (dateStr: string) => {
+            if (!dateStr || dateStr === "0000-00-00" || dateStr === "") return null
+            try {
+              return new Date(dateStr).toISOString()
+            } catch {
+              return null
+            }
+          }
+
+          const parseBool = (val: any) => {
+            if (val === 1 || val === "1" || val === true || val === "true") return true
+            if (val === 0 || val === "0" || val === false || val === "false") return false
+            return null
+          }
+
+          const parseDecimal = (val: any) => {
+            if (!val || val === "") return 0
+            const parsed = Number.parseFloat(val)
+            return isNaN(parsed) ? 0 : parsed
+          }
+
+          const parseInt = (val: any) => {
+            if (!val || val === "") return null
+            const parsed = Number.parseInt(val)
+            return isNaN(parsed) ? null : parsed
+          }
+
           await sql`
             INSERT INTO customers (
-              account_number, name, first_name, last_name, email, phone, national_id,
-              customer_type, business_name, business_type, tax_number,
-              address, city, state, postal_code, country,
-              installation_address, billing_address, gps_coordinates,
-              preferred_contact_method, referral_source, status, created_at
+              account_number, name, first_name, last_name, email, billing_email, 
+              phone, national_id, customer_type, business_name, business_type, 
+              tax_number, address, street_1, street_2, city, state, postal_code, 
+              zip_code, country, installation_address, billing_address, 
+              billing_street_1, billing_city, billing_zip_code, gps_coordinates,
+              preferred_contact_method, referral_source, status, 
+              mrr_total, gdpr_agreed, prepaid_monthly_costs, prepaid_expiration_date,
+              prepaid_remains_days, billing_type, partner_id, location_id, 
+              added_by, added_by_id, login, category, password_hash,
+              date_add, last_online, last_update, daily_prepaid_cost, conversion_date,
+              mpesa_phone_number, report_first_service_amount, report_first_service_cancel_date,
+              splynx_addon_agents_agent, splynx_addon_resellers_reseller,
+              enabled, type, deposit, billing_date, billing_due, 
+              blocking_period, grace_period, make_invoices, payment_method, min_balance,
+              request_auto_enable, request_auto_day, request_auto_period,
+              reminder_enable, reminder_day_1, reminder_day_2, reminder_day_3,
+              reminder_payment, reminder_payment_value, reminder_payment_comment, reminder_type,
+              billing_person, request_auto_type, request_auto_next, send_finance_notification,
+              partner_percent, auto_cap, auto_cap_tariffs, limitation_type,
+              max_cap_during_month, transfer_usage_to_new_service, created_at
             ) VALUES (
-              ${accountNumber},
-              ${name},
-              ${row.first_name || ""},
-              ${row.last_name || ""},
-              ${row.email || null},
-              ${row.phone || ""},
-              ${row.national_id || null},
-              ${row.customer_type || "individual"},
-              ${row.business_name || null},
-              ${row.business_type || null},
-              ${row.tax_number || null},
-              ${row.address || null},
-              ${row.city || null},
-              ${row.state || null},
-              ${row.postal_code || null},
-              ${row.country || null},
-              ${row.installation_address || null},
-              ${row.billing_address || null},
-              ${row.gps_coordinates || null},
-              ${row.preferred_contact_method || null},
-              ${row.referral_source || null},
+              ${accountNumber}, ${name}, ${row.first_name || ""}, ${row.last_name || ""},
+              ${row.email || null}, ${row.billing_email || null}, ${row.phone || ""}, 
+              ${row.national_id || null}, ${row.customer_type || row.type || row.category || "person"},
+              ${row.business_name || null}, ${row.business_type || null}, ${row.tax_number || null},
+              ${row.address || null}, ${row.street_1 || null}, ${row.street_2 || null},
+              ${row.city || null}, ${row.state || null}, ${row.postal_code || null},
+              ${row.zip_code || null}, ${row.country || "Kenya"}, ${row.installation_address || null},
+              ${row.billing_address || null}, ${row.billing_street_1 || null}, ${row.billing_city || null},
+              ${row.billing_zip_code || null}, ${row.gps || row.gps_coordinates || null},
+              ${row.preferred_contact_method || null}, ${row.referral_source || null},
               ${row.status || "active"},
+              ${parseDecimal(row.mrr_total)}, ${row.gdpr_agreed || null},
+              ${parseDecimal(row.prepaid_monthly_costs)}, ${parseDate(row.prepaid_expiration_date)},
+              ${parseInt(row.prepaid_remains_days)}, ${row.billing_type || "postpaid"},
+              ${parseInt(row.partner_id)}, ${parseInt(row.location_id)},
+              ${row.added_by || null}, ${parseInt(row.added_by_id)},
+              ${row.login || null}, ${row.category || null}, ${row.password || null},
+              ${parseDate(row.date_add) || new Date().toISOString()},
+              ${parseDate(row.last_online)}, ${parseDate(row.last_update)},
+              ${parseDecimal(row.daily_prepaid_cost)}, ${parseDate(row.conversion_date)},
+              ${row.mpesa_phone_number || null}, ${parseDecimal(row.report_first_service_amount)},
+              ${parseDate(row.report_first_service_cancel_date)},
+              ${row.splynx_addon_agents_agent || null}, ${row.splynx_addon_resellers_reseller || null},
+              ${parseBool(row.enabled) ?? true}, ${row.type || "person"},
+              ${parseDecimal(row.deposit)}, ${parseInt(row.billing_date)}, ${parseInt(row.billing_due)},
+              ${parseInt(row.blocking_period)}, ${parseInt(row.grace_period)},
+              ${parseBool(row.make_invoices) ?? true}, ${row.payment_method || "cash"},
+              ${parseDecimal(row.min_balance)}, ${parseBool(row.request_auto_enable) ?? false},
+              ${parseInt(row.request_auto_day)}, ${parseInt(row.request_auto_period)},
+              ${parseBool(row.reminder_enable) ?? true}, ${parseInt(row.reminder_day_1)},
+              ${parseInt(row.reminder_day_2)}, ${parseInt(row.reminder_day_3)},
+              ${parseBool(row.reminder_payment) ?? false}, ${parseDecimal(row.reminder_payment_value)},
+              ${row.reminder_payment_comment || null}, ${parseInt(row.reminder_type)},
+              ${row.billing_person || null}, ${row.request_auto_type || null},
+              ${parseDate(row.request_auto_next)}, ${parseBool(row.send_finance_notification) ?? true},
+              ${parseDecimal(row.partner_percent)}, ${parseBool(row.auto_cap) ?? false},
+              ${row.auto_cap_tariffs || null}, ${row.limitation_type || null},
+              ${parseInt(row.max_cap_during_month)}, ${parseBool(row.transfer_usage_to_new_service) ?? true},
               NOW()
             )
+            ON CONFLICT (account_number) DO UPDATE SET
+              name = EXCLUDED.name,
+              email = EXCLUDED.email,
+              phone = EXCLUDED.phone,
+              status = EXCLUDED.status,
+              last_update = NOW()
           `
           imported++
         } catch (error) {

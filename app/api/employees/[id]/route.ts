@@ -9,14 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const id = Number(params.id)
 
     const employee = await sql`
-      SELECT 
-        e.*,
-        d.name as department_name,
-        r.name as role_name
-      FROM employees e
-      LEFT JOIN departments d ON e.department_id = d.id
-      LEFT JOIN roles r ON e.role_id = r.id
-      WHERE e.id = ${id}
+      SELECT * FROM employees WHERE id = ${id}
     `
 
     if (employee.length === 0) {
@@ -60,9 +53,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       lastName,
       email,
       phone,
-      department_id,
       department,
-      role_id,
+      position,
       salary,
       basicSalary,
       hire_date,
@@ -75,38 +67,28 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       emergencyPhone,
     } = body
 
-    const finalFirstName = first_name || firstName
-    const finalLastName = last_name || lastName
-    const finalEmergencyName = emergency_contact_name || emergencyContact
-    const finalEmergencyPhone = emergency_contact_phone || emergencyPhone
+    const finalFirstName = first_name || firstName || ""
+    const finalLastName = last_name || lastName || ""
+    const finalEmergencyName = emergency_contact_name || emergencyContact || ""
+    const finalEmergencyPhone = emergency_contact_phone || emergencyPhone || ""
     const finalHireDate = hire_date || startDate
     const finalSalary = salary || basicSalary
-    const finalDepartmentId = department_id || department
+    const finalDepartment = department || ""
+    const finalPosition = position || ""
 
-    const parsedDepartmentId =
-      finalDepartmentId && String(finalDepartmentId).trim() !== "" ? Number(finalDepartmentId) : null
-    const parsedRoleId = role_id && String(role_id).trim() !== "" ? Number(role_id) : null
     const parsedSalary =
       finalSalary && String(finalSalary).trim() !== "" && String(finalSalary) !== "-" ? Number(finalSalary) : null
 
-    if (finalDepartmentId && (isNaN(parsedDepartmentId!) || parsedDepartmentId === null)) {
-      console.error("[v0] Invalid department_id:", finalDepartmentId)
-      return NextResponse.json({ error: "Invalid department_id" }, { status: 400 })
-    }
-    if (role_id && (isNaN(parsedRoleId!) || parsedRoleId === null)) {
-      console.error("[v0] Invalid role_id:", role_id)
-      return NextResponse.json({ error: "Invalid role_id" }, { status: 400 })
-    }
     if (finalSalary && (isNaN(parsedSalary!) || parsedSalary === null)) {
       console.error("[v0] Invalid salary:", finalSalary)
       return NextResponse.json({ error: "Invalid salary value" }, { status: 400 })
     }
 
-    console.log("[v0] Updating employee with parsed values:", {
+    console.log("[v0] Updating employee with values:", {
       finalFirstName,
       finalLastName,
-      parsedDepartmentId,
-      parsedRoleId,
+      finalDepartment,
+      finalPosition,
       parsedSalary,
     })
 
@@ -115,16 +97,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       SET 
         first_name = ${finalFirstName},
         last_name = ${finalLastName},
-        email = ${email},
-        phone = ${phone},
-        department_id = ${parsedDepartmentId},
-        role_id = ${parsedRoleId},
+        email = ${email || ""},
+        phone = ${phone || ""},
+        department = ${finalDepartment},
+        position = ${finalPosition},
         salary = ${parsedSalary},
         hire_date = ${finalHireDate},
         status = ${status || "active"},
-        address = ${address},
-        emergency_contact_name = ${finalEmergencyName},
-        emergency_contact_phone = ${finalEmergencyPhone},
+        address = ${address || ""},
+        emergency_contact = ${finalEmergencyName},
+        emergency_phone = ${finalEmergencyPhone},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING id

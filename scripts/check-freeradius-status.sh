@@ -15,14 +15,21 @@ sudo journalctl -u freeradius -n 20 --no-pager
 echo ""
 echo "=== Database Connection Test ==="
 if [ -f .env.local ]; then
-  export $(grep -v '^#' .env.local | xargs)
+  source .env.local
 fi
-PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${PGHOST} -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -c "SELECT COUNT(*) as router_count FROM nas;" 2>&1 | head -n 5
+
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+psql -h "${PGHOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DATABASE}" -c "SELECT COUNT(*) as router_count FROM nas;" 2>&1 | head -n 10
 
 echo ""
 echo "=== Registered NAS Clients ==="
-PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${PGHOST} -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE} -c "SELECT nasname, shortname, type FROM nas;" 2>&1
+psql -h "${PGHOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DATABASE}" -c "SELECT nasname, shortname, type FROM nas;" 2>&1
 
 echo ""
 echo "=== Port Responsiveness Test ==="
-timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/1812" && echo "RADIUS port 1812 is responding" || echo "RADIUS port 1812 is not responding"
+if command -v radtest &> /dev/null; then
+  echo "Testing RADIUS authentication..."
+  timeout 3 radtest test test 127.0.0.1 0 testing123 2>&1 | grep -E "Sent|Received|Access-Reject|Access-Accept" || echo "RADIUS test sent"
+else
+  sudo ss -ulnp | grep 1812 && echo "RADIUS port 1812 is listening" || echo "RADIUS port 1812 is not listening"
+fi

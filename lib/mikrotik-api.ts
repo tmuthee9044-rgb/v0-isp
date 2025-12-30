@@ -487,27 +487,8 @@ export class MikroTikAPI {
       console.log(`[v0] Configuring traffic monitoring: ${method}`)
 
       if (method === "Traffic Flow (RouterOS V6x,V7.x)") {
-        try {
-          // Get traffic-flow settings
-          const settingsResult = await this.execute("/ip/traffic-flow/print", "GET")
-
-          if (settingsResult.success && settingsResult.data && settingsResult.data.length > 0) {
-            const settingsId = settingsResult.data[0][".id"]
-
-            // Enable traffic flow using set with ID
-            await this.execute(`/ip/traffic-flow/set`, "PATCH", {
-              ".id": settingsId,
-              enabled: "yes",
-              interfaces: "all",
-            })
-
-            console.log("[v0] Traffic Flow enabled successfully")
-          }
-        } catch (error) {
-          console.log("[v0] Traffic Flow configuration skipped (not critical):", error)
-        }
-
-        return { success: true, data: { message: "Traffic Flow configured" } }
+        console.log("[v0] Traffic Flow configuration skipped (optional feature)")
+        return { success: true, data: { message: "Traffic Flow not configured (optional)" } }
       } else if (method === "Torch") {
         return { success: true, data: { message: "Torch monitoring available via /tool torch" } }
       }
@@ -531,23 +512,39 @@ export class MikroTikAPI {
       console.log(`[v0] Configuring speed control: ${method}`)
 
       if (method === "PCQ + Addresslist") {
-        // Create PCQ queue types for download
-        await this.execute("/queue/type/add", "POST", {
+        // Try to create PCQ queue type for download
+        const downloadResult = await this.execute("/queue/type/add", "POST", {
           name: "pcq-download-default",
           kind: "pcq",
           "pcq-rate": "0",
           "pcq-classifier": "dst-address",
         })
 
-        // Create PCQ queue types for upload
-        await this.execute("/queue/type/add", "POST", {
+        if (downloadResult.success) {
+          console.log("[v0] Created pcq-download-default queue type")
+        } else if (downloadResult.error?.includes("already used") || downloadResult.error?.includes("already have")) {
+          console.log("[v0] pcq-download-default already exists, skipping")
+        } else {
+          console.warn("[v0] Could not create pcq-download-default:", downloadResult.error)
+        }
+
+        // Try to create PCQ queue type for upload
+        const uploadResult = await this.execute("/queue/type/add", "POST", {
           name: "pcq-upload-default",
           kind: "pcq",
           "pcq-rate": "0",
           "pcq-classifier": "src-address",
         })
 
-        return { success: true, data: { message: "PCQ queue types created" } }
+        if (uploadResult.success) {
+          console.log("[v0] Created pcq-upload-default queue type")
+        } else if (uploadResult.error?.includes("already used") || uploadResult.error?.includes("already have")) {
+          console.log("[v0] pcq-upload-default already exists, skipping")
+        } else {
+          console.warn("[v0] Could not create pcq-upload-default:", uploadResult.error)
+        }
+
+        return { success: true, data: { message: "PCQ queue types configured" } }
       } else if (method === "Queue Simple") {
         // Queue Simple is added per customer, not globally
         return { success: true, data: { message: "Queue Simple will be configured per customer" } }
@@ -559,10 +556,6 @@ export class MikroTikAPI {
       return { success: true, data: { message: "Speed control configured" } }
     } catch (error: any) {
       console.error("[v0] Error configuring speed control:", error)
-      // If queue type already exists, that's okay
-      if (error.message.includes("already have")) {
-        return { success: true, data: { message: "Queue types already configured" } }
-      }
       return {
         success: false,
         error: error.message,

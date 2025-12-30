@@ -18,12 +18,19 @@ if [ -f .env.local ]; then
   source .env.local
 fi
 
-export PGPASSWORD="${POSTGRES_PASSWORD}"
-psql -h "${PGHOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DATABASE}" -c "SELECT COUNT(*) as router_count FROM nas;" 2>&1 | head -n 10
+if [ -n "$DATABASE_URL" ]; then
+  psql "$DATABASE_URL" -c "SELECT COUNT(*) as router_count FROM nas;" 2>&1 | head -n 10
+else
+  echo "DATABASE_URL not found in environment"
+fi
 
 echo ""
 echo "=== Registered NAS Clients ==="
-psql -h "${PGHOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DATABASE}" -c "SELECT nasname, shortname, type FROM nas;" 2>&1
+if [ -n "$DATABASE_URL" ]; then
+  psql "$DATABASE_URL" -c "SELECT nasname, shortname, type FROM nas;" 2>&1
+else
+  echo "DATABASE_URL not found in environment"
+fi
 
 echo ""
 echo "=== Port Responsiveness Test ==="

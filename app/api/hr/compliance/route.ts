@@ -34,15 +34,8 @@ export async function GET() {
     `
     const kraCount = Number.parseInt(kraCompliant[0]?.count || "0")
 
-    // Get contracts expiring within 30 days
-    const expiringContracts = await sql`
-      SELECT COUNT(*) as count FROM employees 
-      WHERE status = 'active' 
-        AND contract_end_date IS NOT NULL 
-        AND contract_end_date <= NOW() + INTERVAL '30 days'
-        AND contract_end_date >= NOW()
-    `
-    const expiringCount = Number.parseInt(expiringContracts[0]?.count || "0")
+    // Get contracts expiring within 30 days - disabled until contract_end_date column is added
+    const expiringCount = 0
 
     // Get monthly statutory deductions from payroll
     const currentMonth = new Date().getMonth() + 1

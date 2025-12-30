@@ -11,6 +11,7 @@ import Link from "next/link"
 import { ArrowLeft, Upload, Download, Users, Package, Wrench, Check, AlertCircle, FileSpreadsheet } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast" // Import useToast
 import { Label } from "@/components/ui/label" // Import Label
+import * as XLSX from "xlsx" // Import xlsx library for Excel parsing
 
 type EntityType = "customers" | "services" | "inventory" | "vehicles"
 
@@ -605,47 +606,111 @@ export default function UniversalImportPage() {
     const file = event.target?.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      const lines = text.split("\n").filter((line) => line.trim())
+    const fileName = file.name.toLowerCase()
 
-      if (lines.length < 2) {
-        toast({
-          title: "Invalid file",
-          description: "The file must contain at least a header row and one data row",
-          variant: "destructive",
+    if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+      // Parse Excel files
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer)
+          const workbook = XLSX.read(data, { type: "array" })
+
+          // Get first sheet
+          const firstSheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[firstSheetName]
+
+          // Convert to array of arrays
+          const rawData: string[][] = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: "",
+            raw: false, // Convert all values to strings
+          })
+
+          if (rawData.length < 2) {
+            toast({
+              title: "Invalid file",
+              description: "The file must contain at least a header row and one data row",
+              variant: "destructive",
+            })
+            return
+          }
+
+          const headers = rawData[0].map((h: string) => String(h).trim()).filter((h: string) => h !== "")
+
+          const rows = rawData
+            .slice(1)
+            .filter((row: string[]) => row.some((cell: string) => cell && cell.trim() !== ""))
+            .map((row: string[]) => {
+              return headers.map((_, i) => String(row[i] || "").trim())
+            })
+
+          setFileData({
+            filename: file.name,
+            headers,
+            rows,
+          })
+
+          // Auto-map columns based on entity type
+          autoMapColumns(headers, entityType)
+
+          toast({
+            title: "File uploaded",
+            description: `Successfully loaded ${rows.length} rows from Excel file`,
+          })
+        } catch (error) {
+          console.error("[v0] Excel parsing error:", error)
+          toast({
+            title: "Error parsing Excel file",
+            description: error instanceof Error ? error.message : "Failed to parse Excel file",
+            variant: "destructive",
+          })
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      // Parse CSV files (existing logic)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target?.result as string
+        const lines = text.split("\n").filter((line) => line.trim())
+
+        if (lines.length < 2) {
+          toast({
+            title: "Invalid file",
+            description: "The file must contain at least a header row and one data row",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const headers = lines[0]
+          .split(",")
+          .map((h) => h.trim())
+          .filter((h) => h !== "")
+
+        const rows = lines.slice(1).map((line) => {
+          const values = line.split(",").map((v) => v.trim())
+          return headers.map((_, i) => values[i] || "")
         })
-        return
+
+        setFileData({
+          filename: file.name,
+          headers,
+          rows,
+        })
+
+        // Auto-map columns based on entity type
+        autoMapColumns(headers, entityType)
+
+        toast({
+          title: "File uploaded",
+          description: `Successfully loaded ${rows.length} rows from CSV file`,
+        })
       }
 
-      const headers = lines[0]
-        .split(",")
-        .map((h) => h.trim())
-        .filter((h) => h !== "") // Remove empty headers
-
-      const rows = lines.slice(1).map((line) => {
-        const values = line.split(",").map((v) => v.trim())
-        // Ensure row has same length as headers, padding with empty strings if needed
-        return headers.map((_, i) => values[i] || "")
-      })
-
-      setFileData({
-        filename: file.name,
-        headers,
-        rows,
-      })
-
-      // Auto-map columns based on entity type
-      autoMapColumns(headers, entityType)
-
-      toast({
-        title: "File uploaded",
-        description: `Successfully loaded ${rows.length} rows`,
-      })
+      reader.readAsText(file)
     }
-
-    reader.readAsText(file)
   }
 
   return (

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
+import Link from "next/link"
 import {
   ArrowLeft,
   Globe,
@@ -23,9 +24,9 @@ import {
   Filter,
   MapPin,
   Server,
+  Download,
 } from "lucide-react"
 import { toast } from "sonner"
-import Link from "next/link"
 
 interface SubnetDetail {
   id: number
@@ -92,6 +93,31 @@ function SubnetViewContent() {
       toast.error("Failed to generate IP Addresses")
     } finally {
       setGeneratingIPs(false)
+    }
+  }
+
+  const handleDownloadReport = async () => {
+    try {
+      const response = await fetch(`/api/network/subnets/${subnetId}/report`)
+
+      if (!response.ok) {
+        toast.error("Failed to generate subnet report")
+        return
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `subnet-report-${subnet?.cidr.replace(/\//g, "-")}-${Date.now()}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success("Subnet report downloaded successfully")
+    } catch (error) {
+      console.error("Error downloading subnet report:", error)
+      toast.error("Failed to download subnet report")
     }
   }
 
@@ -301,6 +327,10 @@ function SubnetViewContent() {
             <p className="text-muted-foreground mt-1">{subnet.description || "IP address pool details"}</p>
           </div>
         </div>
+        <Button onClick={handleDownloadReport} variant="default">
+          <Download className="w-4 h-4 mr-2" />
+          Download Report
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

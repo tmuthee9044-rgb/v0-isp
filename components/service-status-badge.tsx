@@ -20,13 +20,24 @@ export function ServiceStatusBadge({
   balance,
 }: ServiceStatusBadgeProps) {
   const getStatusConfig = () => {
-    // Customer is actively browsing (has RADIUS session)
-    if (isOnline) {
+    // Customer is actively browsing (has RADIUS session) - TRUE ACTIVE STATE
+    if (isOnline && status === "active") {
       return {
-        label: "Online",
+        label: "Active - Online",
         icon: Activity,
         className: "bg-green-600 text-white hover:bg-green-700",
-        description: "Customer is actively browsing",
+        description: "Customer is actively browsing through physical router (RADIUS session active)",
+      }
+    }
+
+    // Service database status is 'active' but no RADIUS session - NOT TRULY ACTIVE PER RULE 10
+    if (status === "active" && !isOnline) {
+      return {
+        label: "Provisioned - Not Connected",
+        icon: CheckCircle,
+        className: "bg-blue-600 text-white hover:bg-blue-700",
+        description:
+          "Service configured but customer not connected to router. Service only active when PPPoE/IP is present on physical router.",
       }
     }
 
@@ -41,12 +52,12 @@ export function ServiceStatusBadge({
     }
 
     // Service is provisioned but customer not connected
-    if ((status === "provisioned" || status === "active") && routerProvisioned && radiusProvisioned) {
+    if (status === "provisioned" && routerProvisioned && radiusProvisioned) {
       return {
-        label: "Provisioned",
+        label: "Provisioned - Ready",
         icon: CheckCircle,
         className: "bg-blue-600 text-white hover:bg-blue-700",
-        description: "Service ready, customer not connected",
+        description: "Service ready on router, awaiting customer connection",
       }
     }
 

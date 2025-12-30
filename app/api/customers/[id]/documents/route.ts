@@ -12,7 +12,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 })
     }
 
-    // Get documents for the customer (exclude file_content from list view for performance)
     const documents = await sql`
       SELECT 
         cd.id,
@@ -24,8 +23,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         cd.mime_type,
         cd.description,
         cd.tags,
+        cd.status,
         cd.is_confidential,
+        cd.version,
         cd.created_at,
+        cd.updated_at,
+        cd.expires_at,
         u.username as uploaded_by_name
       FROM customer_documents cd
       LEFT JOIN users u ON cd.uploaded_by = u.id
@@ -39,8 +42,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       documents: documents || [],
     })
   } catch (error) {
-    console.error("Error fetching customer documents:", error)
-    return NextResponse.json({ error: "Failed to fetch documents" }, { status: 500 })
+    console.error("[v0] Error fetching customer documents:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to fetch documents",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
   }
 }
 
@@ -113,7 +122,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         tags,
         is_confidential,
         uploaded_by,
-        file_content
+        file_content,
+        status
       ) VALUES (
         ${customerId},
         ${file.name},
@@ -126,9 +136,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${tagsArray},
         ${isConfidential},
         1,
-        ${fileBuffer}
+        ${fileBuffer},
+        'active'
       )
-      RETURNING id, customer_id, document_name, document_type, file_path, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, created_at
+      RETURNING id, customer_id, document_name, document_type, file_path, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, status, version, created_at
     `
 
     await sql`

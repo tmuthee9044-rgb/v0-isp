@@ -12,6 +12,111 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
+    if (category === "radius") {
+      // Fetch authentication logs from radpostauth
+      const authLogsQuery = `
+        SELECT 
+          id::text,
+          authdate as timestamp,
+          CASE 
+            WHEN reply = 'Access-Accept' THEN 'SUCCESS'
+            WHEN reply = 'Access-Reject' THEN 'ERROR'
+            ELSE 'WARNING'
+          END as level,
+          'FreeRADIUS' as source,
+          'radius' as category,
+          CONCAT('Authentication ', reply, ' for user ', username) as message,
+          NULL::inet as ip_address,
+          username as user_id,
+          NULL::text as customer_id,
+          jsonb_build_object(
+            'username', username,
+            'reply', reply,
+            'called_station_id', CalledStationId,
+            'calling_station_id', CallingStationId
+          ) as details,
+          NULL::text as session_id,
+          NULL::text as user_agent
+        FROM radpostauth
+        ${search ? `WHERE username ILIKE '%${search.replace(/'/g, "''")}%' OR reply ILIKE '%${search.replace(/'/g, "''")}%'` : ""}
+        ORDER BY authdate DESC
+        LIMIT ${Math.floor(limit / 2)}
+      `
+
+      // Fetch accounting logs from radacct (recent sessions)
+      const acctLogsQuery = `
+        SELECT 
+          RadAcctId::text as id,
+          COALESCE(AcctStopTime, AcctUpdateTime, AcctStartTime) as timestamp,
+          CASE 
+            WHEN AcctStopTime IS NOT NULL THEN 'INFO'
+            WHEN AcctStartTime IS NOT NULL THEN 'SUCCESS'
+            ELSE 'DEBUG'
+          END as level,
+          'FreeRADIUS Accounting' as source,
+          'radius' as category,
+          CASE 
+            WHEN AcctStopTime IS NOT NULL THEN 
+              CONCAT('Session ended for ', UserName, ' - ', 
+                     ROUND((AcctOutputOctets + AcctInputOctets) / 1048576.0, 2)::text, ' MB transferred')
+            WHEN AcctStartTime IS NOT NULL THEN 
+              CONCAT('Session started for ', UserName, ' from ', NASIPAddress::text)
+            ELSE 
+              CONCAT('Session update for ', UserName)
+          END as message,
+          NASIPAddress as ip_address,
+          UserName as user_id,
+          NULL::text as customer_id,
+          jsonb_build_object(
+            'username', UserName,
+            'session_id', AcctSessionId,
+            'nas_ip', NASIPAddress,
+            'session_time', AcctSessionTime,
+            'input_octets', AcctInputOctets,
+            'output_octets', AcctOutputOctets,
+            'terminate_cause', AcctTerminateCause,
+            'framed_ip', FramedIPAddress
+          ) as details,
+          AcctSessionId as session_id,
+          NULL::text as user_agent
+        FROM radacct
+        ${search ? `WHERE UserName ILIKE '%${search.replace(/'/g, "''")}%' OR AcctSessionId ILIKE '%${search.replace(/'/g, "''")}%'` : ""}
+        ORDER BY COALESCE(AcctStopTime, AcctUpdateTime, AcctStartTime) DESC
+        LIMIT ${Math.floor(limit / 2)}
+      `
+
+      const authLogs = await sql.unsafe(authLogsQuery)
+      const acctLogs = await sql.unsafe(acctLogsQuery)
+
+      // Combine and sort logs
+      const combinedLogs = [...authLogs, ...acctLogs]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, limit)
+
+      // Get counts for statistics
+      const authCount = await sql`SELECT COUNT(*) as count FROM radpostauth`
+      const acctCount = await sql`SELECT COUNT(*) as count FROM radacct`
+      const radiusTotal = Number(authCount[0].count) + Number(acctCount[0].count)
+
+      // Get level statistics from combined logs
+      const levelStats: Record<string, number> = {}
+      combinedLogs.forEach((log) => {
+        levelStats[log.level] = (levelStats[log.level] || 0) + 1
+      })
+
+      return NextResponse.json({
+        logs: combinedLogs.map((log) => ({
+          ...log,
+          timestamp: new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19),
+        })),
+        total: radiusTotal,
+        categoryStats: {
+          radius: radiusTotal,
+        },
+        levelStats: levelStats,
+      })
+    }
+
     const conditions = []
 
     if (category && category !== "all") {

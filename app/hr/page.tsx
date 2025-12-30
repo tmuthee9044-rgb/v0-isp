@@ -253,6 +253,40 @@ export default function HRPage() {
     }
   }
 
+  const handleExportPayslips = async () => {
+    try {
+      const response = await fetch("/api/hr/export-payslips", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          month: new Date().getMonth() + 1,
+          year: new Date().getFullYear(),
+        }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `payslips-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } else {
+        const error = await response.json()
+        console.error("Error exporting payslips:", error)
+        alert(error.error || "Failed to export payslips")
+      }
+    } catch (error) {
+      console.error("Error exporting payslips:", error)
+      alert("Failed to export payslips")
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -488,7 +522,7 @@ export default function HRPage() {
                 <FileText className="mr-2 h-4 w-4" />
                 Generate Payroll
               </Button>
-              <Button variant="outline">
+              <Button variant="outline" onClick={handleExportPayslips}>
                 <Download className="mr-2 h-4 w-4" />
                 Export Payslips
               </Button>

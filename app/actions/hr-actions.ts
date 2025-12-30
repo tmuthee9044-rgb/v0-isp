@@ -171,16 +171,17 @@ export async function generatePayroll(
 
       await sql`
         INSERT INTO payroll_records (
-          employee_id, period, basic_salary, 
+          employee_id, employee_name, period, basic_salary, 
           allowances, overtime, gross_pay, paye, nssf, sha,
           other_deductions, total_deductions, net_pay, status, created_at
         ) VALUES (
-          ${employee.employee_id}, ${period}, ${basicSalary},
+          ${employee.employee_id}, ${`${employee.first_name} ${employee.last_name}`}, ${period}, ${basicSalary},
           ${allowances}, ${overtime}, ${grossPay}, ${paye}, ${nssf}, ${sha},
           ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
         )
         ON CONFLICT (employee_id, period) 
         DO UPDATE SET
+          employee_name = EXCLUDED.employee_name,
           basic_salary = EXCLUDED.basic_salary,
           allowances = EXCLUDED.allowances,
           overtime = EXCLUDED.overtime,

@@ -45,15 +45,15 @@ export async function GET() {
       SELECT 
         COALESCE(SUM(paye), 0) as total_paye,
         COALESCE(SUM(nssf), 0) as total_nssf,
-        COALESCE(SUM(nhif), 0) as total_nhif
-      FROM payroll
-      WHERE EXTRACT(MONTH FROM pay_period_start) = ${currentMonth}
-        AND EXTRACT(YEAR FROM pay_period_start) = ${currentYear}
+        COALESCE(SUM(sha), 0) as total_sha
+      FROM payroll_records
+      WHERE period = ${`${currentYear}-${String(currentMonth).padStart(2, "0")}`}
+        AND status IN ('processed', 'paid')
     `
 
     const totalPaye = Number.parseFloat(payrollStats[0]?.total_paye || "0")
     const totalNssf = Number.parseFloat(payrollStats[0]?.total_nssf || "0")
-    const totalSha = Number.parseFloat(payrollStats[0]?.total_nhif || "0")
+    const totalSha = Number.parseFloat(payrollStats[0]?.total_sha || "0")
     const totalDeductions = totalPaye + totalNssf + totalSha
 
     return NextResponse.json({

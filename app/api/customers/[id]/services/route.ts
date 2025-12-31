@@ -120,6 +120,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             : `${customer.first_name?.toLowerCase() || "user"}${Math.floor(Math.random() * 10000)}`
 
         console.log("[v0] Provisioning RADIUS with username:", radiusUsername)
+        console.log("[v0] Using PPPoE credentials:", {
+          pppoeEnabled,
+          hasUsername: !!pppoeUsername,
+          hasPassword: !!pppoePassword,
+        })
+
+        if (pppoeEnabled && pppoeUsername && pppoePassword) {
+          await sql`
+            UPDATE customer_services
+            SET pppoe_username = ${pppoeUsername}, pppoe_password = ${pppoePassword}
+            WHERE id = ${result[0].id}
+          `
+          console.log("[v0] Saved PPPoE credentials to customer_services table")
+        }
 
         const radiusResult = await provisionRadiusUser({
           username: radiusUsername,
@@ -132,7 +146,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         })
 
         if (radiusResult.success) {
-          console.log("[v0] RADIUS user provisioned successfully for customer:", radiusUsername)
+          console.log(
+            "[v0] RADIUS user provisioned successfully to FreeRADIUS tables (radcheck/radreply) for physical router authentication",
+          )
 
           // Log activity per rule 3
           await sql`

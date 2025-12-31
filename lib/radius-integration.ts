@@ -85,6 +85,15 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
         WHERE id = ${existing[0].id}
       `
 
+      await provisionToStandardRadiusTables({
+        username: config.username,
+        password: config.password,
+        downloadSpeed,
+        uploadSpeed,
+        ipAddress: config.ipAddress,
+        simultaneousUse: servicePlan?.concurrent_connections || 1,
+      })
+
       console.log("[v0] Updated RADIUS user with service plan settings:", {
         username: config.username,
         speeds: `${downloadSpeed}/${uploadSpeed}Mbps`,
@@ -132,6 +141,15 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
         )
         RETURNING id
       `
+
+      await provisionToStandardRadiusTables({
+        username: config.username,
+        password: config.password,
+        downloadSpeed,
+        uploadSpeed,
+        ipAddress: config.ipAddress,
+        simultaneousUse: servicePlan?.concurrent_connections || 1,
+      })
 
       console.log("[v0] Created RADIUS user with service plan settings:", {
         username: config.username,

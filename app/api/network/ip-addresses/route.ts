@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         ia.assigned_date,
         cs.id as service_id,
         cs.customer_id,
-        cs.plan_id,
+        cs.service_plan_id as plan_id,
         cs.activation_date as assigned_at,
         cs.status as service_status,
         c.first_name,

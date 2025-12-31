@@ -26,6 +26,8 @@ interface AddServiceModalProps {
     email: string
     phone: string
     portal_username: string
+    city?: string
+    physical_city?: string
   }
   selectedLocation?: string
   editMode?: boolean
@@ -39,6 +41,7 @@ interface IPPool {
   status: string
   customer_id?: number
   version?: string
+  router_name?: string
 }
 
 interface InventoryItem {
@@ -74,6 +77,7 @@ function AddServiceModal({
   const [pppoeEnabled, setPppoeEnabled] = useState(false)
   const [pppoeUsername, setPppoeUsername] = useState("")
   const [pppoePassword, setPppoePassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [currentTab, setCurrentTab] = useState("plans")
   const [adminOverride, setAdminOverride] = useState(false)
   const [customerAccountNumber, setCustomerAccountNumber] = useState("")
@@ -118,18 +122,27 @@ function AddServiceModal({
 
   const fetchIpPools = async () => {
     try {
-      const response = await fetch("/api/network/ip-addresses?status=available")
+      let endpoint = "/api/network/ip-addresses?status=available"
+
+      // Get customer location from customerData or fetch it
+      const customerLocation = customerData?.city || customerData?.physical_city
+
+      if (customerLocation) {
+        console.log("[v0] Fetching IPs for location:", customerLocation)
+        endpoint = `/api/network/ip-addresses/by-location?location=${encodeURIComponent(customerLocation)}`
+      }
+
+      const response = await fetch(endpoint)
       const data = await response.json()
 
-      if (Array.isArray(data)) {
-        // Filter out IPs that are currently assigned to active services
-        const availableIps = data.filter(
+      if (data.success && Array.isArray(data.addresses)) {
+        const availableIps = data.addresses.filter(
           (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
         )
-        console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
+        console.log(`[v0] Available IP addresses in ${customerLocation || "all locations"}:`, availableIps.length)
         setIpPools(availableIps)
-      } else if (data.success && Array.isArray(data.addresses)) {
-        const availableIps = data.addresses.filter(
+      } else if (Array.isArray(data)) {
+        const availableIps = data.filter(
           (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
         )
         console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
@@ -473,12 +486,17 @@ function AddServiceModal({
                           <SelectValue placeholder="Select IP address from pool" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="auto">Auto-assign from pool</SelectItem>
+                          <SelectItem value="auto">Auto-assign from customer location</SelectItem>
                           {ipPools.map((pool) => (
                             <SelectItem key={pool.id} value={pool.ip_address}>
                               <div className="flex items-center justify-between w-full">
                                 <span>{pool.ip_address}</span>
                                 <div className="flex gap-1">
+                                  {pool.router_name && (
+                                    <Badge variant="outline" className="ml-2">
+                                      {pool.router_name}
+                                    </Badge>
+                                  )}
                                   {pool.version && (
                                     <Badge variant="outline" className="ml-2">
                                       {pool.version}
@@ -493,7 +511,10 @@ function AddServiceModal({
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-sm text-muted-foreground mt-1">{ipPools.length} IP addresses available</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {ipPools.length} IP addresses available
+                        {customerData?.city && ` in ${customerData.city}`}
+                      </p>
                     </div>
 
                     <div>
@@ -552,13 +573,53 @@ function AddServiceModal({
                       <div>
                         <Label htmlFor="pppoe-password">PPPoE Password</Label>
                         <div className="flex gap-2">
-                          <Input
-                            id="pppoe-password"
-                            type="password"
-                            value={pppoePassword}
-                            onChange={(e) => setPppoePassword(e.target.value)}
-                            placeholder="Enter PPPoE password"
-                          />
+                          <div className="relative flex-1">
+                            <Input
+                              id="pppoe-password"
+                              type={showPassword ? "text" : "password"}
+                              value={pppoePassword}
+                              onChange={(e) => setPppoePassword(e.target.value)}
+                              placeholder="Enter PPPoE password"
+                              className="pr-10"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                              onClick={() => setShowPassword(!showPassword)}
+                            >
+                              {showPassword ? (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="h-4 w-4"
+                                >
+                                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                  <line x1="1" y1="1" x2="23" y2="23" />
+                                </svg>
+                              ) : (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="h-4 w-4"
+                                >
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                  <circle cx="12" cy="12" r="3" />
+                                </svg>
+                              )}
+                            </Button>
+                          </div>
                           <Button type="button" variant="outline" onClick={generatePppoeCredentials} size="sm">
                             Generate
                           </Button>

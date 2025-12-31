@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
           SELECT p.id, p.module, p.permission_key, p.permission_name, p.description
           FROM permissions p
           INNER JOIN role_permissions rp ON p.id = rp.permission_id
-          WHERE rp.role_id = ${role.id}
+          WHERE rp.role_id = ${Number(role.id)}
           ORDER BY p.module, p.permission_name
         `
 

@@ -97,8 +97,8 @@ export async function GET(request: NextRequest) {
           jsonb_build_object(
             'username', username,
             'reply', reply,
-            'called_station_id', "CalledStationId",
-            'calling_station_id', "CallingStationId"
+            'called_station_id', calledstationid,
+            'calling_station_id', callingstationid
           ) as details,
           NULL::text as session_id,
           NULL::text as user_agent

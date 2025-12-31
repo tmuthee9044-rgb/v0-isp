@@ -55,9 +55,10 @@ export async function GET() {
         AND status = 'unpaid'`,
 
       sql`SELECT 
-        COALESCE(AVG((bandwidth_out + bandwidth_in) / (bandwidth_limit * 2) * 100), 0) as avg_utilization
+        COALESCE(AVG((bandwidth_usage::numeric / NULLIF(peak_usage, 0)) * 100), 0) as avg_utilization
         FROM router_performance_history
-        WHERE timestamp >= NOW() - INTERVAL '1 hour'`,
+        WHERE timestamp >= NOW() - INTERVAL '1 hour'
+        AND peak_usage > 0`,
 
       sql`SELECT 
         CONCAT('Support ticket: ', title) as message,

@@ -6,6 +6,7 @@ import {
   deprovisionRadiusUser,
   syncServicePlanToRadius,
 } from "@/lib/radius-integration"
+import { allocateIPByLocation } from "@/lib/location-ip-allocation"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -16,9 +17,32 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     console.log("[v0] Received service data:", serviceData)
 
     const servicePlanId = serviceData.service_plan_id || serviceData.plan
-    const ipAddress = serviceData.ip_address || serviceData.ipAddress
+    let ipAddress = serviceData.ip_address || serviceData.ipAddress
     const connectionType = serviceData.connection_type || serviceData.connectionType || "fiber"
     const deviceId = serviceData.device_id || serviceData.deviceId || null
+
+    const pppoeEnabled = serviceData.pppoe_enabled === "on" || serviceData.pppoe_enabled === true
+    const pppoeUsername = serviceData.pppoe_username || null
+    const pppoePassword = serviceData.pppoe_password || null
+
+    console.log("[v0] PPPoE settings:", { pppoeEnabled, pppoeUsername, hasPassword: !!pppoePassword })
+
+    if (!ipAddress || ipAddress === "auto") {
+      const allocationResult = await allocateIPByLocation(Number.parseInt(customerId))
+
+      if (!allocationResult.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: allocationResult.error || "Failed to allocate IP address based on location",
+          },
+          { status: 400 },
+        )
+      }
+
+      ipAddress = allocationResult.ip_address
+      console.log(`[v0] Auto-allocated IP ${ipAddress} based on customer location`)
+    }
 
     if (ipAddress && ipAddress !== "auto") {
       const existingIpAssignment = await sql`
@@ -88,14 +112,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         SELECT username, first_name, last_name, email FROM customers WHERE id = ${customerId}
       `
 
-      if (customer && customer.username) {
-        // Generate password (use existing if available, or create new one)
-        const defaultPassword =
-          serviceData.password || `${customer.first_name?.toLowerCase() || "user"}${Math.floor(Math.random() * 10000)}`
+      if (customer) {
+        const radiusUsername = pppoeEnabled && pppoeUsername ? pppoeUsername : customer.username
+        const radiusPassword =
+          pppoeEnabled && pppoePassword
+            ? pppoePassword
+            : `${customer.first_name?.toLowerCase() || "user"}${Math.floor(Math.random() * 10000)}`
+
+        console.log("[v0] Provisioning RADIUS with username:", radiusUsername)
 
         const radiusResult = await provisionRadiusUser({
-          username: customer.username,
-          password: defaultPassword,
+          username: radiusUsername,
+          password: radiusPassword,
           customerId: Number.parseInt(customerId),
           serviceId: result[0].id,
           ipAddress: ipAddress !== "auto" ? ipAddress : undefined,
@@ -104,7 +132,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         })
 
         if (radiusResult.success) {
-          console.log("[v0] RADIUS user provisioned successfully for customer:", customer.username)
+          console.log("[v0] RADIUS user provisioned successfully for customer:", radiusUsername)
 
           // Log activity per rule 3
           await sql`
@@ -114,7 +142,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               ${JSON.stringify({
                 customer_id: customerId,
                 service_id: result[0].id,
-                radius_username: customer.username,
+                radius_username: radiusUsername,
+                pppoe_enabled: pppoeEnabled,
                 speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
                 ip_address: ipAddress,
               })},

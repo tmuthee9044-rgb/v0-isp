@@ -579,10 +579,17 @@ export class MikroTikAPI {
       if (method === "dhcp_lease") {
         console.log("[v0] Configuring DHCP Lease mode - disabling PPPoE")
 
-        // Check if DHCP server exists
         const dhcpServers = await this.execute("/ip/dhcp-server")
 
-        if (!dhcpServers.success || !Array.isArray(dhcpServers.data) || dhcpServers.data.length === 0) {
+        if (!dhcpServers.success) {
+          return {
+            success: false,
+            error:
+              "Unable to connect to router REST API. Please ensure the router has REST API enabled in System → Services.",
+          }
+        }
+
+        if (!Array.isArray(dhcpServers.data) || dhcpServers.data.length === 0) {
           return {
             success: false,
             error: "No DHCP server found. Please configure DHCP server first via IP → DHCP Server in WinBox.",
@@ -603,7 +610,7 @@ export class MikroTikAPI {
         }
 
         // Ensure PPP AAA is not using RADIUS
-        await this.execute("/ppp/aaa", "PATCH", {
+        await this.updateSingleton("/ppp/aaa", {
           "use-radius": "no",
         }).catch(() => {}) // Ignore errors if /ppp/aaa doesn't exist
 
@@ -622,14 +629,22 @@ export class MikroTikAPI {
           return { success: false, error: "RADIUS server IP and shared secret are required for PPPoE with RADIUS" }
         }
 
-        // Step 1: Add/Update RADIUS server configuration
         console.log(`[v0] Configuring RADIUS server: ${radiusServer}`)
 
         // Check if RADIUS entry already exists
         const existingRadius = await this.execute("/radius")
+
+        if (!existingRadius.success) {
+          return {
+            success: false,
+            error:
+              "Unable to connect to router REST API. Please ensure: 1) REST API is enabled in System → Services, 2) Your router is running RouterOS v7.1 or newer with REST API support. For older routers, you may need to manually configure RADIUS via WinBox.",
+          }
+        }
+
         let radiusConfigured = false
 
-        if (existingRadius.success && Array.isArray(existingRadius.data)) {
+        if (Array.isArray(existingRadius.data)) {
           // Try to update existing RADIUS entry
           for (const radius of existingRadius.data) {
             if (radius.address === radiusServer || radius.service === "ppp") {
@@ -663,10 +678,14 @@ export class MikroTikAPI {
 
         // Step 2: Enable RADIUS for PPP AAA
         console.log("[v0] Enabling RADIUS for PPP authentication and accounting")
-        await this.execute("/ppp/aaa", "PATCH", {
+        const aaaResult = await this.updateSingleton("/ppp/aaa", {
           "use-radius": "yes",
           accounting: "yes",
         })
+
+        if (!aaaResult.success) {
+          console.warn("[v0] Failed to enable RADIUS in PPP AAA:", aaaResult.error)
+        }
 
         // Step 3: Check/Enable PPPoE server
         console.log("[v0] Checking PPPoE server configuration")
@@ -718,7 +737,7 @@ export class MikroTikAPI {
 
         // Step 1: Disable RADIUS for PPP
         console.log("[v0] Disabling RADIUS authentication")
-        await this.execute("/ppp/aaa", "PATCH", {
+        await this.updateSingleton("/ppp/aaa", {
           "use-radius": "no",
           accounting: "no",
         })
@@ -825,6 +844,44 @@ export class MikroTikAPI {
         success: false,
         results,
         errors: [...errors, error.message],
+      }
+    }
+  }
+
+  /**
+   * Update a singleton resource (resources that have only one configuration item)
+   * These resources need to be fetched first to get their ID before updating
+   */
+  private async updateSingleton(path: string, params: Record<string, any>): Promise<MikroTikResponse> {
+    try {
+      // First, GET the singleton to find its ID
+      const getResult = await this.execute(path, "GET")
+
+      if (!getResult.success) {
+        console.error(`[v0] Failed to GET singleton resource ${path}:`, getResult.error)
+        return getResult
+      }
+
+      // Singleton resources return an array with one item
+      const data = Array.isArray(getResult.data) ? getResult.data[0] : getResult.data
+
+      if (!data || !data[".id"]) {
+        console.error(`[v0] Singleton resource ${path} has no ID`)
+        return {
+          success: false,
+          error: "Singleton resource not found or has no ID",
+        }
+      }
+
+      // Now PATCH with the correct ID
+      const updatePath = `${path}/${data[".id"]}`
+      console.log(`[v0] Updating singleton ${path} with ID ${data[".id"]}`)
+      return await this.execute(updatePath, "PATCH", params)
+    } catch (error: any) {
+      console.error(`[v0] Error updating singleton ${path}:`, error)
+      return {
+        success: false,
+        error: error.message,
       }
     }
   }

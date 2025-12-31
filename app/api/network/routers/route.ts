@@ -122,6 +122,8 @@ export async function POST(request: NextRequest) {
       customer_auth_method: customer_auth_method || "pppoe_radius",
       radius_secret: radius_secret || null,
       nas_ip_address: nas_ip_address || null,
+      api_username: api_username || null,
+      api_password: api_password || null,
     }
 
     console.log("[v0] Inserting router with configuration:", configuration)
@@ -257,12 +259,30 @@ export async function POST(request: NextRequest) {
 
         await mikrotik.disconnect()
 
-        if (!configResult.success) {
+        if (!configResult.success && configResult.errors && configResult.errors.length > 0) {
           console.warn("[v0] Some router configurations failed:", configResult.errors)
+
+          // Update router notes with configuration errors for user review
+          await sql`
+            UPDATE network_devices 
+            SET notes = COALESCE(notes || E'\n\n', '') || 
+              'Configuration Errors (Auto-generated):\n' || 
+              ${configResult.errors.join("\n")}
+            WHERE id = ${result[0].id}
+          `
         }
       } catch (configError) {
         console.error("[v0] Error applying router configuration:", configError)
-        // Don't fail the router creation if config push fails
+        await sql`
+          UPDATE network_devices 
+          SET notes = COALESCE(notes || E'\n\n', '') || 
+            'Auto-configuration failed: ' || ${configError instanceof Error ? configError.message : String(configError)} ||
+            E'\n\nPlease configure manually via WinBox:\n' ||
+            '1. Enable REST API in System → Services\n' ||
+            '2. Configure RADIUS in Radius menu\n' ||
+            '3. Enable RADIUS for PPP in PPP → AAA Settings'
+          WHERE id = ${result[0].id}
+        `
       }
     }
 

@@ -141,9 +141,12 @@ export async function getAvailableIPsByLocation(location: string): Promise<any[]
         nd.location as router_location
       FROM ip_addresses ia
       JOIN network_devices nd ON ia.device_id = nd.id
+      LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
+        AND cs.status IN ('active', 'pending', 'suspended')
       WHERE LOWER(nd.location) = LOWER(${location})
       AND ia.status = 'available'
       AND ia.customer_id IS NULL
+      AND cs.id IS NULL
       AND nd.status = 'active'
       ORDER BY ia.ip_address ASC
     `

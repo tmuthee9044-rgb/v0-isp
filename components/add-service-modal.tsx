@@ -298,6 +298,11 @@ function AddServiceModal({
       setConnectionType(editingService.connection_type || "")
       setSelectedIpAddress(editingService.ip_address || "")
       setMacAddress(editingService.device_id || "")
+      setLockToMac(editingService.lock_to_mac || false)
+      setPppoeEnabled(!!editingService.pppoe_username)
+      setPppoeUsername(editingService.pppoe_username || "")
+      setPppoePassword(editingService.pppoe_password || "")
+      setAutoRenew(editingService.auto_renew !== false)
       setCurrentTab("plans")
     }
   }, [editMode, editingService, customerId])

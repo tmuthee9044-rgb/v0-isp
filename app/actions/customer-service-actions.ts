@@ -659,7 +659,8 @@ export async function updateServiceStatus(serviceId: number, status: string) {
         c.email,
         c.phone,
         sp.name as plan_name,
-        sp.bandwidth_limit,
+        sp.download_speed,
+        sp.upload_speed,
         nd.id as router_id,
         nd.ip_address as router_ip,
         nd.username as router_username,
@@ -731,7 +732,7 @@ export async function updateServiceStatus(serviceId: number, status: string) {
           username: service.pppoe_username,
           password: service.pppoe_password,
           ipAddress: service.ip_address,
-          bandwidth: service.bandwidth_limit || 10,
+          bandwidth: service.download_speed || 10,
           customerId: service.customer_id,
           serviceId: service.id,
         })

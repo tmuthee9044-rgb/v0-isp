@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       if (status === "assigned") {
         whereConditions.push(`cs.id IS NOT NULL`)
       } else if (status === "available") {
-        whereConditions.push(`ia.status = 'available' AND cs.id IS NULL`)
+        whereConditions.push(`cs.id IS NULL`)
       } else {
         whereConditions.push(`ia.status = $${paramIndex}`)
         params.push(status)
@@ -64,10 +64,11 @@ export async function GET(request: NextRequest) {
     const whereClause = whereConditions.join(" AND ")
 
     const countQuery = `
-      SELECT COUNT(*) as total
+      SELECT COUNT(DISTINCT ia.id) as total
       FROM ip_addresses ia
-      LEFT JOIN customers c ON ia.customer_id = c.id
-      LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status != 'terminated'
+      LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
+        AND cs.status IN ('active', 'pending', 'suspended')
+      LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE ${whereClause}
     `
 
@@ -84,15 +85,20 @@ export async function GET(request: NextRequest) {
         ia.assigned_date,
         cs.id as service_id,
         cs.customer_id,
+        cs.plan_id,
+        cs.activation_date as assigned_at,
+        cs.status as service_status,
         c.first_name,
         c.last_name,
-        c.business_name,
-        cs.activation_date as assigned_date
+        c.business_name
       FROM ip_addresses ia
-      LEFT JOIN customers c ON ia.customer_id = c.id
-      LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status != 'terminated'
+      LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
+        AND cs.status IN ('active', 'pending', 'suspended')
+      LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE ${whereClause}
-      ORDER BY ia.id
+      ORDER BY 
+        CASE WHEN cs.id IS NOT NULL THEN 0 ELSE 1 END,
+        ia.id
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `
 

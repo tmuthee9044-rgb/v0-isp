@@ -676,3 +676,81 @@ export async function syncServicePlanToRadius(
     return { success: false, error: error.message }
   }
 }
+
+/**
+ * Provision user to standard FreeRADIUS tables (radcheck/radreply)
+ * This ensures compatibility with FreeRADIUS authentication
+ */
+export async function provisionToStandardRadiusTables(config: {
+  username: string
+  password: string
+  downloadSpeed: number
+  uploadSpeed: number
+  ipAddress?: string
+  simultaneousUse?: number
+}) {
+  try {
+    const sql = await getSql()
+
+    await sql`
+      INSERT INTO radcheck (UserName, Attribute, op, Value)
+      VALUES (
+        ${config.username},
+        'Cleartext-Password',
+        ':=',
+        ${config.password}
+      )
+      ON CONFLICT ON CONSTRAINT radcheck_pkey 
+      DO UPDATE SET Value = ${config.password}
+    `
+
+    await sql`
+      DELETE FROM radreply WHERE UserName = ${config.username}
+    `
+
+    if (config.downloadSpeed && config.uploadSpeed) {
+      await sql`
+        INSERT INTO radreply (UserName, Attribute, op, Value)
+        VALUES (
+          ${config.username},
+          'Mikrotik-Rate-Limit',
+          ':=',
+          ${`${config.downloadSpeed}M/${config.uploadSpeed}M`}
+        )
+      `
+    }
+
+    if (config.ipAddress) {
+      await sql`
+        INSERT INTO radreply (UserName, Attribute, op, Value)
+        VALUES (
+          ${config.username},
+          'Framed-IP-Address',
+          ':=',
+          ${config.ipAddress}
+        )
+      `
+    }
+
+    await sql`
+      INSERT INTO radreply (UserName, Attribute, op, Value)
+      VALUES (
+        ${config.username},
+        'Simultaneous-Use',
+        ':=',
+        ${(config.simultaneousUse || 1).toString()}
+      )
+    `
+
+    console.log("[v0] Provisioned user to standard RADIUS tables:", {
+      username: config.username,
+      speeds: `${config.downloadSpeed}M/${config.uploadSpeed}M`,
+      ip: config.ipAddress || "dynamic",
+    })
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("[v0] Error provisioning to standard RADIUS tables:", error)
+    return { success: false, error: error.message }
+  }
+}

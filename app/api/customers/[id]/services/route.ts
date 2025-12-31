@@ -257,6 +257,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const customerId = params.id
     const { serviceId, action, ...updateData } = await request.json()
 
+    const pppoeUsername = updateData.pppoe_username || null
+    const pppoePassword = updateData.pppoe_password || null
+    const pppoeEnabled = updateData.pppoe_enabled === "on" || updateData.pppoe_enabled === true
+
     let result
 
     if (action === "suspend") {
@@ -301,10 +305,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       `
 
       if (customer?.username && service) {
-        // Re-provision RADIUS user
+        const username = pppoeUsername || customer.username
+        const password = pppoePassword || `${customer.username}${Math.floor(Math.random() * 10000)}`
+
         const radiusResult = await provisionRadiusUser({
-          username: customer.username,
-          password: `${customer.username}${Math.floor(Math.random() * 10000)}`, // Generate new password
+          username,
+          password,
           customerId: Number.parseInt(customerId),
           serviceId: Number.parseInt(serviceId),
           ipAddress: service.ip_address !== "auto" ? service.ip_address : undefined,
@@ -312,7 +318,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           uploadSpeed: service.upload_speed,
         })
 
-        console.log("[v0] RADIUS user reactivated:", radiusResult)
+        console.log("[v0] RADIUS user reactivated with credentials:", radiusResult)
       }
     } else {
       const allowedFields = [
@@ -330,7 +336,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       const updateValues = []
 
       Object.entries(updateData).forEach(([key, value]) => {
-        if (value !== undefined && allowedFields.includes(key)) {
+        if (
+          value !== undefined &&
+          allowedFields.includes(key) &&
+          key !== "pppoe_username" &&
+          key !== "pppoe_password" &&
+          key !== "pppoe_enabled"
+        ) {
           updateFields.push(`${key} = $${updateValues.length + 1}`)
           updateValues.push(value)
         }
@@ -346,13 +358,47 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         `
       }
 
-      if (updateData.service_plan_id) {
+      if (pppoeEnabled && (pppoeUsername || pppoePassword || updateData.service_plan_id)) {
+        const [customer] = await sql`
+          SELECT username FROM customers WHERE id = ${customerId}
+        `
+
+        const [service] = await sql`
+          SELECT cs.*, sp.download_speed, sp.upload_speed
+          FROM customer_services cs
+          JOIN service_plans sp ON cs.service_plan_id = sp.id
+          WHERE cs.id = ${serviceId}
+        `
+
+        if (customer && service) {
+          console.log("[v0] Service updated, syncing PPPoE credentials to RADIUS...")
+
+          const username = pppoeUsername || customer.username
+          const password = pppoePassword || `${customer.username}${Math.floor(Math.random() * 10000)}`
+
+          const radiusResult = await provisionRadiusUser({
+            username,
+            password,
+            customerId: Number.parseInt(customerId),
+            serviceId: Number.parseInt(serviceId),
+            ipAddress: service.ip_address !== "auto" ? service.ip_address : undefined,
+            downloadSpeed: service.download_speed,
+            uploadSpeed: service.upload_speed,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS credentials updated successfully for:", username)
+          } else {
+            console.error("[v0] Failed to update RADIUS credentials:", radiusResult.error)
+          }
+        }
+      } else if (updateData.service_plan_id) {
         const [customer] = await sql`
           SELECT username FROM customers WHERE id = ${customerId}
         `
 
         if (customer?.username) {
-          console.log("[v0] Service plan changed, syncing to RADIUS...")
+          console.log("[v0] Service plan changed, syncing speeds to RADIUS...")
           const radiusResult = await syncServicePlanToRadius(
             Number.parseInt(customerId),
             updateData.service_plan_id,

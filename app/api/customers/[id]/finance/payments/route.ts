@@ -189,56 +189,32 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
         console.log("[v0] Successfully activated service", service.id, service.service_name)
 
-        if (service.pppoe_username && service.pppoe_password) {
-          console.log("[v0] Provisioning RADIUS user for service", service.id)
+        const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
+        const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
 
-          const radiusResult = await provisionRadiusUser({
-            username: service.pppoe_username,
-            password: service.pppoe_password,
-            customerId: customerId,
-            serviceId: service.id,
-            ipAddress: service.ip_address,
-            downloadSpeed: service.speed_download,
-            uploadSpeed: service.speed_upload,
-          })
+        console.log("[v0] Provisioning RADIUS credentials for service", service.id, "username:", username)
 
-          if (radiusResult.success) {
-            console.log("[v0] RADIUS user provisioned successfully for", service.pppoe_username)
-          } else {
-            console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
-          }
+        const radiusResult = await provisionRadiusUser({
+          username: username,
+          password: password,
+          customerId: customerId,
+          serviceId: service.id,
+          ipAddress: service.ip_address,
+          downloadSpeed: service.speed_download,
+          uploadSpeed: service.speed_upload,
+        })
+
+        if (radiusResult.success) {
+          console.log("[v0] RADIUS user provisioned successfully for", username)
         } else {
-          console.log("[v0] Warning: No PPPoE credentials found for service", service.id, "- generating now")
-
-          const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
-          const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
-
-          await sql`
-            UPDATE customer_services
-            SET pppoe_username = ${username},
-                pppoe_password = ${password}
-            WHERE id = ${service.id}
-          `
-
-          const radiusResult = await provisionRadiusUser({
-            username: username,
-            password: password,
-            customerId: customerId,
-            serviceId: service.id,
-            ipAddress: service.ip_address,
-            downloadSpeed: service.speed_download,
-            uploadSpeed: service.speed_upload,
-          })
-
-          if (radiusResult.success) {
-            console.log("[v0] RADIUS user created with generated credentials for", username)
-          }
+          console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
         }
 
         activatedServices.push({
           service_id: service.id,
           service_name: service.service_name,
-          pppoe_username: service.pppoe_username,
+          pppoe_username: username,
+          pppoe_password: password,
         })
 
         const logDetails = JSON.stringify({
@@ -246,6 +222,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
           service_id: service.id,
           payment_id: paymentId,
           service_plan_id: service.service_plan_id,
+          pppoe_username: username,
         })
 
         try {
@@ -275,12 +252,13 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
         try {
           await ActivityLogger.logCustomerActivity(
-            `Service ${service.service_name} activated after payment`,
+            `Service ${service.service_name} activated after payment with PPPoE credentials`,
             customerId,
             {
               service_id: service.id,
               payment_id: paymentId,
               service_plan_id: service.service_plan_id,
+              pppoe_username: username,
             },
           )
         } catch (activityError) {

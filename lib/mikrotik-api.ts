@@ -512,36 +512,46 @@ export class MikroTikAPI {
       console.log(`[v0] Configuring speed control: ${method}`)
 
       if (method === "PCQ + Addresslist") {
-        // Try to create PCQ queue type for download
-        const downloadResult = await this.execute("/queue/type/add", "POST", {
-          name: "pcq-download-default",
-          kind: "pcq",
-          "pcq-rate": "0",
-          "pcq-classifier": "dst-address",
-        })
+        // Check for existing pcq-download-default queue type
+        const existingDownloadQueue = await this.execute("/queue/type/print", "GET", { name: "pcq-download-default" })
 
-        if (downloadResult.success) {
-          console.log("[v0] Created pcq-download-default queue type")
-        } else if (downloadResult.error?.includes("already used") || downloadResult.error?.includes("already have")) {
-          console.log("[v0] pcq-download-default already exists, skipping")
+        if (existingDownloadQueue.success && existingDownloadQueue.data && existingDownloadQueue.data.length > 0) {
+          console.log("[v0] pcq-download-default already exists, skipping creation")
         } else {
-          console.warn("[v0] Could not create pcq-download-default:", downloadResult.error)
+          // Create PCQ queue type for download
+          const downloadResult = await this.execute("/queue/type/add", "POST", {
+            name: "pcq-download-default",
+            kind: "pcq",
+            "pcq-rate": "0",
+            "pcq-classifier": "dst-address",
+          })
+
+          if (downloadResult.success) {
+            console.log("[v0] Created pcq-download-default queue type")
+          } else {
+            console.warn("[v0] Could not create pcq-download-default:", downloadResult.error)
+          }
         }
 
-        // Try to create PCQ queue type for upload
-        const uploadResult = await this.execute("/queue/type/add", "POST", {
-          name: "pcq-upload-default",
-          kind: "pcq",
-          "pcq-rate": "0",
-          "pcq-classifier": "src-address",
-        })
+        // Check for existing pcq-upload-default queue type
+        const existingUploadQueue = await this.execute("/queue/type/print", "GET", { name: "pcq-upload-default" })
 
-        if (uploadResult.success) {
-          console.log("[v0] Created pcq-upload-default queue type")
-        } else if (uploadResult.error?.includes("already used") || uploadResult.error?.includes("already have")) {
-          console.log("[v0] pcq-upload-default already exists, skipping")
+        if (existingUploadQueue.success && existingUploadQueue.data && existingUploadQueue.data.length > 0) {
+          console.log("[v0] pcq-upload-default already exists, skipping creation")
         } else {
-          console.warn("[v0] Could not create pcq-upload-default:", uploadResult.error)
+          // Create PCQ queue type for upload
+          const uploadResult = await this.execute("/queue/type/add", "POST", {
+            name: "pcq-upload-default",
+            kind: "pcq",
+            "pcq-rate": "0",
+            "pcq-classifier": "src-address",
+          })
+
+          if (uploadResult.success) {
+            console.log("[v0] Created pcq-upload-default queue type")
+          } else {
+            console.warn("[v0] Could not create pcq-upload-default:", uploadResult.error)
+          }
         }
 
         return { success: true, data: { message: "PCQ queue types configured" } }

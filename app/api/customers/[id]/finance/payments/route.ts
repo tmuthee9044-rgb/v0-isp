@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { paymentGateway } from "@/lib/payment-gateway"
+import { provisionRadiusUser } from "@/lib/radius-integration"
 
 async function ensureAccountBalance(customerId: number) {
   try {
@@ -152,9 +153,17 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
     const sql = await getSql()
 
     const pendingServices = await sql`
-      SELECT cs.*, sp.name as service_name, sp.id as service_plan_id
+      SELECT 
+        cs.*, 
+        sp.name as service_name, 
+        sp.id as service_plan_id,
+        sp.speed_download,
+        sp.speed_upload,
+        c.email,
+        c.phone
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
+      JOIN customers c ON cs.customer_id = c.id
       WHERE cs.customer_id = ${customerId}
       AND cs.status = 'pending'
       AND cs.activation_date IS NULL
@@ -180,9 +189,56 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
         console.log("[v0] Successfully activated service", service.id, service.service_name)
 
+        if (service.pppoe_username && service.pppoe_password) {
+          console.log("[v0] Provisioning RADIUS user for service", service.id)
+
+          const radiusResult = await provisionRadiusUser({
+            username: service.pppoe_username,
+            password: service.pppoe_password,
+            customerId: customerId,
+            serviceId: service.id,
+            ipAddress: service.ip_address,
+            downloadSpeed: service.speed_download,
+            uploadSpeed: service.speed_upload,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS user provisioned successfully for", service.pppoe_username)
+          } else {
+            console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
+          }
+        } else {
+          console.log("[v0] Warning: No PPPoE credentials found for service", service.id, "- generating now")
+
+          const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
+          const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
+
+          await sql`
+            UPDATE customer_services
+            SET pppoe_username = ${username},
+                pppoe_password = ${password}
+            WHERE id = ${service.id}
+          `
+
+          const radiusResult = await provisionRadiusUser({
+            username: username,
+            password: password,
+            customerId: customerId,
+            serviceId: service.id,
+            ipAddress: service.ip_address,
+            downloadSpeed: service.speed_download,
+            uploadSpeed: service.speed_upload,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS user created with generated credentials for", username)
+          }
+        }
+
         activatedServices.push({
           service_id: service.id,
           service_name: service.service_name,
+          pppoe_username: service.pppoe_username,
         })
 
         const logDetails = JSON.stringify({

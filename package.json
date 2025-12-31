@@ -6,10 +6,12 @@
     "build": "next build",
     "dev": "bash scripts/pre-dev-check.sh && next dev",
     "dev:skip-checks": "next dev",
+    "postinstall": "node scripts/post-install-setup.js",
     "lint": "next lint",
     "migrate:dual-db": "node scripts/migrate-all-routes-to-dual-db.js",
     "radius:setup": "bash scripts/verify-and-create-radius-tables.sh",
     "radius:verify": "tsx scripts/verify-radius-database.ts",
+    "setup": "npm install && npm run dev",
     "start": "next start"
   },
   "dependencies": {

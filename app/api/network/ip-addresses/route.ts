@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     const countQuery = `
       SELECT COUNT(DISTINCT ia.id) as total
       FROM ip_addresses ia
-      LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
+      LEFT JOIN customer_services cs ON cs.ip_address::text = ia.ip_address::text 
         AND cs.status IN ('active', 'pending', 'suspended')
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE ${whereClause}
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
         c.last_name,
         c.business_name
       FROM ip_addresses ia
-      LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
+      LEFT JOIN customer_services cs ON cs.ip_address::text = ia.ip_address::text 
         AND cs.status IN ('active', 'pending', 'suspended')
       LEFT JOIN customers c ON cs.customer_id = c.id
       WHERE ${whereClause}

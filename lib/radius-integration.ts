@@ -50,9 +50,6 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
     // Use service plan speeds if available, otherwise use config values
     const downloadSpeed = servicePlan?.speed_download || config.downloadSpeed || 10
     const uploadSpeed = servicePlan?.speed_upload || config.uploadSpeed || 10
-    const burstDownload = servicePlan?.burst_download || null
-    const burstUpload = servicePlan?.burst_upload || null
-    const burstDuration = servicePlan?.burst_duration || 300
 
     // Check if user exists
     const existing = await sql`
@@ -62,7 +59,6 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
     `
 
     if (existing.length > 0) {
-      // Update with full service plan configuration
       await sql`
         UPDATE radius_users
         SET 
@@ -71,14 +67,8 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
           ip_address = ${config.ipAddress || null},
           download_limit = ${downloadSpeed},
           upload_limit = ${uploadSpeed},
-          burst_download = ${burstDownload},
-          burst_upload = ${burstUpload},
-          burst_duration = ${burstDuration},
-          priority_level = ${servicePlan?.priority_level || "standard"},
-          fup_enabled = ${servicePlan?.fup_enabled || false},
-          fup_limit = ${servicePlan?.data_limit || null},
-          fup_speed = ${servicePlan?.fup_speed || null},
           simultaneous_use = ${servicePlan?.concurrent_connections || 1},
+          fup_limit = ${servicePlan?.data_limit || null},
           expiry_date = ${config.expiryDate || null},
           status = 'active',
           updated_at = NOW()
@@ -97,7 +87,6 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
       console.log("[v0] Updated RADIUS user with service plan settings:", {
         username: config.username,
         speeds: `${downloadSpeed}/${uploadSpeed}Mbps`,
-        burst: burstDownload ? `${burstDownload}/${burstUpload}Mbps` : "disabled",
         fup: servicePlan?.fup_enabled ? "enabled" : "disabled",
       })
 
@@ -118,24 +107,17 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
 
       return { success: true, user_id: existing[0].id }
     } else {
-      // Create new user with full service plan configuration
       const result = await sql`
         INSERT INTO radius_users (
           username, password_hash, customer_id, service_id,
           ip_address, download_limit, upload_limit, 
-          burst_download, burst_upload, burst_duration,
-          priority_level, fup_enabled, fup_limit, fup_speed,
-          simultaneous_use, expiry_date,
+          simultaneous_use, fup_limit, expiry_date,
           status, created_at, updated_at
         ) VALUES (
           ${config.username}, ${password_hash}, ${config.customerId}, ${config.serviceId || null},
           ${config.ipAddress || null}, ${downloadSpeed}, ${uploadSpeed},
-          ${burstDownload}, ${burstUpload}, ${burstDuration},
-          ${servicePlan?.priority_level || "standard"}, 
-          ${servicePlan?.fup_enabled || false}, 
-          ${servicePlan?.data_limit || null}, 
-          ${servicePlan?.fup_speed || null},
           ${servicePlan?.concurrent_connections || 1}, 
+          ${servicePlan?.data_limit || null}, 
           ${config.expiryDate || null},
           'active', NOW(), NOW()
         )
@@ -154,9 +136,7 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
       console.log("[v0] Created RADIUS user with service plan settings:", {
         username: config.username,
         speeds: `${downloadSpeed}/${uploadSpeed}Mbps`,
-        burst: burstDownload ? `${burstDownload}/${burstUpload}Mbps` : "disabled",
-        fup: servicePlan?.fup_enabled ? "enabled" : "disabled",
-        qos: servicePlan?.qos_enabled ? "enabled" : "disabled",
+        fup: servicePlan?.data_limit ? `${servicePlan.data_limit}GB` : "unlimited",
       })
 
       // Log to activity logs for audit trail (Rule 3)
@@ -168,7 +148,6 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
             customer_id: config.customerId,
             service_id: config.serviceId,
             speeds: { download: downloadSpeed, upload: uploadSpeed },
-            features: { fup: servicePlan?.fup_enabled, qos: servicePlan?.qos_enabled },
           })}, 
           CURRENT_TIMESTAMP
         )
@@ -176,9 +155,9 @@ export async function provisionRadiusUser(config: RadiusUserConfig) {
 
       return { success: true, user_id: result[0].id }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("[v0] Error provisioning RADIUS user:", error)
-    return { success: false, error: error.message }
+    throw error
   }
 }
 

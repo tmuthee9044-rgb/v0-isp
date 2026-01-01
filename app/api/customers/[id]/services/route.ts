@@ -207,20 +207,34 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const services = await sql`
       SELECT 
-        cs.*,
+        cs.id,
+        cs.customer_id,
+        cs.service_plan_id,
+        cs.status,
+        cs.monthly_fee,
+        cs.start_date,
+        cs.end_date,
+        cs.ip_address,
+        cs.device_id,
+        cs.connection_type,
+        cs.config_id,
+        cs.created_at,
+        cs.updated_at,
+        cs.pppoe_username,
+        cs.pppoe_password,
+        cs.lock_to_mac,
+        cs.auto_renew,
         sp.name as service_name,
         sp.description as service_description,
         sp.download_speed,
         sp.upload_speed,
         sp.data_limit,
-        -- Check if customer has active RADIUS session (AcctStopTime IS NULL means session is active)
         EXISTS(
           SELECT 1 FROM radacct ra
           WHERE ra."UserName" = c.username
           AND ra."AcctStopTime" IS NULL
           LIMIT 1
         ) as is_online,
-        -- Get last session timestamp from RADIUS accounting
         (
           SELECT ra."AcctStartTime"
           FROM radacct ra
@@ -228,13 +242,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
           ORDER BY ra."AcctStartTime" DESC
           LIMIT 1
         ) as last_session_at,
-        -- Check if user is provisioned in RADIUS (has credentials)
         EXISTS(
           SELECT 1 FROM radcheck rc
           WHERE rc."UserName" = c.username
           LIMIT 1
         ) as radius_provisioned,
-        -- Get account balance
         COALESCE(ab.balance, 0) as balance
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
@@ -331,6 +343,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         "device_id",
         "connection_type",
         "config_id",
+        "pppoe_username",
+        "pppoe_password",
+        "lock_to_mac",
+        "auto_renew",
       ]
       const updateFields = []
       const updateValues = []

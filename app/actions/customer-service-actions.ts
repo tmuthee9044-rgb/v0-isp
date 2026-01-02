@@ -2,10 +2,9 @@
 
 import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
-import { ActivityLogger } from "@/lib/activity-logger"
-import { releaseIPAddress } from "@/lib/ip-management"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
 import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
+import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -141,13 +140,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
         service_plan_id, 
         status, 
         monthly_fee,
-        connection_type,
         ip_address,
-        mac_address,
-        lock_to_mac,
-        auto_renew,
-        pppoe_username,
-        pppoe_password,
+        device_id,
         activation_date,
         created_at,
         updated_at
@@ -156,13 +150,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
-        ${connectionType || null},
         ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         ${macAddress || null},
-        ${lockToMac},
-        ${autoRenew},
-        ${pppoeEnabled ? pppoeUsername : null},
-        ${pppoeEnabled ? pppoePassword : null},
         ${initialStatus === "active" ? sql`NOW()` : null},
         NOW(),
         NOW()
@@ -375,6 +364,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
 
     const autoRenew = formData.get("auto_renew") === "on"
     const ipAddress = formData.get("ip_address") as string
+    const device_id = formData.get("device_id") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
     const pppoeUsername = formData.get("pppoe_username") as string
@@ -398,10 +388,12 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     // Update the service WITHOUT creating a new invoice
     const result = await sql`
       UPDATE customer_services
-      SET 
+      SET
         service_plan_id = ${servicePlanId},
-        connection_type = ${connectionType},
+        status = ${formData.get("status")},
         monthly_fee = ${servicePlan[0].price},
+        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
+        device_id = ${device_id || null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
@@ -414,13 +406,21 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    // Update IP address if changed
-    if (ipAddress && ipAddress !== "auto") {
-      await sql`
-        UPDATE customer_services
-        SET ip_address = ${ipAddress}
-        WHERE id = ${serviceId}
-      `
+    // Provision PPPoE credentials to RADIUS if enabled
+    if (pppoeEnabled && pppoeUsername && pppoePassword) {
+      console.log("[v0] Provisioning PPPoE credentials to RADIUS...")
+      try {
+        await provisionToStandardRadiusTables(
+          pppoeUsername,
+          pppoePassword,
+          servicePlan[0].speed_download || "10M",
+          servicePlan[0].speed_upload || "10M",
+        )
+        console.log("[v0] PPPoE credentials provisioned to RADIUS successfully")
+      } catch (radiusError) {
+        console.error("[v0] RADIUS provisioning failed:", radiusError)
+        // Continue even if RADIUS provisioning fails
+      }
     }
 
     // Log the activity
@@ -470,6 +470,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     const connectionType = formData.get("connection_type") as string
     const ipAddress = formData.get("ip_address") as string
 
+    const device_id = formData.get("device_id") as string
     const macAddress = formData.get("mac_address") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const autoRenew = formData.get("auto_renew") === "on"
@@ -495,20 +496,19 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
     const service = serviceData[0]
 
+    console.log("[v0] Updating service in database...")
+
     const result = await sql`
-      UPDATE customer_services 
-      SET 
-        monthly_fee = ${monthlyFee},
+      UPDATE customer_services
+      SET
+        service_plan_id = ${service.service_plan_id},
         status = ${status},
-        connection_type = ${connectionType || service.connection_type},
+        monthly_fee = ${monthlyFee},
         ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : service.ip_address},
+        device_id = ${device_id || null},
         mac_address = ${macAddress || service.mac_address},
         lock_to_mac = ${lockToMac},
         auto_renew = ${autoRenew},
-        pppoe_username = ${pppoeEnabled ? pppoeUsername : service.pppoe_username},
-        pppoe_password = ${pppoeEnabled ? pppoePassword : service.pppoe_password},
-        activation_date = CASE WHEN ${status} = 'active' AND activation_date IS NULL THEN NOW() ELSE activation_date END,
-        suspension_date = CASE WHEN ${status} = 'suspended' THEN NOW() ELSE suspension_date END,
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
@@ -518,25 +518,31 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       return { success: false, error: "Service not found" }
     }
 
+    // Provision PPPoE credentials to RADIUS if enabled
     if (pppoeEnabled && (pppoeUsername || pppoePassword)) {
       const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}`
       const radiusPassword = pppoePassword || radiusUsername
 
-      if (status === "active") {
-        await provisionRadiusUser({
-          customerId: service.customer_id,
-          serviceId: service.id,
-          username: radiusUsername,
-          password: radiusPassword,
-          ipAddress: ipAddress || service.ip_address,
-          downloadSpeed: service.download_speed || 10,
-          uploadSpeed: service.upload_speed || 10,
-          nasId: service.router_id || undefined,
-        })
+      console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
+      const radiusResult = await provisionRadiusUser({
+        customerId: service.customer_id,
+        serviceId: service.id,
+        username: radiusUsername,
+        password: radiusPassword,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.download_speed || 10,
+        uploadSpeed: service.upload_speed || 10,
+        nasId: service.router_id || undefined,
+      })
+
+      if (!radiusResult.success) {
+        console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
+      } else {
+        console.log(`[v0] RADIUS provisioning successful`)
       }
     }
 
-    if (service.router_id && service.router_ip && (service.portal_username || service.ip_address)) {
+    if (service.router_id && service.router_ip) {
       // Fire and forget - don't await
       Promise.resolve().then(async () => {
         try {
@@ -691,470 +697,6 @@ export async function deleteCustomerService(serviceId: number) {
       service: serviceData[0],
     }
   } catch (error) {
-    console.error("Error deleting customer service:", error)
-    return { success: false, error: "Failed to delete service" }
-  }
-}
-
-export async function updateServiceStatus(serviceId: number, status: string) {
-  try {
-    const sql = await getSql()
-
-    const serviceDetails = await sql`
-      SELECT 
-        cs.*,
-        c.first_name,
-        c.last_name,
-        c.email,
-        c.phone,
-        sp.name as plan_name,
-        sp.download_speed,
-        sp.upload_speed,
-        nd.id as router_id,
-        nd.ip_address as router_ip,
-        nd.username as router_username,
-        nd.password as router_password,
-        nd.api_port as router_api_port
-      FROM customer_services cs
-      INNER JOIN customers c ON cs.customer_id = c.id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      LEFT JOIN network_devices nd ON cs.router_id = nd.id
-      WHERE cs.id = ${serviceId}
-      LIMIT 1
-    `
-
-    if (serviceDetails.length === 0) {
-      return { success: false, error: "Service not found" }
-    }
-
-    const service = serviceDetails[0]
-
-    console.log("[v0] Service details:", {
-      serviceId: service.id,
-      customerId: service.customer_id,
-      routerId: service.router_id,
-      ipAddress: service.ip_address,
-      pppoeUsername: service.pppoe_username,
-      status: service.status,
-      targetStatus: status,
-    })
-
-    // Update the service status
-    const result = await sql`
-      UPDATE customer_services 
-      SET 
-        status = ${status},
-        activation_date = CASE WHEN ${status} = 'active' AND activation_date IS NULL THEN NOW() ELSE activation_date END,
-        updated_at = NOW()
-      WHERE id = ${serviceId}
-      RETURNING *
-    `
-
-    if (result.length === 0) {
-      return { success: false, error: "Failed to update service status" }
-    }
-
-    // If activating the service, provision to RADIUS and router
-    if (status === "active") {
-      console.log("[v0] Service activation detected, provisioning to RADIUS and router...")
-
-      if (!service.pppoe_username || !service.pppoe_password) {
-        console.error("[v0] Missing PPPoE credentials. Username:", service.pppoe_username)
-        return {
-          success: false,
-          error:
-            "Cannot activate service: Missing PPPoE username or password. Please add the service through /services/add with complete details.",
-        }
-      }
-
-      if (!service.ip_address) {
-        console.error("[v0] Missing IP address for service")
-        return {
-          success: false,
-          error: "Cannot activate service: No IP address assigned. Please assign an IP address first.",
-        }
-      }
-
-      // Provision to RADIUS
-      try {
-        await provisionRadiusUser({
-          username: service.pppoe_username,
-          password: service.pppoe_password,
-          ipAddress: service.ip_address,
-          bandwidth: service.download_speed || 10,
-          customerId: service.customer_id,
-          serviceId: service.id,
-        })
-        console.log("[v0] Successfully provisioned to RADIUS")
-      } catch (radiusError) {
-        console.error("[v0] RADIUS provisioning failed:", radiusError)
-        // Continue with router provisioning even if RADIUS fails
-      }
-
-      // Provision to physical router
-      if (service.router_id && service.router_ip) {
-        try {
-          console.log("[v0] Provisioning to router:", {
-            routerId: service.router_id,
-            routerIp: service.router_ip,
-            customerIp: service.ip_address,
-          })
-
-          await provisionServiceToRouter(service.router_id, service.customer_id, service.id, {
-            ip: service.router_ip,
-            username: service.router_username,
-            password: service.router_password,
-            port: service.router_api_port || 443,
-          })
-
-          console.log("[v0] Successfully provisioned to physical router")
-
-          await sql`
-            UPDATE customer_services
-            SET 
-              router_provisioned = true,
-              router_provisioned_at = NOW()
-            WHERE id = ${serviceId}
-          `
-        } catch (routerError) {
-          console.error("[v0] Router provisioning failed:", routerError)
-
-          await sql`
-            UPDATE customer_services
-            SET provisioning_error = ${routerError instanceof Error ? routerError.message : String(routerError)}
-            WHERE id = ${serviceId}
-          `
-        }
-      } else {
-        console.log("[v0] No router assigned to service, skipping router provisioning")
-      }
-
-      // Log the activation
-      await sql`
-        INSERT INTO system_logs (
-          entity_type, entity_id, action, description, user_id, created_at
-        ) VALUES (
-          'service', ${serviceId}, 'activate',
-          ${`Service activated for customer ${service.first_name} ${service.last_name}. PPPoE: ${service.pppoe_username}, IP: ${service.ip_address}`},
-          1, NOW()
-        )
-      `
-    }
-
-    // If suspending the service, deprovision from RADIUS and router
-    if (status === "suspended") {
-      console.log("[v0] Service suspension detected, deprovisioning...")
-
-      if (service.pppoe_username) {
-        try {
-          await deprovisionRadiusUser(service.pppoe_username)
-          console.log("[v0] Successfully deprovisioned from RADIUS")
-        } catch (error) {
-          console.error("[v0] RADIUS deprovisioning failed:", error)
-        }
-      }
-
-      if (service.router_id && service.pppoe_username && service.router_ip) {
-        try {
-          await deprovisionServiceFromRouter(service.router_id, service.pppoe_username, {
-            ip: service.router_ip,
-            username: service.router_username,
-            password: service.router_password,
-            port: service.router_api_port || 443,
-          })
-          console.log("[v0] Successfully deprovisioned from router")
-
-          await sql`
-            UPDATE customer_services
-            SET 
-              router_provisioned = false,
-              router_deprovisioned_at = NOW()
-            WHERE id = ${serviceId}
-          `
-        } catch (error) {
-          console.error("[v0] Router deprovisioning failed:", error)
-        }
-      }
-
-      await sql`
-        INSERT INTO system_logs (
-          entity_type, entity_id, action, description, user_id, created_at
-        ) VALUES (
-          'service', ${serviceId}, 'suspend',
-          ${`Service suspended for customer ${service.first_name} ${service.last_name}.`},
-          1, NOW()
-        )
-      `
-    }
-
-    revalidatePath("/customers")
-    return { success: true, message: "Service status updated and provisioned", service: result[0] }
-  } catch (error) {
-    console.error("[v0] Error updating service status:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
-  }
-}
-
-export async function activateServiceOnPayment(paymentId: number, customerId: number) {
-  try {
-    const sql = await getSql()
-
-    const pendingServices = await sql`
-      SELECT cs.*, sp.name as service_name, sp.speed_download, sp.upload_speed,
-             c.portal_username, c.email,
-             ia.ip_address, ia.router_id,
-             nd.ip_address as router_ip, nd.api_port, nd.api_username, nd.api_password, nd.use_ssl
-      FROM customer_services cs
-      JOIN service_plans sp ON cs.service_plan_id = sp.id
-      JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.service_id = cs.id
-      LEFT JOIN network_devices nd ON nd.id = ia.router_id
-      WHERE cs.customer_id = ${customerId}
-      AND cs.status = 'pending'
-      ORDER BY cs.created_at ASC
-    `
-
-    console.log(`[v0] Activating ${pendingServices.length} pending services after payment`)
-
-    for (const service of pendingServices) {
-      await sql`
-        UPDATE customer_services 
-        SET status = 'active', activation_date = NOW()
-        WHERE id = ${service.id}
-      `
-
-      const radiusUsername = service.portal_username || `customer_${customerId}`
-      const radiusPassword = service.portal_username || `customer_${customerId}`
-
-      console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
-      const radiusResult = await provisionRadiusUser({
-        customerId,
-        serviceId: service.id,
-        username: radiusUsername,
-        password: radiusPassword,
-        ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.speed_download,
-        uploadSpeed: service.upload_speed,
-        nasId: service.router_id || undefined,
-      })
-
-      if (!radiusResult.success) {
-        console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
-      } else {
-        console.log(`[v0] RADIUS provisioning successful`)
-      }
-
-      if (service.router_id && service.router_ip) {
-        console.log(`[v0] Provisioning service ${service.id} to physical router ${service.router_id}...`)
-
-        const routerResult = await provisionServiceToRouter({
-          serviceId: service.id,
-          customerId,
-          routerId: service.router_id,
-          ipAddress: service.ip_address || undefined,
-          connectionType: service.ip_address ? "static_ip" : "pppoe",
-          pppoeUsername: radiusUsername,
-          pppoePassword: radiusPassword,
-          downloadSpeed: service.speed_download,
-          uploadSpeed: service.upload_speed,
-        })
-
-        if (!routerResult.success) {
-          console.error(`[v0] Router provisioning failed:`, routerResult.error)
-        } else {
-          console.log(
-            `[v0] Router provisioning successful - PPPoE secret created with IP ${service.ip_address || "auto"}`,
-          )
-        }
-      } else {
-        console.log(`[v0] No router assigned to service ${service.id}, skipping router provisioning`)
-      }
-
-      await sql`
-        INSERT INTO system_logs (level, category, source, message, details, created_at)
-        VALUES (
-          'INFO', 'customer', 'service_activation',
-          ${`Service ${service.service_name} activated for customer ${customerId} after payment ${paymentId}`},
-          ${JSON.stringify({
-            customer_id: customerId,
-            service_id: service.id,
-            service_name: service.service_name,
-            payment_id: paymentId,
-            radius_provisioned: radiusResult.success,
-            router_provisioned: service.router_id ? true : false,
-            pppoe_username: radiusUsername,
-          })},
-          NOW()
-        )
-      `
-    }
-
-    return {
-      success: true,
-      activated_services: pendingServices.length,
-      message: `${pendingServices.length} service(s) activated and provisioned successfully`,
-    }
-  } catch (error) {
-    console.error("[v0] Error activating services on payment:", error)
-    return { success: false, error: "Failed to activate services" }
-  }
-}
-
-export async function processPayment(formData: FormData) {
-  try {
-    const sql = await getSql()
-
-    const customerId = Number.parseInt(formData.get("customer_id") as string)
-    const amount = Number.parseFloat(formData.get("amount") as string)
-    const method = formData.get("method") as string
-    const reference = formData.get("reference") as string
-
-    await ActivityLogger.logCustomerActivity(`initiated ${method} payment of KES ${amount}`, customerId.toString(), {
-      amount,
-      payment_method: method,
-      reference,
-      action: "payment_initiated",
-    })
-
-    const paymentResult = await sql`
-      INSERT INTO payments (
-        customer_id,
-        amount,
-        payment_method,
-        transaction_id,
-        status,
-        payment_date,
-        created_at
-      ) VALUES (
-        ${customerId},
-        ${amount},
-        ${method},
-        ${reference || `PAY-${Date.now()}`},
-        'completed',
-        NOW(),
-        NOW()
-      ) RETURNING *
-    `
-
-    const unpaidInvoices = await sql`
-      SELECT * FROM invoices 
-      WHERE customer_id = ${customerId} 
-      AND status IN ('pending', 'overdue')
-      ORDER BY created_at ASC
-    `
-
-    let remainingAmount = amount
-    for (const invoice of unpaidInvoices) {
-      if (remainingAmount <= 0) break
-
-      const paymentAmount = Math.min(remainingAmount, invoice.amount)
-
-      await sql`
-        UPDATE invoices 
-        SET 
-          status = CASE 
-            WHEN ${paymentAmount} >= amount THEN 'paid'
-            ELSE 'partial'
-          END,
-          paid_amount = COALESCE(paid_amount, 0) + ${paymentAmount}
-        WHERE id = ${invoice.id}
-      `
-
-      remainingAmount -= paymentAmount
-    }
-
-    const activationResult = await activateServiceOnPayment(paymentResult[0].id, customerId)
-
-    if (method.toLowerCase().includes("mpesa") || method.toLowerCase().includes("m-pesa")) {
-      await ActivityLogger.logMpesaActivity(
-        `Customer payment completed: KES ${amount}`,
-        reference || paymentResult[0].transaction_id,
-        {
-          customer_id: customerId,
-          payment_id: paymentResult[0].id,
-          amount,
-          payment_method: method,
-          transaction_id: paymentResult[0].transaction_id,
-          status: "completed",
-          services_activated: activationResult.activated_services || 0,
-        },
-        "SUCCESS",
-      )
-    } else {
-      await ActivityLogger.logCustomerActivity(`completed ${method} payment of KES ${amount}`, customerId.toString(), {
-        payment_id: paymentResult[0].id,
-        amount,
-        payment_method: method,
-        transaction_id: paymentResult[0].transaction_id,
-        status: "completed",
-        services_activated: activationResult.activated_services || 0,
-      })
-    }
-
-    revalidatePath(`/customers/${customerId}`)
-    return {
-      success: true,
-      message: `Payment of KSh ${amount} processed successfully. ${activationResult.activated_services || 0} service(s) activated.`,
-      payment: paymentResult[0],
-      services_activated: activationResult.activated_services || 0,
-    }
-  } catch (error) {
-    const customerId = Number.parseInt(formData.get("customer_id") as string)
-    const amount = Number.parseFloat(formData.get("amount") as string)
-    const method = formData.get("method") as string
-
-    await ActivityLogger.logCustomerActivity(
-      `payment processing failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      customerId.toString(),
-      {
-        amount,
-        payment_method: method,
-        error: error instanceof Error ? error.message : "Unknown error",
-        action: "payment_failed",
-      },
-    )
-
-    console.error("Error processing payment:", error)
-    return { success: false, error: "Failed to process payment" }
-  }
-}
-
-export async function removeCustomerService(serviceId: number, customerId: number) {
-  try {
-    const sql = await getSql()
-
-    const [service] = await sql`
-      SELECT * FROM customer_services WHERE id = ${serviceId} AND customer_id = ${customerId}
-    `
-
-    if (!service) {
-      return { success: false, error: "Service not found" }
-    }
-
-    if (service.ip_address) {
-      const releaseResult = await releaseIPAddress(serviceId, "Service terminated by user")
-
-      if (releaseResult.success) {
-        console.log("[v0] Released IP address:", service.ip_address)
-      } else {
-        console.error("[v0] Failed to release IP address:", releaseResult.message)
-      }
-    }
-
-    const result = await sql`
-      UPDATE customer_services 
-      SET status = 'terminated', end_date = CURRENT_DATE
-      WHERE id = ${serviceId} AND customer_id = ${customerId}
-      RETURNING *
-    `
-
-    if (result.length === 0) {
-      return { success: false, error: "Service not found" }
-    }
-
-    revalidatePath(`/customers/${customerId}`)
-    return { success: true, message: "Service terminated successfully and IP address released", service: result[0] }
-  } catch (error) {
     console.error("Error removing service:", error)
     return { success: false, error: "Failed to remove service" }
   }
@@ -1213,5 +755,199 @@ export async function fixOrphanedServices() {
   } catch (error) {
     console.error("Error fixing orphaned services:", error)
     return { success: false, error: "Failed to fix orphaned services" }
+  }
+}
+
+export async function processPayment(customerId: number, invoiceId: number, amount: number) {
+  try {
+    const sql = await getSql()
+
+    // Update the invoice as paid
+    await sql`
+      UPDATE invoices
+      SET status = 'paid',
+          paid_amount = ${amount},
+          paid_at = NOW(),
+          updated_at = NOW()
+      WHERE id = ${invoiceId} AND customer_id = ${customerId}
+    `
+
+    // Get pending services for this customer
+    const pendingServices = await sql`
+      SELECT cs.*, sp.download_speed, sp.upload_speed, sp.name as service_name
+      FROM customer_services cs
+      JOIN service_plans sp ON cs.service_plan_id = sp.id
+      WHERE cs.customer_id = ${customerId} 
+      AND cs.status = 'pending'
+    `
+
+    // Activate all pending services
+    for (const service of pendingServices) {
+      await sql`
+        UPDATE customer_services
+        SET status = 'active',
+            activation_date = NOW(),
+            updated_at = NOW()
+        WHERE id = ${service.id}
+      `
+
+      // Generate PPPoE credentials
+      const pppoeUsername = service.pppoe_username || `customer_${customerId}_service_${service.id}`
+      const pppoePassword = service.pppoe_password || Math.random().toString(36).substring(2, 15)
+
+      // Provision to RADIUS
+      await provisionRadiusUser({
+        customerId,
+        serviceId: service.id,
+        username: pppoeUsername,
+        password: pppoePassword,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.download_speed || 10,
+        uploadSpeed: service.upload_speed || 10,
+      })
+
+      // Provision to standard RADIUS tables
+      await provisionToStandardRadiusTables(
+        pppoeUsername,
+        pppoePassword,
+        service.download_speed || "10M",
+        service.upload_speed || "10M",
+      )
+
+      // Log the activation
+      await sql`
+        INSERT INTO activity_logs (
+          user_id,
+          action,
+          entity_type,
+          entity_id,
+          description,
+          created_at
+        ) VALUES (
+          1,
+          'activate',
+          'customer_service',
+          ${service.id},
+          ${`Service activated after payment: ${service.service_name}`},
+          NOW()
+        )
+        ON CONFLICT DO NOTHING
+      `
+    }
+
+    revalidatePath(`/customers/${customerId}`)
+
+    return {
+      success: true,
+      message: `Payment processed successfully. ${pendingServices.length} service(s) activated.`,
+      activatedServices: pendingServices.length,
+    }
+  } catch (error) {
+    console.error("Error processing payment:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to process payment",
+    }
+  }
+}
+
+export async function updateServiceStatus(serviceId: number, newStatus: string, reason?: string) {
+  try {
+    const sql = await getSql()
+
+    // Get service details
+    const service = await sql`
+      SELECT cs.*, c.portal_username, sp.download_speed, sp.upload_speed
+      FROM customer_services cs
+      JOIN customers c ON c.id = cs.customer_id
+      JOIN service_plans sp ON sp.id = cs.service_plan_id
+      WHERE cs.id = ${serviceId}
+      LIMIT 1
+    `
+
+    if (service.length === 0) {
+      return { success: false, error: "Service not found" }
+    }
+
+    const serviceData = service[0]
+    const oldStatus = serviceData.status
+
+    // Update service status
+    await sql`
+      UPDATE customer_services
+      SET status = ${newStatus},
+          ${newStatus === "suspended" ? sql`suspension_date = NOW(),` : sql``}
+          ${newStatus === "terminated" ? sql`termination_date = NOW(),` : sql``}
+          ${newStatus === "active" ? sql`activation_date = NOW(),` : sql``}
+          updated_at = NOW()
+      WHERE id = ${serviceId}
+    `
+
+    // Handle RADIUS provisioning based on status change
+    const username = serviceData.pppoe_username || serviceData.portal_username || `customer_${serviceData.customer_id}`
+
+    if (newStatus === "active" && oldStatus !== "active") {
+      // Activate in RADIUS
+      await provisionRadiusUser({
+        customerId: serviceData.customer_id,
+        serviceId,
+        username,
+        password: username,
+        ipAddress: serviceData.ip_address || undefined,
+        downloadSpeed: serviceData.download_speed || 10,
+        uploadSpeed: serviceData.upload_speed || 10,
+      })
+    } else if (newStatus === "suspended") {
+      // Suspend in RADIUS
+      await suspendRadiusUser({
+        customerId: serviceData.customer_id,
+        serviceId,
+        username,
+        reason: reason || "Service suspended",
+      })
+    } else if (newStatus === "terminated") {
+      // Remove from RADIUS
+      await deprovisionRadiusUser({
+        customerId: serviceData.customer_id,
+        serviceId,
+        username,
+        reason: reason || "Service terminated",
+      })
+    }
+
+    // Log the status change
+    await sql`
+      INSERT INTO activity_logs (
+        user_id,
+        action,
+        entity_type,
+        entity_id,
+        description,
+        created_at
+      ) VALUES (
+        1,
+        'status_change',
+        'customer_service',
+        ${serviceId},
+        ${`Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}`},
+        NOW()
+      )
+      ON CONFLICT DO NOTHING
+    `
+
+    revalidatePath(`/customers/${serviceData.customer_id}`)
+
+    return {
+      success: true,
+      message: `Service status updated to ${newStatus}`,
+      oldStatus,
+      newStatus,
+    }
+  } catch (error) {
+    console.error("Error updating service status:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update service status",
+    }
   }
 }

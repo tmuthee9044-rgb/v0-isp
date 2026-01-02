@@ -141,6 +141,13 @@ export async function addCustomerService(customerId: number, formData: FormData)
         service_plan_id, 
         status, 
         monthly_fee,
+        connection_type,
+        ip_address,
+        mac_address,
+        lock_to_mac,
+        auto_renew,
+        pppoe_username,
+        pppoe_password,
         activation_date,
         created_at,
         updated_at
@@ -149,6 +156,13 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
+        ${connectionType || null},
+        ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
+        ${macAddress || null},
+        ${lockToMac},
+        ${autoRenew},
+        ${pppoeEnabled ? pppoeUsername : null},
+        ${pppoeEnabled ? pppoePassword : null},
         ${initialStatus === "active" ? sql`NOW()` : null},
         NOW(),
         NOW()
@@ -517,7 +531,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
           ipAddress: ipAddress || service.ip_address,
           downloadSpeed: service.download_speed || 10,
           uploadSpeed: service.upload_speed || 10,
-          nasId: service.router_id,
+          nasId: service.router_id || undefined,
         })
       }
     }

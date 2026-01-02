@@ -11,6 +11,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "CIDR is required" }, { status: 400 })
     }
 
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/
+    if (!cidrRegex.test(cidr)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid CIDR format. Expected format: 192.168.1.0/24",
+        },
+        { status: 400 },
+      )
+    }
+
+    // Validate IP address octets and prefix
+    const [networkAddr, prefixStr] = cidr.split("/")
+    const prefix = Number.parseInt(prefixStr)
+    const octets = networkAddr.split(".").map(Number)
+
+    if (octets.some((octet) => isNaN(octet) || octet < 0 || octet > 255)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid IP address octets",
+        },
+        { status: 400 },
+      )
+    }
+
+    if (isNaN(prefix) || prefix < 0 || prefix > 32) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid subnet prefix. Must be between 0 and 32",
+        },
+        { status: 400 },
+      )
+    }
+    // </CHANGE>
+
     let query = `
       SELECT id, cidr, name, router_id
       FROM ip_subnets

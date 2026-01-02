@@ -255,7 +255,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
       `
 
       const radiusUsername = pppoeUsername || `customer_${customerId}`
-      const radiusPassword = pppoePassword || `customer_${customerId}`
+      const radiusPassword = pppoePassword || Math.random().toString(36).substring(2, 15)
 
       console.log("[v0] Provisioning to RADIUS...")
       const radiusResult = await provisionRadiusUser({
@@ -467,6 +467,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     const oldStatus = formData.get("old_status") as string
     const connectionType = formData.get("connection_type") as string
     const ipAddress = formData.get("ip_address") as string
+
     const macAddress = formData.get("mac_address") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const autoRenew = formData.get("auto_renew") === "on"
@@ -513,6 +514,24 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
     if (result.length === 0) {
       return { success: false, error: "Service not found" }
+    }
+
+    if (pppoeEnabled && (pppoeUsername || pppoePassword)) {
+      const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}`
+      const radiusPassword = pppoePassword || radiusUsername
+
+      if (status === "active") {
+        await provisionRadiusUser({
+          customerId: service.customer_id,
+          serviceId: service.id,
+          username: radiusUsername,
+          password: radiusPassword,
+          ipAddress: ipAddress || service.ip_address,
+          downloadSpeed: service.download_speed || 10,
+          uploadSpeed: service.upload_speed || 10,
+          nasId: service.router_id,
+        })
+      }
     }
 
     if (service.router_id && service.router_ip && (service.portal_username || service.ip_address)) {
@@ -612,7 +631,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     return { success: true, service: result[0] }
   } catch (error) {
     console.error("Error updating customer service:", error)
-    return { success: false, error: "Failed to update service" }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update service" }
   }
 }
 

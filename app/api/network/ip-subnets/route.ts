@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN network_devices r ON s.router_id = r.id
         LEFT JOIN locations l ON r.location = l.name
         LEFT JOIN ip_addresses ip ON ip.subnet_id = s.id
-        LEFT JOIN customer_services cs ON ip.ip_address::text = cs.ip_address AND cs.status IN ('active', 'pending', 'suspended')
+        LEFT JOIN customer_services cs ON HOST(ip.ip_address) = cs.ip_address AND cs.status IN ('active', 'pending', 'suspended')
         WHERE s.router_id = ${Number.parseInt(routerId)} 
           AND (r.type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR r.type ILIKE '%router%')
         GROUP BY s.id, r.name, r.ip_address, l.name
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN network_devices r ON s.router_id = r.id
         LEFT JOIN locations l ON r.location = l.name
         LEFT JOIN ip_addresses ip ON ip.subnet_id = s.id
-        LEFT JOIN customer_services cs ON ip.ip_address::text = cs.ip_address AND cs.status IN ('active', 'pending', 'suspended')
+        LEFT JOIN customer_services cs ON HOST(ip.ip_address) = cs.ip_address AND cs.status IN ('active', 'pending', 'suspended')
         WHERE (r.type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR r.type ILIKE '%router%')
         GROUP BY s.id, r.name, r.ip_address, l.name
         ORDER BY l.name, s.created_at DESC
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
             await sql`
               INSERT INTO ip_addresses (ip_address, subnet_id, status, created_at)
               VALUES (${ip}, ${createdSubnet.id}, 'available', NOW())
-              ON CONFLICT (ip_address, subnet_id) DO NOTHING
+              ON CONFLICT (ip_address) DO NOTHING
             `
             insertedCount++
           }

@@ -49,39 +49,17 @@ export async function getServicePlans() {
   }
 }
 
-export async function addCustomerService(customerId: number, formData: FormData) {
+export async function addCustomerService(formData: FormData) {
   try {
     const sql = await getSql()
 
     console.log("[v0] === addCustomerService START ===")
-    console.log("[v0] Customer ID:", customerId)
     console.log("[v0] Timestamp:", new Date().toISOString())
 
+    const customerId = formData.get("customer_id") as string
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
-
-    console.log("[v0] Service Plan ID:", servicePlanId)
-
-    if (!servicePlanIdStr || isNaN(servicePlanId)) {
-      console.log("[v0] Invalid service plan ID")
-      return {
-        success: false,
-        error: "Invalid service plan selected. Please select a valid service plan.",
-      }
-    }
-
     const connectionType = formData.get("connection_type") as string
-
-    if (!connectionType) {
-      return {
-        success: false,
-        error: "Connection type is required. Please select a connection type.",
-      }
-    }
-
-    const autoRenew = formData.get("auto_renew") === "on"
-    const ipAddress = formData.get("ip_address") as string
-    const subnetId = formData.get("subnet_id") as string
     const locationId = formData.get("location_id") as string
     const macAddress = formData.get("mac_address") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
@@ -92,6 +70,36 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const adminOverride = formData.get("admin_override") === "on"
     const routerId = formData.get("router_id") as string
 
+    console.log("[v0] Customer ID:", customerId)
+    console.log("[v0] Service Plan ID:", servicePlanId)
+    console.log("[v0] Connection Type:", connectionType)
+    console.log("[v0] Location ID:", locationId)
+    console.log("[v0] MAC Address:", macAddress)
+    console.log("[v0] Lock to MAC:", lockToMac)
+    console.log("[v0] PPPoE Enabled:", pppoeEnabled)
+    console.log("[v0] PPPoE Username:", pppoeUsername)
+    console.log("[v0] PPPoE Password:", pppoePassword)
+    console.log("[v0] Inventory Items:", inventoryItems)
+    console.log("[v0] Admin Override:", adminOverride)
+    console.log("[v0] Router ID:", routerId)
+
+    if (!servicePlanIdStr || isNaN(servicePlanId)) {
+      console.log("[v0] Invalid service plan ID")
+      return {
+        success: false,
+        error: "Invalid service plan selected. Please select a valid service plan.",
+      }
+    }
+
+    if (!connectionType) {
+      return {
+        success: false,
+        error: "Connection type is required. Please select a connection type.",
+      }
+    }
+
+    const ipAddress = formData.get("ip_address") as string
+
     if (ipAddress && ipAddress !== "auto") {
       console.log("[v0] Checking for duplicate IP address...")
       const existingIpAssignment = await sql`
@@ -99,7 +107,6 @@ export async function addCustomerService(customerId: number, formData: FormData)
         FROM customer_services cs
         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
         WHERE cs.customer_id = ${customerId} 
-        AND cs.ip_address = ${ipAddress}
         AND cs.status IN ('active', 'pending', 'suspended')
         LIMIT 1
       `
@@ -140,9 +147,14 @@ export async function addCustomerService(customerId: number, formData: FormData)
         service_plan_id, 
         status, 
         monthly_fee,
+        activation_date,
         ip_address,
         device_id,
-        activation_date,
+        connection_type,
+        lock_to_mac,
+        auto_renew,
+        pppoe_username,
+        pppoe_password,
         created_at,
         updated_at
       ) VALUES (
@@ -150,9 +162,14 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
+        ${initialStatus === "active" ? sql`NOW()` : null},
         ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         ${macAddress || null},
-        ${initialStatus === "active" ? sql`NOW()` : null},
+        ${connectionType || "pppoe"},
+        ${lockToMac},
+        ${formData.get("auto_renew") === "on"},
+        ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         NOW(),
         NOW()
       ) RETURNING *
@@ -180,7 +197,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         )
         ON CONFLICT DO NOTHING
       `
-    } else if (ipAddress && subnetId) {
+    } else if (ipAddress && locationId) {
       await sql`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
@@ -394,6 +411,11 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         monthly_fee = ${servicePlan[0].price},
         ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         device_id = ${device_id || null},
+        connection_type = ${connectionType || "pppoe"},
+        lock_to_mac = ${lockToMac},
+        auto_renew = ${autoRenew},
+        pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
@@ -460,20 +482,16 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
   }
 }
 
-export async function updateCustomerService(serviceId: number, formData: FormData) {
+export async function updateCustomerService(formData: FormData) {
   try {
     const sql = await getSql()
 
-    const monthlyFee = Number.parseFloat(formData.get("monthly_fee") as string)
-    const status = formData.get("status") as string
-    const oldStatus = formData.get("old_status") as string
-    const connectionType = formData.get("connection_type") as string
-    const ipAddress = formData.get("ip_address") as string
-
-    const device_id = formData.get("device_id") as string
-    const macAddress = formData.get("mac_address") as string
-    const lockToMac = formData.get("lock_to_mac") === "on"
+    const serviceId = formData.get("service_id") as string
+    const servicePlanId = formData.get("service_plan_id") as string
     const autoRenew = formData.get("auto_renew") === "on"
+    const ipAddress = formData.get("ip_address") as string
+    const device_id = formData.get("device_id") as string
+    const lockToMac = formData.get("lock_to_mac") === "on"
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
@@ -501,14 +519,15 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
     const result = await sql`
       UPDATE customer_services
       SET
-        service_plan_id = ${service.service_plan_id},
-        status = ${status},
-        monthly_fee = ${monthlyFee},
-        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : service.ip_address},
+        service_plan_id = ${servicePlanId},
+        status = ${formData.get("status")},
+        monthly_fee = ${formData.get("monthly_fee")},
+        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         device_id = ${device_id || null},
-        mac_address = ${macAddress || service.mac_address},
         lock_to_mac = ${lockToMac},
         auto_renew = ${autoRenew},
+        pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
@@ -547,7 +566,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       Promise.resolve().then(async () => {
         try {
           // Status changed from pending to active - ADD to router AND RADIUS
-          if (oldStatus === "pending" && status === "active") {
+          if (service.status === "pending" && formData.get("status") === "active") {
             console.log("[v0] Async provisioning: pending -> active")
 
             const [routerResult, radiusResult] = await Promise.all([
@@ -579,7 +598,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
           }
 
           // Status changed to suspended - REMOVE from router AND RADIUS
-          if (status === "suspended" && oldStatus !== "suspended") {
+          if (formData.get("status") === "suspended" && service.status !== "suspended") {
             console.log("[v0] Async deprovisioning: -> suspended")
 
             await Promise.all([
@@ -602,7 +621,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
           }
 
           // Status changed from suspended to active - RE-ADD to router AND RADIUS
-          if (status === "active" && oldStatus === "suspended") {
+          if (formData.get("status") === "active" && service.status === "suspended") {
             console.log("[v0] Async re-provisioning: suspended -> active")
 
             await Promise.all([
@@ -851,16 +870,18 @@ export async function processPayment(customerId: number, invoiceId: number, amou
   }
 }
 
-export async function updateServiceStatus(serviceId: number, newStatus: string, reason?: string) {
+export async function updateServiceStatus(
+  serviceId: string,
+  newStatus: string,
+  reason?: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     const sql = await getSql()
 
-    // Get service details
     const service = await sql`
-      SELECT cs.*, c.portal_username, sp.download_speed, sp.upload_speed
+      SELECT cs.*, c.portal_username
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
-      JOIN service_plans sp ON sp.id = cs.service_plan_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
     `
@@ -872,7 +893,6 @@ export async function updateServiceStatus(serviceId: number, newStatus: string, 
     const serviceData = service[0]
     const oldStatus = serviceData.status
 
-    // Update service status
     await sql`
       UPDATE customer_services
       SET status = ${newStatus},
@@ -885,6 +905,7 @@ export async function updateServiceStatus(serviceId: number, newStatus: string, 
 
     // Handle RADIUS provisioning based on status change
     const username = serviceData.pppoe_username || serviceData.portal_username || `customer_${serviceData.customer_id}`
+    const password = serviceData.pppoe_password || username
 
     if (newStatus === "active" && oldStatus !== "active") {
       // Activate in RADIUS
@@ -892,7 +913,7 @@ export async function updateServiceStatus(serviceId: number, newStatus: string, 
         customerId: serviceData.customer_id,
         serviceId,
         username,
-        password: username,
+        password,
         ipAddress: serviceData.ip_address || undefined,
         downloadSpeed: serviceData.download_speed || 10,
         uploadSpeed: serviceData.upload_speed || 10,

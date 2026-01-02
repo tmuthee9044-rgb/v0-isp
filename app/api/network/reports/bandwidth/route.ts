@@ -20,7 +20,7 @@ export async function GET(request: Request) {
           COALESCE(MAX(rph.bandwidth_in + rph.bandwidth_out), 0)::int as peak_usage,
           COALESCE(AVG(rph.bandwidth_in + rph.bandwidth_out), 0)::int as avg_usage
         FROM network_devices nd
-        LEFT JOIN router_performance_history rph ON nd.id = rph.router_id 
+        LEFT JOIN router_performance_history rph ON rph.router_id = nd.id::text
           AND rph.timestamp >= CURRENT_DATE - INTERVAL '7 days'
         WHERE nd.status = 'connected' AND nd.type = 'router' 
           AND nd.location = ${location}
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
           COALESCE(MAX(rph.bandwidth_in + rph.bandwidth_out), 0)::int as peak_usage,
           COALESCE(AVG(rph.bandwidth_in + rph.bandwidth_out), 0)::int as avg_usage
         FROM network_devices nd
-        LEFT JOIN router_performance_history rph ON nd.id = rph.router_id 
+        LEFT JOIN router_performance_history rph ON rph.router_id = nd.id::text
           AND rph.timestamp >= CURRENT_DATE - INTERVAL '7 days'
         WHERE nd.status = 'connected' AND nd.type = 'router'
         GROUP BY nd.id, nd.name, nd.location

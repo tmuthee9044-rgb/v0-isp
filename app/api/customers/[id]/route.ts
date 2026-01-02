@@ -63,7 +63,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
                 'monthly_fee', sp.price,
                 'upload_speed', sp.speed_upload,
                 'download_speed', sp.speed_download,
-                'data_limit', sp.data_limit
+                'data_limit', sp.data_limit,
+                'ip_address', cs.ip_address,
+                'device_id', cs.device_id
               )
             END
           ) FILTER (WHERE cs.id IS NOT NULL),

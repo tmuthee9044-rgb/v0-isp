@@ -292,8 +292,24 @@ function AddServiceModal({
     fetchCustomerDetails()
     fetchServicePlans()
     fetchIpPools()
+  }, [customerId])
+
+  useEffect(() => {
+    console.log("[v0] Edit modal useEffect triggered")
+    console.log("[v0] editMode:", editMode)
+    console.log("[v0] editingService:", JSON.stringify(editingService, null, 2))
 
     if (editMode && editingService) {
+      console.log("[v0] Populating edit form with service data:")
+      console.log("[v0] - service_plan_id:", editingService.service_plan_id)
+      console.log("[v0] - connection_type:", editingService.connection_type)
+      console.log("[v0] - ip_address:", editingService.ip_address)
+      console.log("[v0] - device_id:", editingService.device_id)
+      console.log("[v0] - lock_to_mac:", editingService.lock_to_mac)
+      console.log("[v0] - pppoe_username:", editingService.pppoe_username)
+      console.log("[v0] - pppoe_password:", editingService.pppoe_password ? "***" : "(empty)")
+      console.log("[v0] - auto_renew:", editingService.auto_renew)
+
       setSelectedPlan(editingService.service_plan_id?.toString() || "")
       setConnectionType(editingService.connection_type || "")
       setSelectedIpAddress(editingService.ip_address || "")
@@ -304,8 +320,10 @@ function AddServiceModal({
       setPppoePassword(editingService.pppoe_password || "")
       setAutoRenew(editingService.auto_renew !== false)
       setCurrentTab("plans")
+
+      console.log("[v0] Form fields populated successfully")
     }
-  }, [editMode, editingService, customerId])
+  }, [editMode, editingService])
 
   useEffect(() => {
     if (pppoeEnabled && !pppoeUsername && customerAccountNumber) {

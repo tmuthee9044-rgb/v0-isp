@@ -208,6 +208,16 @@ CREATE TABLE customer_services (
     suspension_date DATE,
     termination_date DATE,
     monthly_fee DECIMAL(10, 2),
+    -- Connection Configuration Columns
+    connection_type VARCHAR(50) DEFAULT 'pppoe',
+    ip_address VARCHAR(45),
+    mac_address VARCHAR(17),
+    device_id INTEGER,
+    lock_to_mac BOOLEAN DEFAULT false,
+    auto_renew BOOLEAN DEFAULT true,
+    pppoe_username VARCHAR(100),
+    pppoe_password VARCHAR(100),
+    location_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -673,7 +683,8 @@ CREATE TABLE IF NOT EXISTS radius_sessions_archive (
     packets_in BIGINT,
     packets_out BIGINT,
     terminate_cause VARCHAR(50),
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS radius_nas (
@@ -741,6 +752,13 @@ CREATE INDEX IF NOT EXISTS idx_radius_sessions_acct_id ON radius_sessions_active
 CREATE INDEX IF NOT EXISTS idx_radius_archive_username ON radius_sessions_archive(username);
 CREATE INDEX IF NOT EXISTS idx_radius_nas_ip ON radius_nas(ip_address);
 
+-- Create indexes for connection configuration columns
+CREATE INDEX IF NOT EXISTS idx_customer_services_ip_address ON customer_services(ip_address);
+CREATE INDEX IF NOT EXISTS idx_customer_services_mac_address ON customer_services(mac_address);
+CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_username ON customer_services(pppoe_username);
+CREATE INDEX IF NOT EXISTS idx_customer_services_device_id ON customer_services(device_id);
+CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id);
+
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')
 ON CONFLICT (migration_name) DO NOTHING;
@@ -750,5 +768,5 @@ DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
     RAISE NOTICE 'Total tables created: 25';
-    RAISE NOTICE 'Total indexes created: 37';
+    RAISE NOTICE 'Total indexes created: 42';
 END $$;

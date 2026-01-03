@@ -631,16 +631,27 @@ sql {
 }
 SQLCONF
 
-    sudo sed -i "s/DB_USER/$DB_USER/g" "$SQL_CONF"
-    sudo sed -i "s/DB_PASSWORD/$DB_PASSWORD/g" "$SQL_CONF"
-    sudo sed -i "s/DB_NAME/$DB_NAME/g" "$SQL_CONF"
+    print_info "Installing SQL module configuration..."
+    if [ ! -d "$FREERADIUS_DIR/mods-available" ]; then
+        print_warning "Creating mods-available directory..."
+        sudo mkdir -p "$FREERADIUS_DIR/mods-available"
+    fi
     
-    print_success "SQL configuration created and linked to database: ${DB_NAME}"
+    sudo cp /tmp/freeradius_sql.conf "$SQL_CONF"
+    sudo chmod 644 "$SQL_CONF"
+    sudo chown freerad:freerad "$SQL_CONF" 2>/dev/null || sudo chown root:root "$SQL_CONF"
+    
+    print_success "SQL configuration installed at $SQL_CONF"
     
     # Enable SQL module
     print_info "Enabling SQL module..."
     if [ -d "$FREERADIUS_DIR/mods-enabled" ]; then
         sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql" 2>/dev/null || true
+        print_success "SQL module enabled"
+    else
+        print_warning "mods-enabled directory not found, creating it..."
+        sudo mkdir -p "$FREERADIUS_DIR/mods-enabled"
+        sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql"
         print_success "SQL module enabled"
     fi
     

@@ -122,7 +122,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(25
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(20);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_address VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_address TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(100);
@@ -624,5 +624,42 @@ BEGIN
         PERFORM setval('vehicles_id_seq', COALESCE((SELECT MAX(id) FROM vehicles), 0) + 1, false);
         ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT nextval('vehicles_id_seq');
         ALTER SEQUENCE vehicles_id_seq OWNED BY vehicles.id;
+    END IF;
+END $$;
+
+-- Adding interface_traffic_history table for per-port traffic monitoring
+-- Create table for per-interface traffic history from routers
+CREATE TABLE IF NOT EXISTS interface_traffic_history (
+  id SERIAL PRIMARY KEY,
+  router_id INTEGER NOT NULL REFERENCES network_devices(id) ON DELETE CASCADE,
+  interface_name VARCHAR(100) NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  rx_bytes BIGINT DEFAULT 0,
+  tx_bytes BIGINT DEFAULT 0,
+  rx_packets BIGINT DEFAULT 0,
+  tx_packets BIGINT DEFAULT 0,
+  rx_errors INTEGER DEFAULT 0,
+  tx_errors INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add indexes for performance (Rule 6 - fast loading under 5ms)
+CREATE INDEX IF NOT EXISTS idx_interface_traffic_router ON interface_traffic_history(router_id);
+CREATE INDEX IF NOT EXISTS idx_interface_traffic_timestamp ON interface_traffic_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_interface_traffic_interface ON interface_traffic_history(interface_name);
+CREATE INDEX IF NOT EXISTS idx_interface_traffic_router_time ON interface_traffic_history(router_id, timestamp DESC);
+
+-- Add comment
+COMMENT ON TABLE interface_traffic_history IS 'Historical traffic statistics per router interface/port for bandwidth monitoring';
+
+-- Adding ip_subnets ID sequence fix
+-- Fix ip_subnets table ID sequence for auto-increment
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'ip_subnets_id_seq') THEN
+        CREATE SEQUENCE ip_subnets_id_seq;
+        PERFORM setval('ip_subnets_id_seq', COALESCE((SELECT MAX(id) FROM ip_subnets), 0) + 1, false);
+        ALTER TABLE ip_subnets ALTER COLUMN id SET DEFAULT nextval('ip_subnets_id_seq');
+        ALTER SEQUENCE ip_subnets_id_seq OWNED BY ip_subnets.id;
     END IF;
 END $$;

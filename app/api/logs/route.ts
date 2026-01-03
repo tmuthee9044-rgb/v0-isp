@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         logs: routerLogs.map((log) => ({
           ...log,
-          timestamp: new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19),
+          timestamp: log.timestamp ? new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19) : null,
         })),
         total: routerTotal,
         categoryStats: {
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         logs: combinedLogs.map((log) => ({
           ...log,
-          timestamp: new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19),
+          timestamp: log.timestamp ? new Date(log.timestamp).toISOString().replace("T", " ").substring(0, 19) : null,
         })),
         total: radiusTotal,
         categoryStats: {
@@ -256,7 +256,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       logs: logs.map((log) => ({
         ...log,
-        timestamp: log.timestamp.toISOString().replace("T", " ").substring(0, 19),
+        timestamp: log.timestamp ? log.timestamp.toISOString().replace("T", " ").substring(0, 19) : null,
       })),
       total: Number.parseInt(total),
       categoryStats: categoryStats.reduce((acc: any, stat: any) => {

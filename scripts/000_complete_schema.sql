@@ -31,8 +31,6 @@ DROP TABLE IF EXISTS locations CASCADE;
 DROP TABLE IF EXISTS performance_reviews CASCADE;
 DROP TABLE IF EXISTS company_profiles CASCADE;
 DROP TABLE IF EXISTS system_config CASCADE;
-DROP TABLE IF EXISTS system_logs CASCADE;
-DROP TABLE IF EXISTS radius_users CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -206,15 +204,6 @@ CREATE TABLE customer_services (
     suspension_date DATE,
     termination_date DATE,
     monthly_fee DECIMAL(10, 2),
-    connection_type VARCHAR(50) DEFAULT 'pppoe',
-    ip_address VARCHAR(45),
-    mac_address VARCHAR(17),
-    device_id INTEGER,
-    lock_to_mac BOOLEAN DEFAULT false,
-    auto_renew BOOLEAN DEFAULT true,
-    pppoe_username VARCHAR(100),
-    pppoe_password VARCHAR(100),
-    location_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -270,7 +259,6 @@ CREATE TABLE network_devices (
     enable_traffic_recording BOOLEAN DEFAULT true,
     enable_speed_control BOOLEAN DEFAULT true,
     blocking_page_url TEXT,
-    customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius',
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
     model VARCHAR(100),
@@ -629,42 +617,6 @@ CREATE TABLE IF NOT EXISTS system_config (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Adding system_logs table definition after system_config
-CREATE TABLE IF NOT EXISTS system_logs (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    level VARCHAR(20) NOT NULL CHECK (level IN ('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')),
-    source VARCHAR(100) NOT NULL,
-    category VARCHAR(50) NOT NULL,
-    message TEXT NOT NULL,
-    ip_address INET,
-    user_id VARCHAR(100),
-    session_id VARCHAR(100),
-    details JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Adding radius_users table definition
-CREATE TABLE IF NOT EXISTS radius_users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-    service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE,
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'expired', 'disabled')),
-    ip_address INET,
-    ip_pool VARCHAR(100),
-    download_limit BIGINT,
-    upload_limit BIGINT,
-    session_timeout INTEGER,
-    idle_timeout INTEGER,
-    simultaneous_use INTEGER DEFAULT 1,
-    fup_limit BIGINT,
-    expiry_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
 -- Insert default company profile
 INSERT INTO company_profiles (
     name, 
@@ -705,15 +657,6 @@ CREATE INDEX idx_performance_reviews_employee_id ON performance_reviews(employee
 CREATE INDEX idx_performance_reviews_review_date ON performance_reviews(review_date);
 CREATE INDEX idx_company_profiles_name ON company_profiles(name);
 CREATE INDEX idx_system_config_key ON system_config(key);
-CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
-CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category);
-CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
-CREATE INDEX IF NOT EXISTS idx_system_logs_user_id ON system_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username);
-CREATE INDEX IF NOT EXISTS idx_radius_users_customer ON radius_users(customer_id);
-CREATE INDEX IF NOT EXISTS idx_radius_users_status ON radius_users(status);
-CREATE INDEX IF NOT EXISTS idx_radius_users_expiry ON radius_users(expiry_date);
 
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')
@@ -723,6 +666,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 23';
-    RAISE NOTICE 'Total indexes created: 36';
+    RAISE NOTICE 'Total tables created: 21';
+    RAISE NOTICE 'Total indexes created: 32';
 END $$;

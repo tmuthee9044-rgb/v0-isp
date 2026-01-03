@@ -6,48 +6,11 @@ import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/ro
 import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 
-async function storePPPoECredentials(serviceId: number, username: string, password: string) {
-  const sql = await getSql()
-  await sql`
-    INSERT INTO pending_tasks (
-      task_type,
-      entity_id,
-      task_data,
-      status,
-      created_at
-    ) VALUES (
-      'store_pppoe',
-      ${serviceId},
-      ${JSON.stringify({ username, password })},
-      'completed',
-      NOW()
-    )
-  `
-}
-
-async function retrievePPPoECredentials(serviceId: number): Promise<{ username: string; password: string } | null> {
-  const sql = await getSql()
-  const result = await sql`
-    SELECT task_data 
-    FROM pending_tasks 
-    WHERE task_type = 'store_pppoe' 
-    AND entity_id = ${serviceId}
-    AND status = 'completed'
-    ORDER BY created_at DESC 
-    LIMIT 1
-  `
-
-  if (result && result.length > 0) {
-    return JSON.parse(result[0].task_data)
-  }
-  return null
-}
-
 export async function getCustomerServices(customerId: number) {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const services = await db.query(`
+    const services = await sql`
       SELECT 
         cs.*,
         sp.name as service_name,
@@ -60,9 +23,9 @@ export async function getCustomerServices(customerId: number) {
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC
-    `)
+    `
 
-    return services.rows || []
+    return services || []
   } catch (error) {
     console.error("Error fetching customer services:", error)
     return []
@@ -71,37 +34,41 @@ export async function getCustomerServices(customerId: number) {
 
 export async function getServicePlans() {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const plans = await db.query(`
+    const plans = await sql`
       SELECT * FROM service_plans 
       WHERE status = 'active' 
       ORDER BY price ASC
-    `)
+    `
 
-    return { success: true, plans: plans.rows || [] }
+    return { success: true, plans: plans || [] }
   } catch (error) {
     console.error("Error fetching service plans:", error)
     return { success: false, plans: [], error: "Failed to fetch service plans" }
   }
 }
 
-export async function addCustomerService(customerId: number, formData: FormData) {
+export async function addCustomerService(formData: FormData) {
   try {
+    const sql = await getSql()
+
     console.log("[v0] === addCustomerService START ===")
     console.log("[v0] Timestamp:", new Date().toISOString())
 
-    const servicePlanId = Number.parseInt(formData.get("service_plan_id") as string)
+    const customerId = formData.get("customer_id") as string
+    const servicePlanIdStr = formData.get("service_plan_id") as string
+    const servicePlanId = Number.parseInt(servicePlanIdStr)
     const connectionType = formData.get("connection_type") as string
-    const ipAddress = (formData.get("ip_address") as string) || undefined
-    const macAddress = (formData.get("mac_address") as string) || undefined
-    const deviceId = macAddress ? Number.parseInt(macAddress.replace(/[^0-9]/g, "")) : null
+    const locationId = formData.get("location_id") as string
+    const macAddress = formData.get("mac_address") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
-    const pppoeUsername = (formData.get("pppoe_username") as string) || undefined
-    const pppoePassword = (formData.get("pppoe_password") as string) || undefined
-    const autoRenew = formData.get("auto_renew") === "on"
-    const locationId = formData.get("location_id") ? Number.parseInt(formData.get("location_id") as string) : null
+    const pppoeUsername = formData.get("pppoe_username") as string
+    const pppoePassword = formData.get("pppoe_password") as string
+    const inventoryItems = formData.get("inventory_items") as string
+    const adminOverride = formData.get("admin_override") === "on"
+    const routerId = formData.get("router_id") as string
 
     console.log("[v0] Customer ID:", customerId)
     console.log("[v0] Service Plan ID:", servicePlanId)
@@ -109,14 +76,19 @@ export async function addCustomerService(customerId: number, formData: FormData)
     console.log("[v0] Location ID:", locationId)
     console.log("[v0] MAC Address:", macAddress)
     console.log("[v0] Lock to MAC:", lockToMac)
+    console.log("[v0] PPPoE Enabled:", pppoeEnabled)
     console.log("[v0] PPPoE Username:", pppoeUsername)
-    console.log("[v0] PPPoE Password:", pppoePassword ? "***" : undefined)
-    console.log("[v0] Device ID:", deviceId)
-    console.log("[v0] Auto Renew:", autoRenew)
+    console.log("[v0] PPPoE Password:", pppoePassword)
+    console.log("[v0] Inventory Items:", inventoryItems)
+    console.log("[v0] Admin Override:", adminOverride)
+    console.log("[v0] Router ID:", routerId)
 
-    if (!servicePlanId || isNaN(servicePlanId)) {
+    if (!servicePlanIdStr || isNaN(servicePlanId)) {
       console.log("[v0] Invalid service plan ID")
-      return { success: false, error: "Invalid service plan selected. Please select a valid service plan." }
+      return {
+        success: false,
+        error: "Invalid service plan selected. Please select a valid service plan.",
+      }
     }
 
     if (!connectionType) {
@@ -126,16 +98,15 @@ export async function addCustomerService(customerId: number, formData: FormData)
       }
     }
 
-    const ipAddressProvided = ipAddress && ipAddress !== "auto"
+    const ipAddress = formData.get("ip_address") as string
 
-    if (ipAddressProvided) {
+    if (ipAddress && ipAddress !== "auto") {
       console.log("[v0] Checking for duplicate IP address...")
-      const sql = await getSql()
       const existingIpAssignment = await sql`
         SELECT cs.id, sp.name as service_name
         FROM customer_services cs
         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-        WHERE cs.ip_address = ${ipAddress}
+        WHERE cs.customer_id = ${customerId} 
         AND cs.status IN ('active', 'pending', 'suspended')
         LIMIT 1
       `
@@ -144,7 +115,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         console.log("[v0] DUPLICATE IP DETECTED - IP already assigned:", ipAddress)
         return {
           success: false,
-          error: `This IP address (${ipAddress}) is already assigned to another service: ${existingIpAssignment[0].service_name || "Unknown Service"}. Please select a different IP address.`,
+          error: `This IP address (${ipAddress}) is already assigned to another service for this customer: ${existingIpAssignment[0].service_name || "Unknown Service"}. Please select a different IP address.`,
         }
       }
       console.log("[v0] IP address is available")
@@ -152,11 +123,10 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Proceeding with service creation...")
 
-    const sql = await getSql()
     const servicePlan = await sql`
-      SELECT id, name, price, download_speed, upload_speed 
+      SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
-      WHERE id = ${servicePlanId} AND status = 'active'
+      WHERE id = ${servicePlanId} AND is_active = true
       LIMIT 1
     `
 
@@ -167,7 +137,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
       }
     }
 
-    const initialStatus = autoRenew ? "active" : "pending"
+    const initialStatus = adminOverride ? "active" : "pending"
 
     console.log("[v0] Creating new service with status:", initialStatus)
 
@@ -178,15 +148,13 @@ export async function addCustomerService(customerId: number, formData: FormData)
         status, 
         monthly_fee,
         activation_date,
-        connection_type,
         ip_address,
-        mac_address,
         device_id,
+        connection_type,
         lock_to_mac,
         auto_renew,
         pppoe_username,
         pppoe_password,
-        location_id,
         created_at,
         updated_at
       ) VALUES (
@@ -194,24 +162,21 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${servicePlanId},
         ${initialStatus},
         ${servicePlan[0].price},
-        ${initialStatus === "active" ? new Date() : null},
-        ${connectionType || "pppoe"},
-        ${ipAddressProvided ? ipAddress : null},
+        ${initialStatus === "active" ? sql`NOW()` : null},
+        ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         ${macAddress || null},
-        ${deviceId || null},
+        ${connectionType || "pppoe"},
         ${lockToMac},
-        ${autoRenew},
-        ${pppoeUsername || null},
-        ${pppoePassword || null},
-        ${locationId || null},
-        ${new Date()},
-        ${new Date()}
-      )
-      RETURNING id
+        ${formData.get("auto_renew") === "on"},
+        ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        ${pppoeEnabled && pppoePassword ? pppoePassword : null},
+        NOW(),
+        NOW()
+      ) RETURNING *
     `
 
     const serviceId = result[0].id
-    let allocatedIpAddress = ipAddressProvided ? ipAddress : null
+    let allocatedIpAddress = null
 
     if (ipAddress === "auto" || !ipAddress) {
       await sql`
@@ -226,34 +191,17 @@ export async function addCustomerService(customerId: number, formData: FormData)
           'allocate_ip',
           'customer_service',
           ${serviceId},
-          ${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })},
+          ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
           'pending',
-          ${new Date()}
+          NOW()
         )
+        ON CONFLICT DO NOTHING
       `
-    } else if (ipAddressProvided && locationId) {
-      console.log("[v0] Checking IP uniqueness for:", ipAddress)
-
-      const existingAssignment = await sql`
-        SELECT cs.id, cs.customer_id, c.first_name, c.last_name
-        FROM customer_services cs
-        JOIN customers c ON c.id = cs.customer_id
-        WHERE cs.ip_address = ${ipAddress}
-        AND cs.status IN ('active', 'pending', 'suspended')
-        AND cs.id != ${serviceId}
-      `
-
-      if (existingAssignment.length > 0) {
-        const existing = existingAssignment[0]
-        throw new Error(
-          `IP address ${ipAddress} is already assigned to ${existing.first_name} ${existing.last_name} (Customer ID: ${existing.customer_id})`,
-        )
-      }
-
+    } else if (ipAddress && locationId) {
       await sql`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-        WHERE CAST(ip_address AS TEXT) = ${ipAddress}
+        WHERE ip_address::text = ${ipAddress}
       `
       allocatedIpAddress = ipAddress
 
@@ -283,14 +231,14 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${invoiceNumber},
         ${servicePlan[0].price},
         ${servicePlan[0].price},
-        ${dueDate},
-        ${autoRenew ? "paid" : "pending"},
-        ${"Initial invoice for " + servicePlan[0].name},
-        ${new Date()}
+        ${dueDate.toISOString().split("T")[0]},
+        ${adminOverride ? "paid" : "pending"},
+        ${`Initial invoice for ${servicePlan[0].name}`},
+        NOW()
       ) RETURNING id
     `
 
-    if (autoRenew) {
+    if (adminOverride) {
       await sql`
         UPDATE invoices 
         SET paid_amount = ${servicePlan[0].price}
@@ -308,21 +256,25 @@ export async function addCustomerService(customerId: number, formData: FormData)
             customer_id: customerId,
             service_id: serviceId,
             invoice_id: invoice[0].id,
-            reason: "auto_renew",
-          })},
-          ${new Date()}
+            reason: "admin_override",
+          })}::jsonb,
+          NOW()
         )
       `
 
-      console.log("[v0] Provisioning to RADIUS with credentials...")
+      const radiusUsername = pppoeUsername || `customer_${customerId}`
+      const radiusPassword = pppoePassword || Math.random().toString(36).substring(2, 15)
+
+      console.log("[v0] Provisioning to RADIUS...")
       const radiusResult = await provisionRadiusUser({
         customerId,
-        serviceId: serviceId,
-        username: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
-        password: pppoePassword || Math.random().toString(36).substring(2, 15),
+        serviceId,
+        username: radiusUsername,
+        password: radiusPassword,
         ipAddress: allocatedIpAddress || undefined,
-        downloadSpeed: servicePlan[0].download_speed,
-        uploadSpeed: servicePlan[0].upload_speed,
+        downloadSpeed: servicePlan[0].speed_download,
+        uploadSpeed: servicePlan[0].speed_upload,
+        nasId: routerId ? Number.parseInt(routerId) : undefined,
       })
 
       if (!radiusResult.success) {
@@ -331,85 +283,82 @@ export async function addCustomerService(customerId: number, formData: FormData)
         console.log("[v0] RADIUS user provisioned successfully")
       }
 
-      if (locationId) {
+      if (routerId) {
         console.log("[v0] Auto-provisioning service to physical router...")
 
         const provisionResult = await provisionServiceToRouter({
           serviceId,
           customerId,
-          locationId,
+          routerId: Number.parseInt(routerId),
           ipAddress: allocatedIpAddress || undefined,
           connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
-          pppoeUsername: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
-          pppoePassword: pppoePassword || Math.random().toString(36).substring(2, 15),
-          downloadSpeed: servicePlan[0].download_speed,
-          uploadSpeed: servicePlan[0].upload_speed,
+          pppoeUsername: radiusUsername,
+          pppoePassword: radiusPassword,
+          downloadSpeed: servicePlan[0].speed_download,
+          uploadSpeed: servicePlan[0].speed_upload,
         })
 
         if (!provisionResult.success) {
           console.log("[v0] Warning: Router provisioning failed:", provisionResult.error)
+          // Don't fail the entire operation, just log the warning
         } else {
           console.log("[v0] Service auto-provisioned to router successfully")
         }
+      } else {
+        console.log("[v0] No router ID provided, skipping physical router provisioning")
       }
     }
 
-    if (pppoeUsername && pppoePassword) {
-      console.log("[v0] Storing PPPoE credentials in RADIUS tables:", pppoeUsername)
+    if (inventoryItems) {
+      try {
+        const itemIds = JSON.parse(inventoryItems)
+        if (itemIds.length > 0) {
+          for (const itemId of itemIds) {
+            await sql`
+              INSERT INTO service_inventory (service_id, inventory_id, assigned_at, status)
+              VALUES (${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')
+              ON CONFLICT DO NOTHING
+            `
+          }
 
-      await sql`
-        INSERT INTO radcheck (username, attribute, op, value, created_at, updated_at)
-        VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword}, ${new Date()}, ${new Date()})
-        ON CONFLICT (username, attribute) 
-        DO UPDATE SET value = ${pppoePassword}, updated_at = ${new Date()}
-      `
-
-      const downloadLimit = servicePlan[0].download_speed
-      const uploadLimit = servicePlan[0].upload_speed
-
-      await sql`
-        INSERT INTO radreply (username, attribute, op, value, created_at, updated_at)
-        VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${downloadLimit + "M/" + uploadLimit + "M"}, ${new Date()}, ${new Date()})
-        ON CONFLICT (username, attribute)
-        DO UPDATE SET value = ${downloadLimit + "M/" + uploadLimit + "M"}, updated_at = ${new Date()}
-      `
-
-      if (macAddress && lockToMac) {
-        await sql`
-          INSERT INTO radcheck (username, attribute, op, value, created_at, updated_at)
-          VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress}, ${new Date()}, ${new Date()})
-          ON CONFLICT (username, attribute)
-          DO UPDATE SET value = ${macAddress}, updated_at = ${new Date()}
-        `
+          await sql`
+            UPDATE inventory 
+            SET stock_quantity = stock_quantity - 1
+            WHERE id = ANY(${itemIds.map((id: string) => Number.parseInt(id))})
+            AND stock_quantity > 0
+          `
+        }
+      } catch (inventoryError) {
+        console.error("Inventory assignment error:", inventoryError)
       }
-
-      console.log("[v0] PPPoE credentials stored in RADIUS tables successfully")
     }
 
     revalidatePath(`/customers/${customerId}`, "page")
 
-    console.log("[v0] Service created successfully:", serviceId)
+    console.log("[v0] Service created successfully:", result[0].id)
     console.log("[v0] === addCustomerService END ===")
 
     return {
       success: true,
-      serviceId,
-      message: autoRenew
-        ? "Service activated immediately with auto renew."
+      service: result[0],
+      invoice: { id: invoice[0].id },
+      ip_address: allocatedIpAddress,
+      message: adminOverride
+        ? "Service activated immediately with admin override."
         : "Service created with pending payment status. IP will be assigned upon activation.",
     }
-  } catch (error: any) {
-    console.error("[v0] Error adding customer service:", error.message)
+  } catch (error) {
+    console.error("Error adding customer service:", error)
     return {
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : "Failed to add service. Please try again.",
     }
   }
 }
 
 export async function updateCustomerServiceWithoutInvoice(serviceId: number, formData: FormData) {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
@@ -438,57 +387,66 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
 
-    const servicePlan = await db.query(`
+    // Get the service plan details
+    const servicePlan = await sql`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
       WHERE id = ${servicePlanId}
       LIMIT 1
-    `)
+    `
 
-    if (servicePlan.rows.length === 0) {
+    if (servicePlan.length === 0) {
       return {
         success: false,
         error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
       }
     }
 
-    const result = await db.query(`
+    // Update the service WITHOUT creating a new invoice
+    const result = await sql`
       UPDATE customer_services
       SET
         service_plan_id = ${servicePlanId},
-        status = '${formData.get("status")}',
-        monthly_fee = ${servicePlan.rows[0].price},
-        ip_address = ${ipAddress && ipAddress !== "auto" ? `'${ipAddress}'` : "null"},
-        device_id = ${device_id || "null"},
-        connection_type = '${connectionType || "pppoe"}',
+        status = ${formData.get("status")},
+        monthly_fee = ${servicePlan[0].price},
+        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
+        device_id = ${device_id || null},
+        connection_type = ${connectionType || "pppoe"},
+        lock_to_mac = ${lockToMac},
+        auto_renew = ${autoRenew},
+        pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
-    `)
+    `
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return {
         success: false,
         error: "Service not found",
       }
     }
 
+    // Provision PPPoE credentials to RADIUS if enabled
     if (pppoeEnabled && pppoeUsername && pppoePassword) {
       console.log("[v0] Provisioning PPPoE credentials to RADIUS...")
       try {
         await provisionToStandardRadiusTables(
           pppoeUsername,
           pppoePassword,
-          servicePlan.rows[0].speed_download || "10M",
-          servicePlan.rows[0].speed_upload || "10M",
+          servicePlan[0].speed_download || "10M",
+          servicePlan[0].speed_upload || "10M",
         )
         console.log("[v0] PPPoE credentials provisioned to RADIUS successfully")
       } catch (radiusError) {
         console.error("[v0] RADIUS provisioning failed:", radiusError)
+        // Continue even if RADIUS provisioning fails
       }
     }
 
-    await db.query(`
+    // Log the activity
+    await sql`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -501,18 +459,18 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         'update',
         'customer_service',
         ${serviceId},
-        'Updated service to ${servicePlan.rows[0].name}',
+        ${`Updated service to ${servicePlan[0].name}`},
         NOW()
       )
       ON CONFLICT DO NOTHING
-    `)
+    `
 
-    const customerId = result.rows[0].customer_id
+    const customerId = result[0].customer_id
     revalidatePath(`/customers/${customerId}`, "page")
 
     return {
       success: true,
-      service: result.rows[0],
+      service: result[0],
       message: "Service updated successfully",
     }
   } catch (error) {
@@ -524,143 +482,205 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
   }
 }
 
-export async function updateCustomerService(
-  serviceId: number,
-  data: {
-    servicePlanId?: number
-    status?: string
-    connectionType?: string
-    ipAddress?: string
-    macAddress?: string
-    deviceId?: number | null
-    lockToMac?: boolean
-    pppoeUsername?: string
-    pppoePassword?: string
-    autoRenew?: boolean
-    locationId?: number | null
-  },
-) {
+export async function updateCustomerService(formData: FormData) {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const {
-      servicePlanId,
-      status,
-      connectionType,
-      ipAddress,
-      macAddress,
-      deviceId,
-      lockToMac,
-      pppoeUsername,
-      pppoePassword,
-      autoRenew,
-      locationId,
-    } = data
+    const serviceId = formData.get("service_id") as string
+    const servicePlanId = formData.get("service_plan_id") as string
+    const autoRenew = formData.get("auto_renew") === "on"
+    const ipAddress = formData.get("ip_address") as string
+    const device_id = formData.get("device_id") as string
+    const lockToMac = formData.get("lock_to_mac") === "on"
+    const pppoeEnabled = formData.get("pppoe_enabled") === "on"
+    const pppoeUsername = formData.get("pppoe_username") as string
+    const pppoePassword = formData.get("pppoe_password") as string
 
-    const serviceData = await db.query(`
+    const serviceData = await sql`
       SELECT cs.*, c.id as customer_id, c.portal_username,
-             sp.speed_download, sp.speed_upload
+             ia.ip_address, ia.router_id,
+             r.ip_address as router_ip, r.configuration
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN service_plans sp ON sp.id = cs.service_plan_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.status = 'allocated'
+      LEFT JOIN network_devices r ON r.id = ia.router_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `)
+    `
 
-    if (serviceData.rows.length === 0) {
+    if (serviceData.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData.rows[0]
+    const service = serviceData[0]
 
     console.log("[v0] Updating service in database...")
 
-    const updateQuery = db.query(`
+    const result = await sql`
       UPDATE customer_services
-      SET 
-        service_plan_id = COALESCE(${servicePlanId}, service_plan_id),
-        status = COALESCE('${status}', status),
-        connection_type = COALESCE('${connectionType}', connection_type),
-        ip_address = COALESCE('${ipAddress}', ip_address),
-        mac_address = COALESCE('${macAddress}', mac_address),
-        device_id = COALESCE(${deviceId}, device_id),
-        lock_to_mac = COALESCE(${lockToMac}, lock_to_mac),
-        auto_renew = COALESCE(${autoRenew}, auto_renew),
-        pppoe_username = COALESCE('${pppoeUsername}', pppoe_username),
-        pppoe_password = COALESCE('${pppoePassword}', pppoe_password),
-        location_id = COALESCE(${locationId}, location_id),
+      SET
+        service_plan_id = ${servicePlanId},
+        status = ${formData.get("status")},
+        monthly_fee = ${formData.get("monthly_fee")},
+        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
+        device_id = ${device_id || null},
+        lock_to_mac = ${lockToMac},
+        auto_renew = ${autoRenew},
+        pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
+        pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
-    `)
+    `
 
-    const result = await updateQuery
-    console.log("[v0] Successfully updated service:", serviceId)
-
-    if (pppoeUsername && pppoePassword) {
-      console.log("[v0] Updating PPPoE credentials in RADIUS tables:", pppoeUsername)
-
-      await db.query(`
-        INSERT INTO radcheck (username, attribute, op, value)
-        VALUES ('${pppoeUsername}', 'Cleartext-Password', ':=', '${pppoePassword}')
-        ON CONFLICT (username, attribute)
-        DO UPDATE SET value = '${pppoePassword}', updated_at = NOW()
-      `)
-
-      if (servicePlanId) {
-        const servicePlan = await db.query(
-          `SELECT download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}`,
-        )
-        if (servicePlan.rows.length > 0) {
-          const downloadLimit = servicePlan.rows[0].download_speed
-          const uploadLimit = servicePlan.rows[0].upload_speed
-
-          await db.query(`
-            INSERT INTO radreply (username, attribute, op, value)
-            VALUES ('${pppoeUsername}', 'Mikrotik-Rate-Limit', ':=', '${downloadLimit}M/${uploadLimit}M')
-            ON CONFLICT (username, attribute)
-            DO UPDATE SET value = '${downloadLimit}M/${uploadLimit}M', updated_at = NOW()
-          `)
-        }
-      }
-
-      if (macAddress && lockToMac) {
-        await db.query(`
-          INSERT INTO radcheck (username, attribute, op, value)
-          VALUES ('${pppoeUsername}', 'Calling-Station-Id', '==', '${macAddress}')
-          ON CONFLICT (username, attribute)
-          DO UPDATE SET value = '${macAddress}', updated_at = NOW()
-        `)
-      }
-
-      console.log("[v0] PPPoE credentials updated in RADIUS tables successfully")
+    if (result.length === 0) {
+      return { success: false, error: "Service not found" }
     }
 
-    return { success: true, service: result.rows[0] }
-  } catch (error: any) {
-    console.error("[v0] Error updating customer service:", error.message)
-    return { success: false, error: error.message }
+    // Provision PPPoE credentials to RADIUS if enabled
+    if (pppoeEnabled && (pppoeUsername || pppoePassword)) {
+      const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}`
+      const radiusPassword = pppoePassword || radiusUsername
+
+      console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
+      const radiusResult = await provisionRadiusUser({
+        customerId: service.customer_id,
+        serviceId: service.id,
+        username: radiusUsername,
+        password: radiusPassword,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.download_speed || 10,
+        uploadSpeed: service.upload_speed || 10,
+        nasId: service.router_id || undefined,
+      })
+
+      if (!radiusResult.success) {
+        console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
+      } else {
+        console.log(`[v0] RADIUS provisioning successful`)
+      }
+    }
+
+    if (service.router_id && service.router_ip) {
+      // Fire and forget - don't await
+      Promise.resolve().then(async () => {
+        try {
+          // Status changed from pending to active - ADD to router AND RADIUS
+          if (service.status === "pending" && formData.get("status") === "active") {
+            console.log("[v0] Async provisioning: pending -> active")
+
+            const [routerResult, radiusResult] = await Promise.all([
+              provisionServiceToRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                ipAddress: service.ip_address,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                pppoeUsername: service.portal_username,
+                pppoePassword: service.portal_username,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
+              }),
+              provisionRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                password: service.portal_username || `customer_${service.customer_id}`,
+                ipAddress: service.ip_address,
+                downloadSpeed: service.download_speed || 10,
+                uploadSpeed: service.upload_speed || 10,
+                nasId: service.router_id,
+              }),
+            ])
+
+            console.log("[v0] Router result:", routerResult.success ? "OK" : routerResult.error)
+            console.log("[v0] RADIUS result:", radiusResult.success ? "OK" : radiusResult.error)
+          }
+
+          // Status changed to suspended - REMOVE from router AND RADIUS
+          if (formData.get("status") === "suspended" && service.status !== "suspended") {
+            console.log("[v0] Async deprovisioning: -> suspended")
+
+            await Promise.all([
+              deprovisionServiceFromRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                ipAddress: service.ip_address,
+                pppoeUsername: service.portal_username,
+                reason: "Service suspended",
+              }),
+              suspendRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                reason: "Service suspended",
+              }),
+            ])
+          }
+
+          // Status changed from suspended to active - RE-ADD to router AND RADIUS
+          if (formData.get("status") === "active" && service.status === "suspended") {
+            console.log("[v0] Async re-provisioning: suspended -> active")
+
+            await Promise.all([
+              provisionServiceToRouter({
+                serviceId: service.id,
+                customerId: service.customer_id,
+                routerId: service.router_id,
+                ipAddress: service.ip_address,
+                connectionType: service.ip_address ? "static_ip" : "pppoe",
+                pppoeUsername: service.portal_username,
+                pppoePassword: service.portal_username,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
+              }),
+              provisionRadiusUser({
+                customerId: service.customer_id,
+                serviceId: service.id,
+                username: service.portal_username || `customer_${service.customer_id}`,
+                password: service.portal_username || `customer_${service.customer_id}`,
+                ipAddress: service.ip_address,
+                downloadSpeed: service.download_speed || 10,
+                uploadSpeed: service.upload_speed || 10,
+                nasId: service.router_id,
+              }),
+            ])
+          }
+        } catch (provisionError) {
+          console.error("[v0] Async router provisioning error:", provisionError)
+        }
+      })
+    }
+
+    revalidatePath(`/customers`)
+    return { success: true, service: result[0] }
+  } catch (error) {
+    console.error("Error updating customer service:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update service" }
   }
 }
 
 export async function deleteCustomerService(serviceId: number) {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const serviceData = await db.query(`
-      SELECT cs.id, cs.customer_id, cs.service_plan_id
+    const serviceData = await sql`
+      SELECT cs.*, c.id as customer_id, c.portal_username,
+             ia.router_id, ia.ip_address
       FROM customer_services cs
-      LEFT JOIN customers c ON cs.customer_id = c.id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      JOIN customers c ON c.id = cs.customer_id
+      LEFT JOIN ip_addresses ia ON ia.customer_id = c.id AND ia.status = 'allocated'
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `)
+    `
 
-    if (serviceData.rows.length === 0) {
+    if (serviceData.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData.rows[0]
+    const service = serviceData[0]
 
     if (service.portal_username) {
       await deprovisionRadiusUser({
@@ -671,27 +691,29 @@ export async function deleteCustomerService(serviceId: number) {
       }).catch((err) => console.error("[v0] RADIUS deprovision error:", err))
     }
 
-    if (service.router_id && service.ip_address) {
+    // Deprovision from router if provisioned
+    if (service.router_id && (service.ip_address || service.portal_username)) {
       await deprovisionServiceFromRouter({
         serviceId,
         customerId: service.customer_id,
         routerId: service.router_id,
-        connectionType: "static_ip",
+        connectionType: service.ip_address ? "static_ip" : "pppoe",
         ipAddress: service.ip_address,
+        pppoeUsername: service.portal_username,
         reason: "Service deleted",
       }).catch((err) => console.error("[v0] Router deprovision error:", err))
     }
 
-    await db.query(`
+    await sql`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
-    `)
+    `
 
     revalidatePath(`/customers`)
     return {
       success: true,
       message: "Service terminated successfully and IP address released",
-      service: serviceData.rows[0],
+      service: serviceData[0],
     }
   } catch (error) {
     console.error("Error removing service:", error)
@@ -701,30 +723,30 @@ export async function deleteCustomerService(serviceId: number) {
 
 export async function validateCustomerServiceRelationships() {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const orphanedServices = await db.query(`
+    const orphanedServices = await sql`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
       FROM customer_services cs
       LEFT JOIN customers c ON cs.customer_id = c.id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE c.id IS NULL OR sp.id IS NULL
-    `)
+    `
 
-    const customersWithoutServices = await db.query(`
+    const customersWithoutServices = await sql`
       SELECT c.id, c.first_name, c.last_name, c.email
       FROM customers c
       LEFT JOIN customer_services cs ON c.id = cs.customer_id
       WHERE cs.id IS NULL AND c.status = 'active'
-    `)
+    `
 
     return {
       success: true,
-      orphanedServices: orphanedServices.rows.length,
-      customersWithoutServices: customersWithoutServices.rows.length,
+      orphanedServices: orphanedServices.length,
+      customersWithoutServices: customersWithoutServices.length,
       details: {
-        orphaned: orphanedServices.rows,
-        withoutServices: customersWithoutServices.rows,
+        orphaned: orphanedServices,
+        withoutServices: customersWithoutServices,
       },
     }
   } catch (error) {
@@ -735,19 +757,19 @@ export async function validateCustomerServiceRelationships() {
 
 export async function fixOrphanedServices() {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const result = await db.query(`
+    const result = await sql`
       DELETE FROM customer_services 
       WHERE customer_id NOT IN (SELECT id FROM customers)
          OR service_plan_id NOT IN (SELECT id FROM service_plans)
       RETURNING id
-    `)
+    `
 
     return {
       success: true,
-      message: `Cleaned up ${result.rows.length} orphaned service records`,
-      deletedCount: result.rows.length,
+      message: `Cleaned up ${result.length} orphaned service records`,
+      deletedCount: result.length,
     }
   } catch (error) {
     console.error("Error fixing orphaned services:", error)
@@ -757,91 +779,62 @@ export async function fixOrphanedServices() {
 
 export async function processPayment(customerId: number, invoiceId: number, amount: number) {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    await db.query(`
+    // Update the invoice as paid
+    await sql`
       UPDATE invoices
       SET status = 'paid',
           paid_amount = ${amount},
           paid_at = NOW(),
           updated_at = NOW()
       WHERE id = ${invoiceId} AND customer_id = ${customerId}
-    `)
+    `
 
-    const pendingServices = await db.query(`
+    // Get pending services for this customer
+    const pendingServices = await sql`
       SELECT cs.*, sp.download_speed, sp.upload_speed, sp.name as service_name
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId} 
       AND cs.status = 'pending'
-    `)
+    `
 
-    const customerRouter = await db.query(`
-      SELECT nd.customer_auth_method, nd.id as router_id
-      FROM customers c
-      LEFT JOIN network_devices nd ON nd.location_id = c.location_id
-      WHERE c.id = ${customerId}
-      AND nd.type = 'router'
-      LIMIT 1
-    `)
-
-    const authMethod = customerRouter.rows[0]?.customer_auth_method || "pppoe_radius"
-    console.log(`[v0] Customer router auth method: ${authMethod}`)
-
-    for (const service of pendingServices.rows) {
-      await db.query(`
+    // Activate all pending services
+    for (const service of pendingServices) {
+      await sql`
         UPDATE customer_services
         SET status = 'active',
             activation_date = NOW(),
             updated_at = NOW()
         WHERE id = ${service.id}
-      `)
+      `
 
-      console.log(`[v0] Successfully activated service ${service.id} ${service.service_name}`)
+      // Generate PPPoE credentials
+      const pppoeUsername = service.pppoe_username || `customer_${customerId}_service_${service.id}`
+      const pppoePassword = service.pppoe_password || Math.random().toString(36).substring(2, 15)
 
-      const credentials = await retrievePPPoECredentials(service.id)
-      const pppoeUsername =
-        credentials?.username || service.pppoe_username || `customer_${customerId}_service_${service.id}`
-      const pppoePassword =
-        credentials?.password || service.pppoe_password || Math.random().toString(36).substring(2, 15)
+      // Provision to RADIUS
+      await provisionRadiusUser({
+        customerId,
+        serviceId: service.id,
+        username: pppoeUsername,
+        password: pppoePassword,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.download_speed || 10,
+        uploadSpeed: service.upload_speed || 10,
+      })
 
-      console.log(`[v0] Provisioning RADIUS credentials for service ${service.id} username: ${pppoeUsername}`)
+      // Provision to standard RADIUS tables
+      await provisionToStandardRadiusTables(
+        pppoeUsername,
+        pppoePassword,
+        service.download_speed || "10M",
+        service.upload_speed || "10M",
+      )
 
-      if (authMethod === "pppoe_radius") {
-        await provisionRadiusUser({
-          customerId,
-          serviceId: service.id,
-          username: pppoeUsername,
-          password: pppoePassword,
-          ipAddress: service.ip_address || undefined,
-          downloadSpeed: service.download_speed || 10,
-          uploadSpeed: service.upload_speed || 10,
-        })
-
-        await provisionToStandardRadiusTables(
-          pppoeUsername,
-          pppoePassword,
-          service.download_speed || "10M",
-          service.upload_speed || "10M",
-        )
-        console.log("[v0] ✓ Provisioned to FreeRADIUS")
-      } else if (authMethod === "pppoe_secrets") {
-        console.log("[v0] Provisioning to MikroTik router (PPPoE Secrets)...")
-        try {
-          await provisionServiceToRouter(service.id, {
-            username: pppoeUsername,
-            password: pppoePassword,
-            service: service.service_name,
-            downloadSpeed: service.download_speed || "10M",
-            uploadSpeed: service.upload_speed || "10M",
-          })
-          console.log("[v0] ✓ Provisioned to MikroTik router")
-        } catch (error) {
-          console.error("[v0] Failed to provision to MikroTik router:", error)
-        }
-      }
-
-      await db.query(`
+      // Log the activation
+      await sql`
         INSERT INTO activity_logs (
           user_id,
           action,
@@ -854,19 +847,19 @@ export async function processPayment(customerId: number, invoiceId: number, amou
           'activate',
           'customer_service',
           ${service.id},
-          'Service activated after payment: ${service.service_name}',
+          ${`Service activated after payment: ${service.service_name}`},
           NOW()
         )
         ON CONFLICT DO NOTHING
-      `)
+      `
     }
 
     revalidatePath(`/customers/${customerId}`)
 
     return {
       success: true,
-      message: `Payment processed successfully. ${pendingServices.rows.length} service(s) activated.`,
-      activatedServices: pendingServices.rows.length,
+      message: `Payment processed successfully. ${pendingServices.length} service(s) activated.`,
+      activatedServices: pendingServices.length,
     }
   } catch (error) {
     console.error("Error processing payment:", error)
@@ -883,63 +876,68 @@ export async function updateServiceStatus(
   reason?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = await getSql()
+    const sql = await getSql()
 
-    const serviceData = await db.query(`
+    const service = await sql`
       SELECT cs.*, c.portal_username
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `)
+    `
 
-    if (serviceData.rows.length === 0) {
+    if (service.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData.rows[0]
-    const oldStatus = service.status
+    const serviceData = service[0]
+    const oldStatus = serviceData.status
 
-    await db.query(`
+    await sql`
       UPDATE customer_services
-      SET status = '${newStatus}',
-          ${newStatus === "suspended" ? "suspension_date = NOW()," : ""}
-          ${newStatus === "terminated" ? "termination_date = NOW()," : ""}
-          ${newStatus === "active" ? "activation_date = NOW()," : ""}
+      SET status = ${newStatus},
+          ${newStatus === "suspended" ? sql`suspension_date = NOW(),` : sql``}
+          ${newStatus === "terminated" ? sql`termination_date = NOW(),` : sql``}
+          ${newStatus === "active" ? sql`activation_date = NOW(),` : sql``}
           updated_at = NOW()
       WHERE id = ${serviceId}
-    `)
+    `
 
-    const username = service.pppoe_username || service.portal_username || `customer_${service.customer_id}`
-    const password = service.pppoe_password || username
+    // Handle RADIUS provisioning based on status change
+    const username = serviceData.pppoe_username || serviceData.portal_username || `customer_${serviceData.customer_id}`
+    const password = serviceData.pppoe_password || username
 
     if (newStatus === "active" && oldStatus !== "active") {
+      // Activate in RADIUS
       await provisionRadiusUser({
-        customerId: service.customer_id,
+        customerId: serviceData.customer_id,
         serviceId,
         username,
         password,
-        ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed || 10,
-        uploadSpeed: service.upload_speed || 10,
+        ipAddress: serviceData.ip_address || undefined,
+        downloadSpeed: serviceData.download_speed || 10,
+        uploadSpeed: serviceData.upload_speed || 10,
       })
     } else if (newStatus === "suspended") {
+      // Suspend in RADIUS
       await suspendRadiusUser({
-        customerId: service.customer_id,
+        customerId: serviceData.customer_id,
         serviceId,
         username,
         reason: reason || "Service suspended",
       })
     } else if (newStatus === "terminated") {
+      // Remove from RADIUS
       await deprovisionRadiusUser({
-        customerId: service.customer_id,
+        customerId: serviceData.customer_id,
         serviceId,
         username,
         reason: reason || "Service terminated",
       })
     }
 
-    await db.query(`
+    // Log the status change
+    await sql`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -952,13 +950,13 @@ export async function updateServiceStatus(
         'status_change',
         'customer_service',
         ${serviceId},
-        'Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}',
+        ${`Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}`},
         NOW()
       )
       ON CONFLICT DO NOTHING
-    `)
+    `
 
-    revalidatePath(`/customers/${service.customer_id}`)
+    revalidatePath(`/customers/${serviceData.customer_id}`)
 
     return {
       success: true,

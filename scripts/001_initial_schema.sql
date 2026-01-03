@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS service_plans (
 );
 
 -- Customer Services table
--- Adding connection configuration columns for PPPoE and network management
 CREATE TABLE IF NOT EXISTS customer_services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
@@ -59,15 +58,6 @@ CREATE TABLE IF NOT EXISTS customer_services (
     suspension_date DATE,
     termination_date DATE,
     monthly_fee DECIMAL(10,2),
-    connection_type VARCHAR(50) DEFAULT 'pppoe',
-    ip_address VARCHAR(45),
-    mac_address VARCHAR(17),
-    device_id INTEGER,
-    lock_to_mac BOOLEAN DEFAULT false,
-    auto_renew BOOLEAN DEFAULT true,
-    pppoe_username VARCHAR(100),
-    pppoe_password VARCHAR(100),
-    location_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -101,7 +91,6 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 
 -- Network Devices table
--- Adding customer_auth_method for router authentication configuration
 CREATE TABLE IF NOT EXISTS network_devices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
@@ -110,7 +99,6 @@ CREATE TABLE IF NOT EXISTS network_devices (
     mac_address VARCHAR(17),
     location VARCHAR(200),
     status VARCHAR(20) DEFAULT 'active',
-    customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius',
     last_seen TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -224,13 +212,6 @@ CREATE INDEX IF NOT EXISTS idx_employees_department ON employees(department);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
-
--- Adding indexes for new connection configuration columns
-CREATE INDEX IF NOT EXISTS idx_customer_services_ip_address ON customer_services(ip_address);
-CREATE INDEX IF NOT EXISTS idx_customer_services_mac_address ON customer_services(mac_address);
-CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_username ON customer_services(pppoe_username);
-CREATE INDEX IF NOT EXISTS idx_customer_services_device_id ON customer_services(device_id);
-CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id);
 
 -- Migration tracking table
 CREATE TABLE IF NOT EXISTS schema_migrations (

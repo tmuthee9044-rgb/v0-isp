@@ -390,7 +390,7 @@ CREATE INDEX IF NOT EXISTS idx_account_balances_old_customer ON account_balances
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'locations_id_seq') THEN
-        CREATE SEQUENCE locations_id_seq OWNED BY locations.id;
+        CREATE SEQUENCE locations_id_seq;
         -- Set the sequence to start from max existing id + 1
         PERFORM setval('locations_id_seq', COALESCE((SELECT MAX(id) FROM locations), 0) + 1, false);
         -- Set the default value for id column to use the sequence
@@ -402,7 +402,7 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'network_devices_id_seq') THEN
-        CREATE SEQUENCE network_devices_id_seq OWNED BY network_devices.id;
+        CREATE SEQUENCE network_devices_id_seq;
         -- Set the sequence to start from max existing id + 1
         PERFORM setval('network_devices_id_seq', COALESCE((SELECT MAX(id) FROM network_devices), 0) + 1, false);
         -- Set the default value for id column to use the sequence
@@ -421,7 +421,7 @@ BEGIN
     
     IF id_type IN ('integer', 'bigint') THEN
         IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
-            CREATE SEQUENCE suppliers_id_seq OWNED BY suppliers.id;
+            CREATE SEQUENCE suppliers_id_seq;
             PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
             ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
         END IF;
@@ -432,7 +432,7 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'warehouses_id_seq') THEN
-        CREATE SEQUENCE warehouses_id_seq OWNED BY warehouses.id;
+        CREATE SEQUENCE warehouses_id_seq;
         PERFORM setval('warehouses_id_seq', COALESCE((SELECT MAX(id) FROM warehouses), 0) + 1, false);
         ALTER TABLE warehouses ALTER COLUMN id SET DEFAULT nextval('warehouses_id_seq');
     END IF;
@@ -446,7 +446,7 @@ DO $$
 BEGIN
     -- Create sequence for system_logs if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'system_logs_id_seq') THEN
-        CREATE SEQUENCE system_logs_id_seq OWNED BY system_logs.id;
+        CREATE SEQUENCE system_logs_id_seq;
         
         -- Set sequence to start from max existing id + 1
         PERFORM setval('system_logs_id_seq', COALESCE((SELECT MAX(id) FROM system_logs WHERE id IS NOT NULL), 0) + 1, false);
@@ -635,7 +635,6 @@ BEGIN
         CREATE SEQUENCE IF NOT EXISTS ip_subnets_id_seq START WITH 1 INCREMENT BY 1;
         EXECUTE 'SELECT setval(''ip_subnets_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM ip_subnets), 0), 0) + 1, false)';
         ALTER TABLE ip_subnets ALTER COLUMN id SET DEFAULT nextval('ip_subnets_id_seq');
-        ALTER SEQUENCE ip_subnets_id_seq OWNED BY ip_subnets.id;
     END IF;
 END $$;
 
@@ -647,7 +646,6 @@ BEGIN
         CREATE SEQUENCE IF NOT EXISTS inventory_items_id_seq START WITH 1 INCREMENT BY 1;
         EXECUTE 'SELECT setval(''inventory_items_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM inventory_items), 0), 0) + 1, false)';
         ALTER TABLE inventory_items ALTER COLUMN id SET DEFAULT nextval('inventory_items_id_seq');
-        ALTER SEQUENCE inventory_items_id_seq OWNED BY inventory_items.id;
     END IF;
 END $$;
 
@@ -659,6 +657,5 @@ BEGIN
         CREATE SEQUENCE IF NOT EXISTS vehicles_id_seq START WITH 1 INCREMENT BY 1;
         EXECUTE 'SELECT setval(''vehicles_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM vehicles), 0), 0) + 1, false)';
         ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT nextval('vehicles_id_seq');
-        ALTER SEQUENCE vehicles_id_seq OWNED BY vehicles.id;
     END IF;
 END $$;

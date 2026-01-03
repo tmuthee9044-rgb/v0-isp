@@ -583,7 +583,7 @@ sql {
     
     # Read NAS clients from database
     read_clients = yes
-    client_table = "nas"
+    client_table = "radius_nas" # Changed from "nas" to "radius_nas"
     
     # Standard FreeRADIUS authorization queries
     authorize_check_query = "SELECT id, username, attribute, value, op FROM radcheck WHERE username = '%{SQL-User-Name}' ORDER BY id"
@@ -862,9 +862,9 @@ EOF_INNER
         print_info "Verifying RADIUS is listening on network..."
         if sudo netstat -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0" || \
            sudo ss -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0"; then
-            print_success "RADIUS is listening on all network interfaces (0.0.0.0:1812)"
+            print_success "Radius is listening on all network interfaces (0.0.0.0:1812)"
         else
-            print_warning "RADIUS may not be listening on all interfaces"
+            print_warning "Radius may not be listening on all interfaces"
             print_info "Check with: sudo netstat -ulnp | grep 1812"
         fi
         
@@ -890,74 +890,63 @@ EOF_INNER
     if netstat -tuln 2>/dev/null | grep -q ":1812 " || ss -tuln 2>/dev/null | grep -q ":1812 "; then
         print_success "Radius is listening on port 1812"
         
-        if [ "$TEST_RADIUS" = true ]; then
-            print_info "Testing RADIUS authentication..."
+        RADIUS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'radius_users');" 2>/dev/null || echo "f")
+        CUSTOMERS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'customers');" 2>/dev/null || echo "f")
+
+        if [ "$RADIUS_TABLE_EXISTS" = "t" ] && [ "$CUSTOMERS_TABLE_EXISTS" = "t" ]; then
+            # Check if test customer exists
+            TEST_CUSTOMER_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT 1 FROM customers WHERE id = 1);" 2>/dev/null || echo "f")
             
-            # Check if radius_users table exists
-            TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'radius_users');")
-            
-            if [ "$TABLE_EXISTS" = "t" ]; then
-                # Check if customers table has data
-                CUSTOMER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM customers;" 2>/dev/null || echo "0")
-                
-                if [ "$CUSTOMER_COUNT" -gt 0 ]; then
-                    TEST_USER="test_install_user_$(date +%s)"
-                    TEST_PASS="test_pass_$(openssl rand -hex 8)"
-                    
-                    # Create test user in database
-                    psql "$DATABASE_URL" << TESTUSER 2>/dev/null
-INSERT INTO radius_users (username, password_hash, status, customer_id) 
-SELECT '$TEST_USER', crypt('$TEST_PASS', gen_salt('bf')), 'active', id 
-FROM customers LIMIT 1
-ON CONFLICT (username) DO NOTHING;
-TESTUSER
-                    
-                    # Test with radtest if available
-                    if command -v radtest &> /dev/null; then
-                        if radtest "$TEST_USER" "$TEST_PASS" "$DETECTED_IP" 1812 "$RADIUS_SECRET" &> /dev/null; then
-                            print_success "RADIUS authentication test PASSED"
-                        else
-                            print_warning "RADIUS authentication test FAILED"
-                            print_info "This may be normal if radtest is not configured properly"
-                        fi
-                        
-                        # Clean up test user
-                        psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = '$TEST_USER';" > /dev/null 2>&1
-                    else
-                        print_info "radtest not available, skipping authentication test"
-                        print_info "You can test manually from /settings/servers page"
-                    fi
-                else
-                    print_warning "No customers in database, skipping RADIUS authentication test"
-                    print_info "Add customers first, then test RADIUS from /settings/servers page"
-                fi
-            else
-                print_warning "radius_users table does not exist, skipping authentication test"
-                print_info "Run database migration to create RADIUS tables"
+            if [ "$TEST_CUSTOMER_EXISTS" = "f" ]; then
+                print_info "Creating test customer record..."
+                psql "$DATABASE_URL" << TESTCUSTOMER
+INSERT INTO customers (id, customer_number, name, email, phone, status, created_at, updated_at)
+VALUES (1, 'TEST0001', 'Test Customer', 'test@example.com', '+254700000000', 'active', NOW(), NOW())
+ON CONFLICT (id) DO NOTHING;
+TESTCUSTOMER
             fi
             
-        # ... (rest of the original code block in install_freeradius continues here)
+            # Now safely test RADIUS authentication
+            psql "$DATABASE_URL" << RADIUSTEST
+INSERT INTO radius_users (username, password_hash, customer_id, status, created_at, updated_at)
+VALUES ('testradius', crypt('testpass123', gen_salt('bf')), 1, 'active', NOW(), NOW())
+ON CONFLICT (username) DO NOTHING;
+RADIUSTEST
+
+            if radtest testradius testpass123 localhost 0 testing123 > /dev/null 2>&1; then
+                print_success "RADIUS authentication test PASSED"
+                psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
+            else
+                print_warning "RADIUS authentication test FAILED"
+                print_info "This may be normal if radtest is not configured properly"
+                psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
+            fi
+        else
+            print_warning "RADIUS or customers tables not found, skipping authentication test"
         fi
         
         print_info "Checking for configured routers..."
-        ROUTER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active';")
-        
-        if [ "$ROUTER_COUNT" -gt 0 ]; then
-            print_info "Found $ROUTER_COUNT active router(s)"
-            print_info "Testing connectivity to physical routers..."
+        NETWORK_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'network_devices');" 2>/dev/null || echo "f")
+
+        if [ "$NETWORK_TABLE_EXISTS" = "t" ]; then
+            ROUTER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active';" 2>/dev/null || echo "0")
             
-            # Get first router details
-            ROUTER_INFO=$(psql "$DATABASE_URL" -tAc "SELECT ip_address, name FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active' LIMIT 1;")
-            ROUTER_IP=$(echo "$ROUTER_INFO" | cut -d'|' -f1 | tr -d ' ')
-            ROUTER_NAME=$(echo "$ROUTER_INFO" | cut -d'|' -f2)
-            
-            if [ -n "$ROUTER_IP" ]; then
-                print_info "Testing ping to router '$ROUTER_NAME' ($ROUTER_IP)..."
-                if ping -c 2 -W 2 "$ROUTER_IP" > /dev/null 2>&1; then
-                    print_success "Router $ROUTER_IP is reachable"
-                    
-                    # Add router to RADIUS NAS table
-                    psql "$DATABASE_URL" << ADDNAS
+            if [ "$ROUTER_COUNT" -gt 0 ]; then
+                print_info "Found $ROUTER_COUNT active router(s)"
+                print_info "Testing connectivity to physical routers..."
+                
+                # Get first router details
+                ROUTER_INFO=$(psql "$DATABASE_URL" -tAc "SELECT ip_address, name FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active' LIMIT 1;")
+                ROUTER_IP=$(echo "$ROUTER_INFO" | cut -d'|' -f1 | tr -d ' ')
+                ROUTER_NAME=$(echo "$ROUTER_INFO" | cut -d'|' -f2)
+                
+                if [ -n "$ROUTER_IP" ]; then
+                    print_info "Testing ping to router '$ROUTER_NAME' ($ROUTER_IP)..."
+                    if ping -c 2 -W 2 "$ROUTER_IP" > /dev/null 2>&1; then
+                        print_success "Router $ROUTER_IP is reachable"
+                        
+                        # Add router to RADIUS NAS table
+                        psql "$DATABASE_URL" << ADDNAS
 INSERT INTO radius_nas (network_device_id, name, short_name, ip_address, secret, type, status)
 SELECT id, name, SUBSTRING(name FROM 1 FOR 32), ip_address::inet, '$RADIUS_SECRET', type, status
 FROM network_devices 
@@ -966,17 +955,19 @@ ON CONFLICT (ip_address) DO UPDATE SET
     secret = EXCLUDED.secret,
     updated_at = NOW();
 ADDNAS
-                    print_success "Router added to RADIUS NAS configuration"
-                    print_info "Router can now authenticate users via RADIUS"
-                else
-                    print_warning "Router $ROUTER_IP is not reachable"
-                    print_info "Ensure the router is powered on and network is configured"
+                        print_success "Router added to RADIUS NAS configuration"
+                        print_info "Router can now authenticate users via RADIUS"
+                    else
+                        print_warning "Router $ROUTER_IP is not reachable"
+                        print_info "Ensure the router is powered on and network is configured"
+                    fi
                 fi
+            else
+                print_info "No routers configured yet"
+                print_info "Add routers from /network/routers page after installation"
             fi
         else
-            print_info "No routers configured yet"
-            print_info "Add routers from /network/routers page"
-            print_info "They will automatically sync to RADIUS NAS table"
+            print_warning "network_devices table not found, skipping router check"
         fi
         
     else
@@ -994,7 +985,7 @@ ADDNAS
 }
 
 setup_database() {
-    print_header "Setting Up Database"
+    print_header "Setting Up PostgreSQL Database"
     
     print_info "Checking PostgreSQL service status..."
     if [[ "$OS" == "linux" ]]; then
@@ -1079,48 +1070,6 @@ setup_database() {
     sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
-    
-    print_info "Transferring ownership of all database objects to application user..."
-    
-    # Transfer ownership of all tables, sequences, and views
-    sudo -u postgres psql -d "$DB_NAME" <<'EOF_OWNERSHIP'
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Transfer ownership of all tables
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO isp_user';
-    END LOOP;
-    
-    -- Transfer ownership of all sequences
-    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO isp_user';
-    END LOOP;
-    
-    -- Transfer ownership of all views
-    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO isp_user';
-    END LOOP;
-END $$;
-EOF_OWNERSHIP
-    
-    # Grant all privileges
-    sudo -u postgres psql -d "$DB_NAME" -c "
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
-"
-
-    if [ $? -eq 0 ]; then
-        print_success "Table ownership transferred to $DB_USER"
-    else
-        print_warning "Failed to transfer some table ownership (this may not be critical)"
-    fi
     
     print_success "Database permissions configured with full CRUD access"
     
@@ -1452,7 +1401,7 @@ install_nodejs() {
                     print_success "NVM installation successful: $(node --version)"
                     INSTALLATION_SUCCESS=true
                     
-                    # Add NVM to shell profiles for persistence
+                    # Add to shell profiles for persistence
                     for profile in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"; do
                         if [ -f "$profile" ] && ! grep -q "NVM_DIR" "$profile"; then
                             echo 'export NVM_DIR="$HOME/.nvm"' >> "$profile"
@@ -1827,7 +1776,7 @@ apply_database_fixes() {
     print_info "Transferring ownership of all database objects to application user..."
     
     # Transfer ownership of all tables, sequences, and views
-    sudo -u postgres psql -d "$DB_NAME" <<'EOF_OWNERSHIP2'
+    sudo -u postgres psql -d "$DB_NAME" <<'EOF_OWNERSHIP'
 DO $$
 DECLARE
     r RECORD;
@@ -1850,7 +1799,7 @@ BEGIN
         EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO isp_user';
     END LOOP;
 END $$;
-EOF_OWNERSHIP2
+EOF_OWNERSHIP
     
     print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
     sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true

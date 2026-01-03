@@ -914,10 +914,10 @@ ON CONFLICT (username) DO NOTHING;
 RADIUSTEST
 
             if radtest testradius testpass123 localhost 0 testing123 > /dev/null 2>&1; then
-                print_success "RADIUS authentication test PASSED"
+                print_success "Radius authentication test PASSED"
                 psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
             else
-                print_warning "RADIUS authentication test FAILED"
+                print_warning "Radius authentication test FAILED"
                 print_info "This may be normal if radtest is not configured properly"
                 psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
             fi
@@ -1691,151 +1691,147 @@ apply_database_fixes() {
     mkdir -p "$TEMP_MIGRATION_DIR"
     chmod 755 "$TEMP_MIGRATION_DIR"
     
-    COMPREHENSIVE_200_SCHEMA="$SCRIPT_DIR/scripts/999_complete_all_tables_schema.sql"
-    COMPREHENSIVE_SCHEMA="$SCRIPT_DIR/scripts/create_complete_schema.sql"
-    COMPLETE_SCHEMA="$SCRIPT_DIR/scripts/000_complete_schema.sql"
+    print_header "Scanning scripts folder for ALL table creation files"
     
-    SCHEMA_FILE=""
+    TOTAL_SQL_FILES=0
+    APPLIED_SQL_FILES=0
+    SKIPPED_SQL_FILES=0
+    FAILED_SQL_FILES=0
     
-    if [ -f "$COMPREHENSIVE_200_SCHEMA" ]; then
-        SCHEMA_FILE="$COMPREHENSIVE_200_SCHEMA"
-        print_info "Using comprehensive 200+ table schema with CREATE TABLE IF NOT EXISTS..."
-    elif [ -f "$COMPREHENSIVE_SCHEMA" ]; then
-        SCHEMA_FILE="$COMPREHENSIVE_SCHEMA"
-        print_info "Using complete schema (1638 lines)..."
-    elif [ -f "$COMPLETE_SCHEMA" ]; then
-        SCHEMA_FILE="$COMPLETE_SCHEMA"
-        print_info "Using standard complete schema..."
-    else
-        print_error "No schema file found!"
-        print_error "Missing all schema files!"
-        rm -rf "$TEMP_MIGRATION_DIR"
-        exit 1
-    fi
-    
-    SCHEMA_NAME=$(basename "$SCHEMA_FILE")
-    print_info "Copying $SCHEMA_NAME to temporary location..."
-    cp "$SCHEMA_FILE" "$TEMP_MIGRATION_DIR/$SCHEMA_NAME"
-    chmod 644 "$TEMP_MIGRATION_DIR/$SCHEMA_NAME"
-    
-    print_info "Applying comprehensive database schema with ALL 200+ tables and columns..."
-    print_info "This creates customer_services with: mac_address, pppoe_username, pppoe_password, lock_to_mac, auto_renew, location_id"
-    print_info "Plus ALL other tables needed for the complete ISP management system"
-    
-    if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/$SCHEMA_NAME") 2>&1 | tee /tmp/schema_output.log; then
-        print_success "Comprehensive schema applied successfully"
-        
-        # Count tables created
-        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';" 2>/dev/null || echo "0")
-        print_success "Total tables in database: $TABLE_COUNT"
-        
-        if [ "$TABLE_COUNT" -lt 100 ]; then
-            print_warning "Expected 200+ tables but only found $TABLE_COUNT"
-            print_info "Some tables may not have been created"
-        else
-            print_success "Database has $TABLE_COUNT tables - comprehensive installation complete!"
-        fi
-        
-        # Verify critical tables with all columns
-        print_info "Verifying critical tables..."
-        
-        # Check customer_services table columns
-        CS_COLUMNS=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'customer_services';" 2>/dev/null || echo "0")
-        print_info "customer_services table has $CS_COLUMNS columns"
-        
-        # Verify the missing columns exist
-        print_info "Verifying connection configuration columns..."
-        for col in mac_address pppoe_username pppoe_password lock_to_mac auto_renew location_id; do
-            if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = '$col';" 2>/dev/null | grep -q "$col"; then
-                print_success "  ✓ Column '$col' exists"
-            else
-                print_error "  ✗ Column '$col' MISSING"
-            fi
-        done
-        
-        # Verify network_devices.customer_auth_method exists
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name = 'network_devices' AND column_name = 'customer_auth_method';" 2>/dev/null | grep -q "customer_auth_method"; then
-            print_success "  ✓ network_devices.customer_auth_method exists"
-        else
-            print_error "  ✗ network_devices.customer_auth_method MISSING"
-        fi
-        
-        # Record the schema as applied
-        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE migration_name = '$SCHEMA_NAME';" 2>/dev/null || echo "0")
-        if [ "$ALREADY_APPLIED" -eq 0 ]; then
-            (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$SCHEMA_NAME');") > /dev/null 2>&1
-        fi
-        
-    else
-        print_error "Failed to apply comprehensive schema"
-        print_info "Check the error log: /tmp/schema_output.log"
-        
-        # Clean up
-        rm -rf "$TEMP_MIGRATION_DIR"
-        exit 1
-    fi
-    
-    print_info "Checking for additional migrations..."
-    
-    MIGRATION_COUNT=0
+    # First, execute numbered migration files in order (000-999)
+    print_info "Executing numbered migration files (000-999)..."
     for migration_file in "$SCRIPT_DIR/scripts"/[0-9][0-9][0-9]_*.sql; do
         if [ -f "$migration_file" ]; then
+            TOTAL_SQL_FILES=$((TOTAL_SQL_FILES + 1))
             MIGRATION_NAME=$(basename "$migration_file")
             
+            # Check if already applied
             ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE migration_name = '$MIGRATION_NAME';" 2>/dev/null || echo "0")
             
             if [ "$ALREADY_APPLIED" -eq 0 ]; then
-                print_info "Applying migration: $MIGRATION_NAME"
+                print_info "[$APPLIED_SQL_FILES] Applying: $MIGRATION_NAME"
                 
                 cp "$migration_file" "$TEMP_MIGRATION_DIR/$MIGRATION_NAME"
                 chmod 644 "$TEMP_MIGRATION_DIR/$MIGRATION_NAME"
                 
-                if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/$MIGRATION_NAME") > /dev/null 2>&1; then
-                    # Record the migration
-                    (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$MIGRATION_NAME');") > /dev/null 2>&1
-                    
-                    print_success "Migration applied: $MIGRATION_NAME"
-                    MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
+                if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/$MIGRATION_NAME") 2>&1 | tee "/tmp/migration_${MIGRATION_NAME}.log" | grep -q "ERROR"; then
+                    print_warning "Migration had errors: $MIGRATION_NAME (check /tmp/migration_${MIGRATION_NAME}.log)"
+                    FAILED_SQL_FILES=$((FAILED_SQL_FILES + 1))
                 else
-                    print_warning "Migration failed (may be incompatible): $MIGRATION_NAME"
+                    # Record the migration as applied
+                    (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$MIGRATION_NAME') ON CONFLICT (migration_name) DO NOTHING;") > /dev/null 2>&1
+                    
+                    print_success "Applied: $MIGRATION_NAME"
+                    APPLIED_SQL_FILES=$((APPLIED_SQL_FILES + 1))
                 fi
             else
-                print_info "Migration already applied: $MIGRATION_NAME"
+                print_info "Already applied: $MIGRATION_NAME"
+                SKIPPED_SQL_FILES=$((SKIPPED_SQL_FILES + 1))
             fi
         fi
     done
     
-    if [ $MIGRATION_COUNT -gt 0 ]; then
-        print_success "Applied $MIGRATION_COUNT additional migrations"
+    # Second, execute all other SQL files (non-numbered ones)
+    print_info "Executing other SQL files with CREATE TABLE statements..."
+    for sql_file in "$SCRIPT_DIR/scripts"/*.sql; do
+        if [ -f "$sql_file" ]; then
+            FILENAME=$(basename "$sql_file")
+            
+            # Skip if it's a numbered migration (already processed above)
+            if [[ "$FILENAME" =~ ^[0-9][0-9][0-9]_ ]]; then
+                continue
+            fi
+            
+            # Check if file contains CREATE TABLE
+            if ! grep -q "CREATE TABLE" "$sql_file"; then
+                continue
+            fi
+            
+            TOTAL_SQL_FILES=$((TOTAL_SQL_FILES + 1))
+            
+            # Check if already applied
+            ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE migration_name = '$FILENAME';" 2>/dev/null || echo "0")
+            
+            if [ "$ALREADY_APPLIED" -eq 0 ]; then
+                print_info "[$APPLIED_SQL_FILES] Applying: $FILENAME"
+                
+                cp "$sql_file" "$TEMP_MIGRATION_DIR/$FILENAME"
+                chmod 644 "$TEMP_MIGRATION_DIR/$FILENAME"
+                
+                if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/$FILENAME") 2>&1 | tee "/tmp/migration_${FILENAME}.log" | grep -q "ERROR"; then
+                    print_warning "SQL file had errors: $FILENAME (check /tmp/migration_${FILENAME}.log)"
+                    FAILED_SQL_FILES=$((FAILED_SQL_FILES + 1))
+                else
+                    # Record as applied
+                    (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$FILENAME') ON CONFLICT (migration_name) DO NOTHING;") > /dev/null 2>&1
+                    
+                    print_success "Applied: $FILENAME"
+                    APPLIED_SQL_FILES=$((APPLIED_SQL_FILES + 1))
+                fi
+            else
+                print_info "Already applied: $FILENAME"
+                SKIPPED_SQL_FILES=$((SKIPPED_SQL_FILES + 1))
+            fi
+        fi
+    done
+    
+    # Summary of SQL file execution
+    print_header "SQL File Execution Summary"
+    print_info "Total SQL files found: $TOTAL_SQL_FILES"
+    print_success "Successfully applied: $APPLIED_SQL_FILES"
+    print_info "Already applied (skipped): $SKIPPED_SQL_FILES"
+    if [ $FAILED_SQL_FILES -gt 0 ]; then
+        print_warning "Failed/Had errors: $FAILED_SQL_FILES"
+    fi
+    
+    # Count tables created
+    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';" 2>/dev/null || echo "0")
+    print_success "Total tables in database: $TABLE_COUNT"
+    
+    if [ "$TABLE_COUNT" -lt 150 ]; then
+        print_warning "Expected 200+ tables but found $TABLE_COUNT"
+        print_info "Some tables may not have been created. Check migration logs in /tmp/"
     else
-        print_info "No additional migrations needed"
+        print_success "Database has $TABLE_COUNT tables - comprehensive installation!"
+    fi
+    
+    # Verify critical columns exist
+    print_info "Verifying critical connection configuration columns..."
+    for col in mac_address pppoe_username pppoe_password lock_to_mac auto_renew location_id; do
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = '$col';" 2>/dev/null | grep -q "$col"; then
+            print_success "  ✓ Column '$col' exists in customer_services"
+        else
+            print_error "  ✗ Column '$col' MISSING in customer_services"
+        fi
+    done
+    
+    # Verify network_devices.customer_auth_method
+    if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name = 'network_devices' AND column_name = 'customer_auth_method';" 2>/dev/null | grep -q "customer_auth_method"; then
+        print_success "  ✓ network_devices.customer_auth_method exists"
+    else
+        print_error "  ✗ network_devices.customer_auth_method MISSING"
     fi
     
     print_info "Cleaning up temporary files..."
     rm -rf "$TEMP_MIGRATION_DIR"
-    rm -f /tmp/schema_output.log
     
     print_info "Transferring ownership of all database objects to application user..."
     
-    # Transfer ownership of all tables, sequences, and views
     sudo -u postgres psql -d "$DB_NAME" <<'EOF_OWNERSHIP'
 DO $$
 DECLARE
     r RECORD;
 BEGIN
-    -- Transfer ownership of all tables
     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
     LOOP
         EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO isp_user';
     END LOOP;
     
-    -- Transfer ownership of all sequences
     FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
     LOOP
         EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO isp_user';
     END LOOP;
     
-    -- Transfer ownership of all views
     FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
     LOOP
         EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO isp_user';
@@ -1843,53 +1839,14 @@ BEGIN
 END $$;
 EOF_OWNERSHIP
     
-    print_info "Granting superuser privileges to $DB_USER for full CRUD operations..."
-    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE;" 2>/dev/null || true
-    print_success "Superuser privileges granted"
-
-    print_info "Transferring table ownership to $DB_USER..."
-    
-    # Transfer ownership of all tables, sequences, and views
-    sudo -u postgres psql -d "$DB_NAME" <<'EOF_OWNERSHIP'
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Transfer ownership of all tables
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO isp_user';
-    END LOOP;
-    
-    -- Transfer ownership of all sequences
-    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO isp_user';
-    END LOOP;
-    
-    -- Transfer ownership of all views
-    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
-    LOOP
-        EXECUTE 'ALTER VIEW public.' || quote_ident(r.viewname) || ' OWNER TO isp_user';
-    END LOOP;
-END $$;
-EOF_OWNERSHIP
-    
-    # Grant all privileges
     sudo -u postgres psql -d "$DB_NAME" -c "
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO isp_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO isp_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO isp_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO isp_user;
 "
-
-    if [ $? -eq 0 ]; then
-        print_success "Table ownership transferred to $DB_USER"
-    else
-        print_warning "Failed to transfer some table ownership (this may not be critical)"
-    fi
     
-    print_success "Database migrations completed successfully"
+    print_success "Database schema setup completed successfully"
 }
 
 verify_database_schema() {
@@ -5698,5 +5655,39 @@ verify_database_tables() {
         "radius_sessions_archive"
         "radius_nas" # Added radius_nas
     )
-radius_nas" # Added radius_nas
-    )
+    
+    MISSING_TABLES=()
+    
+    for table in "${REQUIRED_TABLES[@]}"; do
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+            print_success "Table exists: $table"
+        else
+            print_warning "Table missing: $table"
+            MISSING_TABLES+=("$table")
+        fi
+    done
+    
+    if [ ${#MISSING_TABLES[@]} -eq 0 ]; then
+        print_success "All required tables exist"
+        
+        # Count total tables
+        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+        print_info "Total tables in database: $TABLE_COUNT"
+        
+    else
+        print_error "Missing ${#MISSING_TABLES[@]} required tables"
+        print_info "Missing tables: ${MISSING_TABLES[*]}"
+        print_info "Attempting to create missing tables..."
+        
+        # Run migrations to create tables
+        apply_database_fixes
+        
+        # Verify again
+        print_info "Re-checking tables after migration..."
+        STILL_MISSING=()
+        
+        for table in "${MISSING_TABLES[@]}"; do
+            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+                STILL_MISSING+=("$table")
+            fi
+        done

@@ -202,7 +202,13 @@ export async function addCustomerService(data: {
         activation_date,
         connection_type,
         ip_address,
+        mac_address,
         device_id,
+        lock_to_mac,
+        auto_renew,
+        pppoe_username,
+        pppoe_password,
+        location_id,
         created_at,
         updated_at
       ) VALUES (
@@ -213,7 +219,13 @@ export async function addCustomerService(data: {
         ${initialStatus === "active" ? sql`NOW()` : null},
         ${connectionType || "pppoe"},
         ${ipAddressProvided ? ipAddress : null},
+        ${macAddress || null},
         ${deviceId || null},
+        ${lockToMac || false},
+        ${autoRenew || true},
+        ${pppoeUsername || null},
+        ${pppoePassword || null},
+        ${locationId || null},
         NOW(),
         NOW()
       )
@@ -530,6 +542,7 @@ export async function updateCustomerService(
     pppoeUsername?: string
     pppoePassword?: string
     autoRenew?: boolean
+    locationId?: number | null
   },
 ) {
   try {
@@ -546,6 +559,7 @@ export async function updateCustomerService(
       pppoeUsername,
       pppoePassword,
       autoRenew,
+      locationId,
     } = data
 
     const serviceData = await sql`
@@ -573,7 +587,13 @@ export async function updateCustomerService(
         status = COALESCE(${status}, status),
         connection_type = COALESCE(${connectionType}, connection_type),
         ip_address = COALESCE(${ipAddress}, ip_address),
+        mac_address = COALESCE(${macAddress}, mac_address),
         device_id = COALESCE(${deviceId}, device_id),
+        lock_to_mac = COALESCE(${lockToMac}, lock_to_mac),
+        auto_renew = COALESCE(${autoRenew}, auto_renew),
+        pppoe_username = COALESCE(${pppoeUsername}, pppoe_username),
+        pppoe_password = COALESCE(${pppoePassword}, pppoe_password),
+        location_id = COALESCE(${locationId}, location_id),
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *

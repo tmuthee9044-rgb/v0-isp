@@ -410,15 +410,22 @@ BEGIN
     END IF;
 END $$;
 
--- Add sequence for suppliers id if it doesn't exist
+-- Add sequence for suppliers id ONLY if it's an integer type
 DO $$
+DECLARE
+    id_type text;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
-        CREATE SEQUENCE suppliers_id_seq;
-        -- Set the sequence to start from max existing id + 1
-        PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
-        -- Set the default value for id column to use the sequence
-        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
+    SELECT data_type INTO id_type 
+    FROM information_schema.columns 
+    WHERE table_name = 'suppliers' AND column_name = 'id';
+    
+    IF id_type IN ('integer', 'bigint') THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
+            CREATE SEQUENCE suppliers_id_seq;
+            PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
+            ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
+            ALTER SEQUENCE suppliers_id_seq OWNED BY suppliers.id;
+        END IF;
     END IF;
 END $$;
 
@@ -427,10 +434,9 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'warehouses_id_seq') THEN
         CREATE SEQUENCE warehouses_id_seq;
-        -- Set the sequence to start from max existing id + 1
         PERFORM setval('warehouses_id_seq', COALESCE((SELECT MAX(id) FROM warehouses), 0) + 1, false);
-        -- Set the default value for id column to use the sequence
         ALTER TABLE warehouses ALTER COLUMN id SET DEFAULT nextval('warehouses_id_seq');
+        ALTER SEQUENCE warehouses_id_seq OWNED BY warehouses.id;
     END IF;
 END $$;
 
@@ -610,8 +616,7 @@ BEGIN
     END IF;
 END $$;
 
--- Adding auto-increment sequence for vehicles table
--- Fix 6: Create sequence for vehicles.id
+-- Adding auto-increment sequence for vehicles table  
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'vehicles_id_seq') THEN

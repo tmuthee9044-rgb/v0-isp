@@ -5,55 +5,49 @@ import { revalidatePath } from "next/cache"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
 import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
-import { sql } from "slonik" // Assuming slonik is used for SQL queries
 
 async function storePPPoECredentials(serviceId: number, username: string, password: string) {
-  const db = await getSql()
-  await db.query(sql`
+  const sql = await getSql()
+  await sql`
     INSERT INTO pending_tasks (
       task_type,
       entity_id,
-      entity_type,
       task_data,
       status,
       created_at
     ) VALUES (
-      'pppoe_credentials',
+      'store_pppoe',
       ${serviceId},
-      'service',
       ${JSON.stringify({ username, password })},
       'completed',
       NOW()
     )
-    ON CONFLICT (entity_id, entity_type, task_type)
-    DO UPDATE SET 
-      task_data = ${JSON.stringify({ username, password })},
-      updated_at = NOW()
-  `)
+  `
 }
 
-async function retrievePPPoECredentials(serviceId: number): Promise<{ username?: string; password?: string }> {
-  const db = await getSql()
-  const result = await db.query(sql`
+async function retrievePPPoECredentials(serviceId: number): Promise<{ username: string; password: string } | null> {
+  const sql = await getSql()
+  const result = await sql`
     SELECT task_data 
     FROM pending_tasks 
-    WHERE entity_id = ${serviceId} 
-      AND entity_type = 'service' 
-      AND task_type = 'pppoe_credentials'
-    ORDER BY created_at DESC
+    WHERE task_type = 'store_pppoe' 
+    AND entity_id = ${serviceId}
+    AND status = 'completed'
+    ORDER BY created_at DESC 
     LIMIT 1
-  `)
-  if (result.rows.length > 0 && result.rows[0].task_data) {
-    return JSON.parse(result.rows[0].task_data) as { username?: string; password?: string }
+  `
+
+  if (result && result.length > 0) {
+    return JSON.parse(result[0].task_data)
   }
-  return {}
+  return null
 }
 
 export async function getCustomerServices(customerId: number) {
   try {
     const db = await getSql()
 
-    const services = await db.query(sql`
+    const services = await db.query(`
       SELECT 
         cs.*,
         sp.name as service_name,
@@ -79,7 +73,7 @@ export async function getServicePlans() {
   try {
     const db = await getSql()
 
-    const plans = await db.query(sql`
+    const plans = await db.query(`
       SELECT * FROM service_plans 
       WHERE status = 'active' 
       ORDER BY price ASC
@@ -136,20 +130,21 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     if (ipAddressProvided) {
       console.log("[v0] Checking for duplicate IP address...")
-      const existingIpAssignment = await getSql().query(sql`
+      const sql = await getSql()
+      const existingIpAssignment = await sql`
         SELECT cs.id, sp.name as service_name
         FROM customer_services cs
         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-        WHERE cs.customer_id = ${customerId} 
+        WHERE cs.ip_address = ${ipAddress}
         AND cs.status IN ('active', 'pending', 'suspended')
         LIMIT 1
-      `)
+      `
 
-      if (existingIpAssignment.rows.length > 0) {
+      if (existingIpAssignment.length > 0) {
         console.log("[v0] DUPLICATE IP DETECTED - IP already assigned:", ipAddress)
         return {
           success: false,
-          error: `This IP address (${ipAddress}) is already assigned to another service for this customer: ${existingIpAssignment.rows[0].service_name || "Unknown Service"}. Please select a different IP address.`,
+          error: `This IP address (${ipAddress}) is already assigned to another service: ${existingIpAssignment[0].service_name || "Unknown Service"}. Please select a different IP address.`,
         }
       }
       console.log("[v0] IP address is available")
@@ -157,7 +152,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Proceeding with service creation...")
 
-    const servicePlan = await getSql().query(sql`
+    const servicePlan = await getSql().query(`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
       WHERE id = ${servicePlanId} AND is_active = true
@@ -175,7 +170,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Creating new service with status:", initialStatus)
 
-    const result = await getSql().query(sql`
+    const result = await getSql().query(`
       INSERT INTO customer_services (
         customer_id, 
         service_plan_id, 
@@ -196,18 +191,18 @@ export async function addCustomerService(customerId: number, formData: FormData)
       ) VALUES (
         ${customerId},
         ${servicePlanId},
-        ${initialStatus},
+        '${initialStatus}',
         ${servicePlan.rows[0].price},
-        ${initialStatus === "active" ? sql`NOW()` : null},
-        ${connectionType || "pppoe"},
-        ${ipAddressProvided ? ipAddress : null},
-        ${macAddress || null},
-        ${deviceId || null},
-        ${lockToMac || false},
-        ${autoRenew || true},
-        ${pppoeUsername || null},
-        ${pppoePassword || null},
-        ${locationId || null},
+        ${initialStatus === "active" ? "NOW()" : "null"},
+        '${connectionType || "pppoe"}',
+        ${ipAddressProvided ? `'${ipAddress}'` : "null"},
+        ${macAddress ? `'${macAddress}'` : "null"},
+        ${deviceId ? deviceId : "null"},
+        ${lockToMac ? "true" : "false"},
+        ${autoRenew ? "true" : "false"},
+        ${pppoeUsername ? `'${pppoeUsername}'` : "null"},
+        ${pppoePassword ? `'${pppoePassword}'` : "null"},
+        ${locationId ? locationId : "null"},
         NOW(),
         NOW()
       )
@@ -218,7 +213,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     let allocatedIpAddress = ipAddressProvided ? ipAddress : null
 
     if (ipAddress === "auto" || !ipAddress) {
-      await getSql().query(sql`
+      await getSql().query(`
         INSERT INTO pending_tasks (
           task_type, 
           resource_type, 
@@ -230,7 +225,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
           'allocate_ip',
           'customer_service',
           ${serviceId},
-          ${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })}::jsonb,
+          '${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })}'::jsonb,
           'pending',
           NOW()
         )
@@ -240,11 +235,11 @@ export async function addCustomerService(customerId: number, formData: FormData)
       console.log("[v0] Checking IP uniqueness for:", ipAddress)
 
       // Check if IP is already assigned to any active service
-      const existingAssignment = await getSql().query(sql`
+      const existingAssignment = await getSql().query(`
         SELECT cs.id, cs.customer_id, c.first_name, c.last_name
         FROM customer_services cs
         JOIN customers c ON c.id = cs.customer_id
-        WHERE cs.ip_address = ${ipAddress}
+        WHERE cs.ip_address = '${ipAddress}'
         AND cs.status IN ('active', 'pending', 'suspended')
         AND cs.id != 0
       `)
@@ -257,16 +252,16 @@ export async function addCustomerService(customerId: number, formData: FormData)
       }
 
       // Mark IP as assigned
-      await getSql().query(sql`
+      await getSql().query(`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-        WHERE ip_address::text = ${ipAddress}
+        WHERE ip_address::text = '${ipAddress}'
       `)
       allocatedIpAddress = ipAddress
 
-      await getSql().query(sql`
+      await getSql().query(`
         UPDATE customer_services
-        SET ip_address = ${allocatedIpAddress}
+        SET ip_address = '${allocatedIpAddress}'
         WHERE id = ${serviceId}
       `)
     }
@@ -275,7 +270,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 30)
 
-    const invoice = await getSql().query(sql`
+    const invoice = await getSql().query(`
       INSERT INTO invoices (
         customer_id,
         invoice_number,
@@ -287,36 +282,36 @@ export async function addCustomerService(customerId: number, formData: FormData)
         created_at
       ) VALUES (
         ${customerId},
-        ${invoiceNumber},
+        '${invoiceNumber}',
         ${servicePlan.rows[0].price},
         ${servicePlan.rows[0].price},
-        ${dueDate.toISOString().split("T")[0]},
-        ${autoRenew ? "paid" : "pending"},
-        ${`Initial invoice for ${servicePlan.rows[0].name}`},
+        '${dueDate.toISOString().split("T")[0]}',
+        '${autoRenew ? "paid" : "pending"}',
+        'Initial invoice for ${servicePlan.rows[0].name}',
         NOW()
       ) RETURNING id
     `)
 
     if (autoRenew) {
-      await getSql().query(sql`
+      await getSql().query(`
         UPDATE invoices 
         SET paid_amount = ${servicePlan.rows[0].price}
         WHERE id = ${invoice.rows[0].id}
       `)
 
-      await getSql().query(sql`
+      await getSql().query(`
         INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
         VALUES (
           1,
           'service_activation',
           'customer_service',
           ${serviceId},
-          ${JSON.stringify({
+          '${JSON.stringify({
             customer_id: customerId,
             service_id: serviceId,
             invoice_id: invoice.rows[0].id,
             reason: "auto_renew",
-          })}::jsonb,
+          })}'::jsonb,
           NOW()
         )
       `)
@@ -364,29 +359,29 @@ export async function addCustomerService(customerId: number, formData: FormData)
     if (pppoeUsername && pppoePassword) {
       console.log("[v0] Storing PPPoE credentials in RADIUS tables:", pppoeUsername)
 
-      await getSql().query(sql`
+      await getSql().query(`
         INSERT INTO radcheck (username, attribute, op, value)
-        VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword})
+        VALUES ('${pppoeUsername}', 'Cleartext-Password', ':=', '${pppoePassword}')
         ON CONFLICT (username, attribute) 
-        DO UPDATE SET value = ${pppoePassword}, updated_at = NOW()
+        DO UPDATE SET value = '${pppoePassword}', updated_at = NOW()
       `)
 
       const downloadLimit = servicePlan.rows[0].speed_download
       const uploadLimit = servicePlan.rows[0].speed_upload
 
-      await getSql().query(sql`
+      await getSql().query(`
         INSERT INTO radreply (username, attribute, op, value)
-        VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${`${downloadLimit}M/${uploadLimit}M`})
+        VALUES ('${pppoeUsername}', 'Mikrotik-Rate-Limit', ':=', '${downloadLimit}M/${uploadLimit}M')
         ON CONFLICT (username, attribute)
-        DO UPDATE SET value = ${`${downloadLimit}M/${uploadLimit}M`}, updated_at = NOW()
+        DO UPDATE SET value = '${downloadLimit}M/${uploadLimit}M', updated_at = NOW()
       `)
 
       if (macAddress && lockToMac) {
-        await getSql().query(sql`
+        await getSql().query(`
           INSERT INTO radcheck (username, attribute, op, value)
-          VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress})
+          VALUES ('${pppoeUsername}', 'Calling-Station-Id', '==', '${macAddress}')
           ON CONFLICT (username, attribute)
-          DO UPDATE SET value = ${macAddress}, updated_at = NOW()
+          DO UPDATE SET value = '${macAddress}', updated_at = NOW()
         `)
       }
 
@@ -445,7 +440,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
 
-    const servicePlan = await db.query(sql`
+    const servicePlan = await db.query(`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
       WHERE id = ${servicePlanId}
@@ -459,15 +454,15 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    const result = await db.query(sql`
+    const result = await db.query(`
       UPDATE customer_services
       SET
         service_plan_id = ${servicePlanId},
-        status = ${formData.get("status")},
+        status = '${formData.get("status")}',
         monthly_fee = ${servicePlan.rows[0].price},
-        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
-        device_id = ${device_id || null},
-        connection_type = ${connectionType || "pppoe"},
+        ip_address = ${ipAddress && ipAddress !== "auto" ? `'${ipAddress}'` : "null"},
+        device_id = ${device_id || "null"},
+        connection_type = '${connectionType || "pppoe"}',
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
@@ -495,7 +490,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    await db.query(sql`
+    await db.query(`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -508,7 +503,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         'update',
         'customer_service',
         ${serviceId},
-        ${`Updated service to ${servicePlan.rows[0].name}`},
+        'Updated service to ${servicePlan.rows[0].name}',
         NOW()
       )
       ON CONFLICT DO NOTHING
@@ -564,7 +559,7 @@ export async function updateCustomerService(
       locationId,
     } = data
 
-    const serviceData = await db.query(sql`
+    const serviceData = await db.query(`
       SELECT cs.*, c.id as customer_id, c.portal_username,
              sp.speed_download, sp.speed_upload
       FROM customer_services cs
@@ -582,19 +577,19 @@ export async function updateCustomerService(
 
     console.log("[v0] Updating service in database...")
 
-    const updateQuery = db.query(sql`
+    const updateQuery = db.query(`
       UPDATE customer_services
       SET 
         service_plan_id = COALESCE(${servicePlanId}, service_plan_id),
-        status = COALESCE(${status}, status),
-        connection_type = COALESCE(${connectionType}, connection_type),
-        ip_address = COALESCE(${ipAddress}, ip_address),
-        mac_address = COALESCE(${macAddress}, mac_address),
+        status = COALESCE('${status}', status),
+        connection_type = COALESCE('${connectionType}', connection_type),
+        ip_address = COALESCE('${ipAddress}', ip_address),
+        mac_address = COALESCE('${macAddress}', mac_address),
         device_id = COALESCE(${deviceId}, device_id),
         lock_to_mac = COALESCE(${lockToMac}, lock_to_mac),
         auto_renew = COALESCE(${autoRenew}, auto_renew),
-        pppoe_username = COALESCE(${pppoeUsername}, pppoe_username),
-        pppoe_password = COALESCE(${pppoePassword}, pppoe_password),
+        pppoe_username = COALESCE('${pppoeUsername}', pppoe_username),
+        pppoe_password = COALESCE('${pppoePassword}', pppoe_password),
         location_id = COALESCE(${locationId}, location_id),
         updated_at = NOW()
       WHERE id = ${serviceId}
@@ -607,36 +602,36 @@ export async function updateCustomerService(
     if (pppoeUsername && pppoePassword) {
       console.log("[v0] Updating PPPoE credentials in RADIUS tables:", pppoeUsername)
 
-      await db.query(sql`
+      await db.query(`
         INSERT INTO radcheck (username, attribute, op, value)
-        VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword})
+        VALUES ('${pppoeUsername}', 'Cleartext-Password', ':=', '${pppoePassword}')
         ON CONFLICT (username, attribute)
-        DO UPDATE SET value = ${pppoePassword}, updated_at = NOW()
+        DO UPDATE SET value = '${pppoePassword}', updated_at = NOW()
       `)
 
       if (servicePlanId) {
         const servicePlan = await db.query(
-          sql`SELECT download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}`,
+          `SELECT download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}`,
         )
         if (servicePlan.rows.length > 0) {
           const downloadLimit = servicePlan.rows[0].download_speed
           const uploadLimit = servicePlan.rows[0].upload_speed
 
-          await db.query(sql`
+          await db.query(`
             INSERT INTO radreply (username, attribute, op, value)
-            VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${`${downloadLimit}M/${uploadLimit}M`})
+            VALUES ('${pppoeUsername}', 'Mikrotik-Rate-Limit', ':=', '${downloadLimit}M/${uploadLimit}M')
             ON CONFLICT (username, attribute)
-            DO UPDATE SET value = ${`${downloadLimit}M/${uploadLimit}M`}, updated_at = NOW()
+            DO UPDATE SET value = '${downloadLimit}M/${uploadLimit}M', updated_at = NOW()
           `)
         }
       }
 
       if (macAddress && lockToMac) {
-        await db.query(sql`
+        await db.query(`
           INSERT INTO radcheck (username, attribute, op, value)
-          VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress})
+          VALUES ('${pppoeUsername}', 'Calling-Station-Id', '==', '${macAddress}')
           ON CONFLICT (username, attribute)
-          DO UPDATE SET value = ${macAddress}, updated_at = NOW()
+          DO UPDATE SET value = '${macAddress}', updated_at = NOW()
         `)
       }
 
@@ -654,7 +649,7 @@ export async function deleteCustomerService(serviceId: number) {
   try {
     const db = await getSql()
 
-    const serviceData = await db.query(sql`
+    const serviceData = await db.query(`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
       FROM customer_services cs
       LEFT JOIN customers c ON cs.customer_id = c.id
@@ -689,7 +684,7 @@ export async function deleteCustomerService(serviceId: number) {
       }).catch((err) => console.error("[v0] Router deprovision error:", err))
     }
 
-    await db.query(sql`
+    await db.query(`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
     `)
@@ -710,7 +705,7 @@ export async function validateCustomerServiceRelationships() {
   try {
     const db = await getSql()
 
-    const orphanedServices = await db.query(sql`
+    const orphanedServices = await db.query(`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
       FROM customer_services cs
       LEFT JOIN customers c ON cs.customer_id = c.id
@@ -718,7 +713,7 @@ export async function validateCustomerServiceRelationships() {
       WHERE c.id IS NULL OR sp.id IS NULL
     `)
 
-    const customersWithoutServices = await db.query(sql`
+    const customersWithoutServices = await db.query(`
       SELECT c.id, c.first_name, c.last_name, c.email
       FROM customers c
       LEFT JOIN customer_services cs ON c.id = cs.customer_id
@@ -744,7 +739,7 @@ export async function fixOrphanedServices() {
   try {
     const db = await getSql()
 
-    const result = await db.query(sql`
+    const result = await db.query(`
       DELETE FROM customer_services 
       WHERE customer_id NOT IN (SELECT id FROM customers)
          OR service_plan_id NOT IN (SELECT id FROM service_plans)
@@ -766,7 +761,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
   try {
     const db = await getSql()
 
-    await db.query(sql`
+    await db.query(`
       UPDATE invoices
       SET status = 'paid',
           paid_amount = ${amount},
@@ -775,7 +770,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       WHERE id = ${invoiceId} AND customer_id = ${customerId}
     `)
 
-    const pendingServices = await db.query(sql`
+    const pendingServices = await db.query(`
       SELECT cs.*, sp.download_speed, sp.upload_speed, sp.name as service_name
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
@@ -783,7 +778,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       AND cs.status = 'pending'
     `)
 
-    const customerRouter = await db.query(sql`
+    const customerRouter = await db.query(`
       SELECT nd.customer_auth_method, nd.id as router_id
       FROM customers c
       LEFT JOIN network_devices nd ON nd.location_id = c.location_id
@@ -796,7 +791,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
     console.log(`[v0] Customer router auth method: ${authMethod}`)
 
     for (const service of pendingServices.rows) {
-      await db.query(sql`
+      await db.query(`
         UPDATE customer_services
         SET status = 'active',
             activation_date = NOW(),
@@ -848,7 +843,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
         }
       }
 
-      await db.query(sql`
+      await db.query(`
         INSERT INTO activity_logs (
           user_id,
           action,
@@ -861,7 +856,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
           'activate',
           'customer_service',
           ${service.id},
-          ${`Service activated after payment: ${service.service_name}`},
+          'Service activated after payment: ${service.service_name}',
           NOW()
         )
         ON CONFLICT DO NOTHING
@@ -892,7 +887,7 @@ export async function updateServiceStatus(
   try {
     const db = await getSql()
 
-    const serviceData = await db.query(sql`
+    const serviceData = await db.query(`
       SELECT cs.*, c.portal_username
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
@@ -907,12 +902,12 @@ export async function updateServiceStatus(
     const service = serviceData.rows[0]
     const oldStatus = service.status
 
-    await db.query(sql`
+    await db.query(`
       UPDATE customer_services
-      SET status = ${newStatus},
-          ${newStatus === "suspended" ? sql`suspension_date = NOW(),` : sql``}
-          ${newStatus === "terminated" ? sql`termination_date = NOW(),` : sql``}
-          ${newStatus === "active" ? sql`activation_date = NOW(),` : sql``}
+      SET status = '${newStatus}',
+          ${newStatus === "suspended" ? "suspension_date = NOW()," : ""}
+          ${newStatus === "terminated" ? "termination_date = NOW()," : ""}
+          ${newStatus === "active" ? "activation_date = NOW()," : ""}
           updated_at = NOW()
       WHERE id = ${serviceId}
     `)
@@ -946,7 +941,7 @@ export async function updateServiceStatus(
       })
     }
 
-    await db.query(sql`
+    await db.query(`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -959,7 +954,7 @@ export async function updateServiceStatus(
         'status_change',
         'customer_service',
         ${serviceId},
-        ${`Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}`},
+        'Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}',
         NOW()
       )
       ON CONFLICT DO NOTHING

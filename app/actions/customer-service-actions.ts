@@ -5,10 +5,11 @@ import { revalidatePath } from "next/cache"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
 import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
+import { sql } from "slonik" // Assuming slonik is used for SQL queries
 
 async function storePPPoECredentials(serviceId: number, username: string, password: string) {
-  const sql = await getSql()
-  await sql`
+  const db = await getSql()
+  await db.query(sql`
     INSERT INTO pending_tasks (
       task_type,
       entity_id,
@@ -28,12 +29,12 @@ async function storePPPoECredentials(serviceId: number, username: string, passwo
     DO UPDATE SET 
       task_data = ${JSON.stringify({ username, password })},
       updated_at = NOW()
-  `
+  `)
 }
 
 async function retrievePPPoECredentials(serviceId: number): Promise<{ username?: string; password?: string }> {
-  const sql = await getSql()
-  const result = await sql`
+  const db = await getSql()
+  const result = await db.query(sql`
     SELECT task_data 
     FROM pending_tasks 
     WHERE entity_id = ${serviceId} 
@@ -41,18 +42,18 @@ async function retrievePPPoECredentials(serviceId: number): Promise<{ username?:
       AND task_type = 'pppoe_credentials'
     ORDER BY created_at DESC
     LIMIT 1
-  `
-  if (result.length > 0 && result[0].task_data) {
-    return result[0].task_data as { username?: string; password?: string }
+  `)
+  if (result.rows.length > 0 && result.rows[0].task_data) {
+    return JSON.parse(result.rows[0].task_data) as { username?: string; password?: string }
   }
   return {}
 }
 
 export async function getCustomerServices(customerId: number) {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const services = await sql`
+    const services = await db.query(sql`
       SELECT 
         cs.*,
         sp.name as service_name,
@@ -65,9 +66,9 @@ export async function getCustomerServices(customerId: number) {
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC
-    `
+    `)
 
-    return services || []
+    return services.rows || []
   } catch (error) {
     console.error("Error fetching customer services:", error)
     return []
@@ -76,53 +77,37 @@ export async function getCustomerServices(customerId: number) {
 
 export async function getServicePlans() {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const plans = await sql`
+    const plans = await db.query(sql`
       SELECT * FROM service_plans 
       WHERE status = 'active' 
       ORDER BY price ASC
-    `
+    `)
 
-    return { success: true, plans: plans || [] }
+    return { success: true, plans: plans.rows || [] }
   } catch (error) {
     console.error("Error fetching service plans:", error)
     return { success: false, plans: [], error: "Failed to fetch service plans" }
   }
 }
 
-export async function addCustomerService(data: {
-  customerId: number
-  servicePlanId: number
-  connectionType?: string
-  ipAddress?: string
-  macAddress?: string
-  deviceId?: number | null
-  lockToMac?: boolean
-  pppoeUsername?: string
-  pppoePassword?: string
-  autoRenew?: boolean
-  locationId?: number | null
-}) {
+export async function addCustomerService(customerId: number, formData: FormData) {
   try {
-    const {
-      customerId,
-      servicePlanId,
-      connectionType,
-      ipAddress,
-      macAddress,
-      deviceId,
-      lockToMac,
-      pppoeUsername,
-      pppoePassword,
-      autoRenew,
-      locationId,
-    } = data
-
-    const sql = await getSql()
-
     console.log("[v0] === addCustomerService START ===")
     console.log("[v0] Timestamp:", new Date().toISOString())
+
+    const servicePlanId = Number.parseInt(formData.get("service_plan_id") as string)
+    const connectionType = formData.get("connection_type") as string
+    const ipAddress = (formData.get("ip_address") as string) || undefined
+    const macAddress = (formData.get("mac_address") as string) || undefined
+    const deviceId = macAddress ? Number.parseInt(macAddress.replace(/[^0-9]/g, "")) : null
+    const lockToMac = formData.get("lock_to_mac") === "on"
+    const pppoeEnabled = formData.get("pppoe_enabled") === "on"
+    const pppoeUsername = (formData.get("pppoe_username") as string) || undefined
+    const pppoePassword = (formData.get("pppoe_password") as string) || undefined
+    const autoRenew = formData.get("auto_renew") === "on"
+    const locationId = formData.get("location_id") ? Number.parseInt(formData.get("location_id") as string) : null
 
     console.log("[v0] Customer ID:", customerId)
     console.log("[v0] Service Plan ID:", servicePlanId)
@@ -131,16 +116,13 @@ export async function addCustomerService(data: {
     console.log("[v0] MAC Address:", macAddress)
     console.log("[v0] Lock to MAC:", lockToMac)
     console.log("[v0] PPPoE Username:", pppoeUsername)
-    console.log("[v0] PPPoE Password:", pppoePassword)
+    console.log("[v0] PPPoE Password:", pppoePassword ? "***" : undefined)
     console.log("[v0] Device ID:", deviceId)
     console.log("[v0] Auto Renew:", autoRenew)
 
     if (!servicePlanId || isNaN(servicePlanId)) {
       console.log("[v0] Invalid service plan ID")
-      return {
-        success: false,
-        error: "Invalid service plan selected. Please select a valid service plan.",
-      }
+      return { success: false, error: "Invalid service plan selected. Please select a valid service plan." }
     }
 
     if (!connectionType) {
@@ -154,20 +136,20 @@ export async function addCustomerService(data: {
 
     if (ipAddressProvided) {
       console.log("[v0] Checking for duplicate IP address...")
-      const existingIpAssignment = await sql`
+      const existingIpAssignment = await getSql().query(sql`
         SELECT cs.id, sp.name as service_name
         FROM customer_services cs
         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
         WHERE cs.customer_id = ${customerId} 
         AND cs.status IN ('active', 'pending', 'suspended')
         LIMIT 1
-      `
+      `)
 
-      if (existingIpAssignment.length > 0) {
+      if (existingIpAssignment.rows.length > 0) {
         console.log("[v0] DUPLICATE IP DETECTED - IP already assigned:", ipAddress)
         return {
           success: false,
-          error: `This IP address (${ipAddress}) is already assigned to another service for this customer: ${existingIpAssignment[0].service_name || "Unknown Service"}. Please select a different IP address.`,
+          error: `This IP address (${ipAddress}) is already assigned to another service for this customer: ${existingIpAssignment.rows[0].service_name || "Unknown Service"}. Please select a different IP address.`,
         }
       }
       console.log("[v0] IP address is available")
@@ -175,14 +157,14 @@ export async function addCustomerService(data: {
 
     console.log("[v0] Proceeding with service creation...")
 
-    const servicePlan = await sql`
+    const servicePlan = await getSql().query(sql`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
       WHERE id = ${servicePlanId} AND is_active = true
       LIMIT 1
-    `
+    `)
 
-    if (servicePlan.length === 0) {
+    if (servicePlan.rows.length === 0) {
       return {
         success: false,
         error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
@@ -193,7 +175,7 @@ export async function addCustomerService(data: {
 
     console.log("[v0] Creating new service with status:", initialStatus)
 
-    const result = await sql`
+    const result = await getSql().query(sql`
       INSERT INTO customer_services (
         customer_id, 
         service_plan_id, 
@@ -215,7 +197,7 @@ export async function addCustomerService(data: {
         ${customerId},
         ${servicePlanId},
         ${initialStatus},
-        ${servicePlan[0].price},
+        ${servicePlan.rows[0].price},
         ${initialStatus === "active" ? sql`NOW()` : null},
         ${connectionType || "pppoe"},
         ${ipAddressProvided ? ipAddress : null},
@@ -230,13 +212,13 @@ export async function addCustomerService(data: {
         NOW()
       )
       RETURNING id
-    `
+    `)
 
-    const serviceId = result[0].id
+    const serviceId = result.rows[0].id
     let allocatedIpAddress = ipAddressProvided ? ipAddress : null
 
     if (ipAddress === "auto" || !ipAddress) {
-      await sql`
+      await getSql().query(sql`
         INSERT INTO pending_tasks (
           task_type, 
           resource_type, 
@@ -253,27 +235,47 @@ export async function addCustomerService(data: {
           NOW()
         )
         ON CONFLICT DO NOTHING
-      `
+      `)
     } else if (ipAddressProvided && locationId) {
-      await sql`
+      console.log("[v0] Checking IP uniqueness for:", ipAddress)
+
+      // Check if IP is already assigned to any active service
+      const existingAssignment = await getSql().query(sql`
+        SELECT cs.id, cs.customer_id, c.first_name, c.last_name
+        FROM customer_services cs
+        JOIN customers c ON c.id = cs.customer_id
+        WHERE cs.ip_address = ${ipAddress}
+        AND cs.status IN ('active', 'pending', 'suspended')
+        AND cs.id != 0
+      `)
+
+      if (existingAssignment.rows.length > 0) {
+        const existing = existingAssignment.rows[0]
+        throw new Error(
+          `IP address ${ipAddress} is already assigned to ${existing.first_name} ${existing.last_name} (Customer ID: ${existing.customer_id})`,
+        )
+      }
+
+      // Mark IP as assigned
+      await getSql().query(sql`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
         WHERE ip_address::text = ${ipAddress}
-      `
+      `)
       allocatedIpAddress = ipAddress
 
-      await sql`
+      await getSql().query(sql`
         UPDATE customer_services
         SET ip_address = ${allocatedIpAddress}
         WHERE id = ${serviceId}
-      `
+      `)
     }
 
     const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 30)
 
-    const invoice = await sql`
+    const invoice = await getSql().query(sql`
       INSERT INTO invoices (
         customer_id,
         invoice_number,
@@ -286,23 +288,23 @@ export async function addCustomerService(data: {
       ) VALUES (
         ${customerId},
         ${invoiceNumber},
-        ${servicePlan[0].price},
-        ${servicePlan[0].price},
+        ${servicePlan.rows[0].price},
+        ${servicePlan.rows[0].price},
         ${dueDate.toISOString().split("T")[0]},
         ${autoRenew ? "paid" : "pending"},
-        ${`Initial invoice for ${servicePlan[0].name}`},
+        ${`Initial invoice for ${servicePlan.rows[0].name}`},
         NOW()
       ) RETURNING id
-    `
+    `)
 
     if (autoRenew) {
-      await sql`
+      await getSql().query(sql`
         UPDATE invoices 
-        SET paid_amount = ${servicePlan[0].price}
-        WHERE id = ${invoice[0].id}
-      `
+        SET paid_amount = ${servicePlan.rows[0].price}
+        WHERE id = ${invoice.rows[0].id}
+      `)
 
-      await sql`
+      await getSql().query(sql`
         INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
         VALUES (
           1,
@@ -312,12 +314,12 @@ export async function addCustomerService(data: {
           ${JSON.stringify({
             customer_id: customerId,
             service_id: serviceId,
-            invoice_id: invoice[0].id,
+            invoice_id: invoice.rows[0].id,
             reason: "auto_renew",
           })}::jsonb,
           NOW()
         )
-      `
+      `)
 
       console.log("[v0] Provisioning to RADIUS with credentials...")
       const radiusResult = await provisionRadiusUser({
@@ -326,8 +328,8 @@ export async function addCustomerService(data: {
         username: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
         password: pppoePassword || Math.random().toString(36).substring(2, 15),
         ipAddress: allocatedIpAddress || undefined,
-        downloadSpeed: servicePlan[0].speed_download,
-        uploadSpeed: servicePlan[0].speed_upload,
+        downloadSpeed: servicePlan.rows[0].speed_download,
+        uploadSpeed: servicePlan.rows[0].speed_upload,
       })
 
       if (!radiusResult.success) {
@@ -347,8 +349,8 @@ export async function addCustomerService(data: {
           connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
           pppoeUsername: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
           pppoePassword: pppoePassword || Math.random().toString(36).substring(2, 15),
-          downloadSpeed: servicePlan[0].speed_download,
-          uploadSpeed: servicePlan[0].speed_upload,
+          downloadSpeed: servicePlan.rows[0].speed_download,
+          uploadSpeed: servicePlan.rows[0].speed_upload,
         })
 
         if (!provisionResult.success) {
@@ -362,30 +364,30 @@ export async function addCustomerService(data: {
     if (pppoeUsername && pppoePassword) {
       console.log("[v0] Storing PPPoE credentials in RADIUS tables:", pppoeUsername)
 
-      await sql`
+      await getSql().query(sql`
         INSERT INTO radcheck (username, attribute, op, value)
         VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword})
         ON CONFLICT (username, attribute) 
         DO UPDATE SET value = ${pppoePassword}, updated_at = NOW()
-      `
+      `)
 
-      const downloadLimit = servicePlan[0].speed_download
-      const uploadLimit = servicePlan[0].speed_upload
+      const downloadLimit = servicePlan.rows[0].speed_download
+      const uploadLimit = servicePlan.rows[0].speed_upload
 
-      await sql`
+      await getSql().query(sql`
         INSERT INTO radreply (username, attribute, op, value)
         VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${`${downloadLimit}M/${uploadLimit}M`})
         ON CONFLICT (username, attribute)
         DO UPDATE SET value = ${`${downloadLimit}M/${uploadLimit}M`}, updated_at = NOW()
-      `
+      `)
 
       if (macAddress && lockToMac) {
-        await sql`
+        await getSql().query(sql`
           INSERT INTO radcheck (username, attribute, op, value)
           VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress})
           ON CONFLICT (username, attribute)
           DO UPDATE SET value = ${macAddress}, updated_at = NOW()
-        `
+        `)
       }
 
       console.log("[v0] PPPoE credentials stored in RADIUS tables successfully")
@@ -414,7 +416,7 @@ export async function addCustomerService(data: {
 
 export async function updateCustomerServiceWithoutInvoice(serviceId: number, formData: FormData) {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
@@ -443,35 +445,35 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
 
-    const servicePlan = await sql`
+    const servicePlan = await db.query(sql`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
       WHERE id = ${servicePlanId}
       LIMIT 1
-    `
+    `)
 
-    if (servicePlan.length === 0) {
+    if (servicePlan.rows.length === 0) {
       return {
         success: false,
         error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
       }
     }
 
-    const result = await sql`
+    const result = await db.query(sql`
       UPDATE customer_services
       SET
         service_plan_id = ${servicePlanId},
         status = ${formData.get("status")},
-        monthly_fee = ${servicePlan[0].price},
+        monthly_fee = ${servicePlan.rows[0].price},
         ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         device_id = ${device_id || null},
         connection_type = ${connectionType || "pppoe"},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
-    `
+    `)
 
-    if (result.length === 0) {
+    if (result.rows.length === 0) {
       return {
         success: false,
         error: "Service not found",
@@ -484,8 +486,8 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         await provisionToStandardRadiusTables(
           pppoeUsername,
           pppoePassword,
-          servicePlan[0].speed_download || "10M",
-          servicePlan[0].speed_upload || "10M",
+          servicePlan.rows[0].speed_download || "10M",
+          servicePlan.rows[0].speed_upload || "10M",
         )
         console.log("[v0] PPPoE credentials provisioned to RADIUS successfully")
       } catch (radiusError) {
@@ -493,7 +495,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    await sql`
+    await db.query(sql`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -506,18 +508,18 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         'update',
         'customer_service',
         ${serviceId},
-        ${`Updated service to ${servicePlan[0].name}`},
+        ${`Updated service to ${servicePlan.rows[0].name}`},
         NOW()
       )
       ON CONFLICT DO NOTHING
-    `
+    `)
 
-    const customerId = result[0].customer_id
+    const customerId = result.rows[0].customer_id
     revalidatePath(`/customers/${customerId}`, "page")
 
     return {
       success: true,
-      service: result[0],
+      service: result.rows[0],
       message: "Service updated successfully",
     }
   } catch (error) {
@@ -546,7 +548,7 @@ export async function updateCustomerService(
   },
 ) {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
     const {
       servicePlanId,
@@ -562,7 +564,7 @@ export async function updateCustomerService(
       locationId,
     } = data
 
-    const serviceData = await sql`
+    const serviceData = await db.query(sql`
       SELECT cs.*, c.id as customer_id, c.portal_username,
              sp.speed_download, sp.speed_upload
       FROM customer_services cs
@@ -570,17 +572,17 @@ export async function updateCustomerService(
       LEFT JOIN service_plans sp ON sp.id = cs.service_plan_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `
+    `)
 
-    if (serviceData.length === 0) {
+    if (serviceData.rows.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData[0]
+    const service = serviceData.rows[0]
 
     console.log("[v0] Updating service in database...")
 
-    const updateQuery = sql`
+    const updateQuery = db.query(sql`
       UPDATE customer_services
       SET 
         service_plan_id = COALESCE(${servicePlanId}, service_plan_id),
@@ -597,7 +599,7 @@ export async function updateCustomerService(
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
-    `
+    `)
 
     const result = await updateQuery
     console.log("[v0] Successfully updated service:", serviceId)
@@ -605,42 +607,43 @@ export async function updateCustomerService(
     if (pppoeUsername && pppoePassword) {
       console.log("[v0] Updating PPPoE credentials in RADIUS tables:", pppoeUsername)
 
-      await sql`
+      await db.query(sql`
         INSERT INTO radcheck (username, attribute, op, value)
         VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword})
         ON CONFLICT (username, attribute)
         DO UPDATE SET value = ${pppoePassword}, updated_at = NOW()
-      `
+      `)
 
       if (servicePlanId) {
-        const servicePlan =
-          await sql`SELECT download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}`
-        if (servicePlan.length > 0) {
-          const downloadLimit = servicePlan[0].download_speed
-          const uploadLimit = servicePlan[0].upload_speed
+        const servicePlan = await db.query(
+          sql`SELECT download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}`,
+        )
+        if (servicePlan.rows.length > 0) {
+          const downloadLimit = servicePlan.rows[0].download_speed
+          const uploadLimit = servicePlan.rows[0].upload_speed
 
-          await sql`
+          await db.query(sql`
             INSERT INTO radreply (username, attribute, op, value)
             VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${`${downloadLimit}M/${uploadLimit}M`})
             ON CONFLICT (username, attribute)
             DO UPDATE SET value = ${`${downloadLimit}M/${uploadLimit}M`}, updated_at = NOW()
-          `
+          `)
         }
       }
 
       if (macAddress && lockToMac) {
-        await sql`
+        await db.query(sql`
           INSERT INTO radcheck (username, attribute, op, value)
           VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress})
           ON CONFLICT (username, attribute)
           DO UPDATE SET value = ${macAddress}, updated_at = NOW()
-        `
+        `)
       }
 
       console.log("[v0] PPPoE credentials updated in RADIUS tables successfully")
     }
 
-    return { success: true, service: result[0] }
+    return { success: true, service: result.rows[0] }
   } catch (error: any) {
     console.error("[v0] Error updating customer service:", error.message)
     return { success: false, error: error.message }
@@ -649,22 +652,22 @@ export async function updateCustomerService(
 
 export async function deleteCustomerService(serviceId: number) {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const serviceData = await sql`
+    const serviceData = await db.query(sql`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
       FROM customer_services cs
       LEFT JOIN customers c ON cs.customer_id = c.id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `
+    `)
 
-    if (serviceData.length === 0) {
+    if (serviceData.rows.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData[0]
+    const service = serviceData.rows[0]
 
     if (service.portal_username) {
       await deprovisionRadiusUser({
@@ -686,16 +689,16 @@ export async function deleteCustomerService(serviceId: number) {
       }).catch((err) => console.error("[v0] Router deprovision error:", err))
     }
 
-    await sql`
+    await db.query(sql`
       DELETE FROM customer_services 
       WHERE id = ${serviceId}
-    `
+    `)
 
     revalidatePath(`/customers`)
     return {
       success: true,
       message: "Service terminated successfully and IP address released",
-      service: serviceData[0],
+      service: serviceData.rows[0],
     }
   } catch (error) {
     console.error("Error removing service:", error)
@@ -705,30 +708,30 @@ export async function deleteCustomerService(serviceId: number) {
 
 export async function validateCustomerServiceRelationships() {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const orphanedServices = await sql`
+    const orphanedServices = await db.query(sql`
       SELECT cs.id, cs.customer_id, cs.service_plan_id
       FROM customer_services cs
       LEFT JOIN customers c ON cs.customer_id = c.id
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE c.id IS NULL OR sp.id IS NULL
-    `
+    `)
 
-    const customersWithoutServices = await sql`
+    const customersWithoutServices = await db.query(sql`
       SELECT c.id, c.first_name, c.last_name, c.email
       FROM customers c
       LEFT JOIN customer_services cs ON c.id = cs.customer_id
       WHERE cs.id IS NULL AND c.status = 'active'
-    `
+    `)
 
     return {
       success: true,
-      orphanedServices: orphanedServices.length,
-      customersWithoutServices: customersWithoutServices.length,
+      orphanedServices: orphanedServices.rows.length,
+      customersWithoutServices: customersWithoutServices.rows.length,
       details: {
-        orphaned: orphanedServices,
-        withoutServices: customersWithoutServices,
+        orphaned: orphanedServices.rows,
+        withoutServices: customersWithoutServices.rows,
       },
     }
   } catch (error) {
@@ -739,19 +742,19 @@ export async function validateCustomerServiceRelationships() {
 
 export async function fixOrphanedServices() {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const result = await sql`
+    const result = await db.query(sql`
       DELETE FROM customer_services 
       WHERE customer_id NOT IN (SELECT id FROM customers)
          OR service_plan_id NOT IN (SELECT id FROM service_plans)
       RETURNING id
-    `
+    `)
 
     return {
       success: true,
-      message: `Cleaned up ${result.length} orphaned service records`,
-      deletedCount: result.length,
+      message: `Cleaned up ${result.rows.length} orphaned service records`,
+      deletedCount: result.rows.length,
     }
   } catch (error) {
     console.error("Error fixing orphaned services:", error)
@@ -761,45 +764,45 @@ export async function fixOrphanedServices() {
 
 export async function processPayment(customerId: number, invoiceId: number, amount: number) {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    await sql`
+    await db.query(sql`
       UPDATE invoices
       SET status = 'paid',
           paid_amount = ${amount},
           paid_at = NOW(),
           updated_at = NOW()
       WHERE id = ${invoiceId} AND customer_id = ${customerId}
-    `
+    `)
 
-    const pendingServices = await sql`
+    const pendingServices = await db.query(sql`
       SELECT cs.*, sp.download_speed, sp.upload_speed, sp.name as service_name
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customerId} 
       AND cs.status = 'pending'
-    `
+    `)
 
-    const customerRouter = await sql`
+    const customerRouter = await db.query(sql`
       SELECT nd.customer_auth_method, nd.id as router_id
       FROM customers c
       LEFT JOIN network_devices nd ON nd.location_id = c.location_id
       WHERE c.id = ${customerId}
       AND nd.type = 'router'
       LIMIT 1
-    `
+    `)
 
-    const authMethod = customerRouter[0]?.customer_auth_method || "pppoe_radius"
+    const authMethod = customerRouter.rows[0]?.customer_auth_method || "pppoe_radius"
     console.log(`[v0] Customer router auth method: ${authMethod}`)
 
-    for (const service of pendingServices) {
-      await sql`
+    for (const service of pendingServices.rows) {
+      await db.query(sql`
         UPDATE customer_services
         SET status = 'active',
             activation_date = NOW(),
             updated_at = NOW()
         WHERE id = ${service.id}
-      `
+      `)
 
       console.log(`[v0] Successfully activated service ${service.id} ${service.service_name}`)
 
@@ -845,7 +848,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
         }
       }
 
-      await sql`
+      await db.query(sql`
         INSERT INTO activity_logs (
           user_id,
           action,
@@ -862,15 +865,15 @@ export async function processPayment(customerId: number, invoiceId: number, amou
           NOW()
         )
         ON CONFLICT DO NOTHING
-      `
+      `)
     }
 
     revalidatePath(`/customers/${customerId}`)
 
     return {
       success: true,
-      message: `Payment processed successfully. ${pendingServices.length} service(s) activated.`,
-      activatedServices: pendingServices.length,
+      message: `Payment processed successfully. ${pendingServices.rows.length} service(s) activated.`,
+      activatedServices: pendingServices.rows.length,
     }
   } catch (error) {
     console.error("Error processing payment:", error)
@@ -887,24 +890,24 @@ export async function updateServiceStatus(
   reason?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const sql = await getSql()
+    const db = await getSql()
 
-    const serviceData = await sql`
+    const serviceData = await db.query(sql`
       SELECT cs.*, c.portal_username
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
-    `
+    `)
 
-    if (serviceData.length === 0) {
+    if (serviceData.rows.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const service = serviceData[0]
+    const service = serviceData.rows[0]
     const oldStatus = service.status
 
-    await sql`
+    await db.query(sql`
       UPDATE customer_services
       SET status = ${newStatus},
           ${newStatus === "suspended" ? sql`suspension_date = NOW(),` : sql``}
@@ -912,7 +915,7 @@ export async function updateServiceStatus(
           ${newStatus === "active" ? sql`activation_date = NOW(),` : sql``}
           updated_at = NOW()
       WHERE id = ${serviceId}
-    `
+    `)
 
     const username = service.pppoe_username || service.portal_username || `customer_${service.customer_id}`
     const password = service.pppoe_password || username
@@ -943,7 +946,7 @@ export async function updateServiceStatus(
       })
     }
 
-    await sql`
+    await db.query(sql`
       INSERT INTO activity_logs (
         user_id,
         action,
@@ -960,7 +963,7 @@ export async function updateServiceStatus(
         NOW()
       )
       ON CONFLICT DO NOTHING
-    `
+    `)
 
     revalidatePath(`/customers/${service.customer_id}`)
 

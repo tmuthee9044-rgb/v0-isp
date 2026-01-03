@@ -42,6 +42,7 @@ interface IPPool {
   customer_id?: number
   version?: string
   router_name?: string
+  service_id?: number
 }
 
 interface InventoryItem {
@@ -137,13 +138,15 @@ function AddServiceModal({
 
       if (data.success && Array.isArray(data.addresses)) {
         const availableIps = data.addresses.filter(
-          (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
+          (ip: IPPool) =>
+            ip.status === "available" && !ip.customer_id && !ip.service_id && ip.ip_address !== selectedIpAddress,
         )
         console.log(`[v0] Available IP addresses in ${customerLocation || "all locations"}:`, availableIps.length)
         setIpPools(availableIps)
       } else if (Array.isArray(data)) {
         const availableIps = data.filter(
-          (ip: IPPool) => ip.status === "available" && !ip.customer_id && ip.ip_address !== selectedIpAddress,
+          (ip: IPPool) =>
+            ip.status === "available" && !ip.customer_id && !ip.service_id && ip.ip_address !== selectedIpAddress,
         )
         console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
         setIpPools(availableIps)

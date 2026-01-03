@@ -35,6 +35,39 @@ DROP TABLE IF EXISTS radius_users CASCADE;
 DROP TABLE IF EXISTS radius_sessions_active CASCADE;
 DROP TABLE IF EXISTS radius_sessions_archive CASCADE;
 DROP TABLE IF EXISTS radius_nas CASCADE;
+DROP TABLE IF EXISTS system_logs CASCADE;
+DROP TABLE IF EXISTS pending_tasks CASCADE;
+DROP TABLE IF EXISTS admin_logs CASCADE;
+DROP TABLE IF EXISTS service_inventory CASCADE;
+DROP TABLE IF EXISTS inventory CASCADE;
+DROP TABLE IF EXISTS payroll_records CASCADE;
+DROP TABLE IF EXISTS router_performance_history CASCADE;
+DROP TABLE IF EXISTS capacity_predictions CASCADE;
+DROP TABLE IF EXISTS network_forecasts CASCADE;
+DROP TABLE IF EXISTS capacity_alerts CASCADE;
+DROP TABLE IF EXISTS bandwidth_patterns CASCADE;
+DROP TABLE IF EXISTS infrastructure_investments CASCADE;
+DROP TABLE IF EXISTS backup_settings CASCADE;
+DROP TABLE IF EXISTS backup_jobs CASCADE;
+DROP TABLE IF EXISTS backup_restore_logs CASCADE;
+DROP TABLE IF EXISTS message_templates CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS task_comments CASCADE;
+DROP TABLE IF EXISTS task_attachments CASCADE;
+DROP TABLE IF EXISTS task_notifications CASCADE;
+DROP TABLE IF EXISTS task_performance_metrics CASCADE;
+DROP TABLE IF EXISTS task_categories CASCADE;
+DROP TABLE IF EXISTS vehicles CASCADE;
+DROP TABLE IF EXISTS fuel_logs CASCADE;
+DROP TABLE IF EXISTS maintenance_logs CASCADE;
+DROP TABLE IF EXISTS radius_logs CASCADE;
+DROP TABLE IF EXISTS openvpn_logs CASCADE;
+DROP TABLE IF EXISTS mpesa_logs CASCADE;
+DROP TABLE IF EXISTS router_logs CASCADE;
+DROP TABLE IF EXISTS user_activity_logs CASCADE;
+DROP TABLE IF EXISTS critical_events CASCADE;
+DROP TABLE IF EXISTS invoice_items CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -702,6 +735,466 @@ CREATE TABLE IF NOT EXISTS radius_nas (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- System Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS system_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) NOT NULL DEFAULT 'info',
+    source VARCHAR(100),
+    category VARCHAR(100),
+    message TEXT NOT NULL,
+    ip_address VARCHAR(50),
+    user_id INTEGER,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pending Tasks Table (referenced by customer-service-actions.ts)
+CREATE TABLE IF NOT EXISTS pending_tasks (
+    id SERIAL PRIMARY KEY,
+    task_type VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(100),
+    entity_id INTEGER,
+    status VARCHAR(50) DEFAULT 'pending',
+    data JSONB,
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP
+);
+
+-- Admin Logs Table (referenced by customer-service-actions.ts)
+CREATE TABLE IF NOT EXISTS admin_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    admin_id INTEGER,
+    admin_user_id INTEGER,
+    admin_username VARCHAR(255),
+    action VARCHAR(255) NOT NULL,
+    resource_type VARCHAR(100),
+    resource_id INTEGER,
+    target_type VARCHAR(100),
+    target_id INTEGER,
+    new_values JSONB,
+    changes_made JSONB,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    session_id VARCHAR(255),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Service Inventory Table (referenced by customer-service-actions.ts)
+CREATE TABLE IF NOT EXISTS service_inventory (
+    id SERIAL PRIMARY KEY,
+    service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE,
+    inventory_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'assigned',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Inventory Table (referenced by customer-service-actions.ts)
+CREATE TABLE IF NOT EXISTS inventory (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    quantity INTEGER DEFAULT 0,
+    reserved INTEGER DEFAULT 0,
+    unit_price DECIMAL(10,2),
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Payroll Records Table (referenced by hr-actions.ts)
+CREATE TABLE IF NOT EXISTS payroll_records (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    employee_name VARCHAR(255),
+    pay_period_start DATE NOT NULL,
+    pay_period_end DATE NOT NULL,
+    basic_salary DECIMAL(10, 2) NOT NULL,
+    allowances DECIMAL(10, 2) DEFAULT 0.00,
+    deductions DECIMAL(10, 2) DEFAULT 0.00,
+    gross_pay DECIMAL(10, 2) NOT NULL,
+    tax DECIMAL(10, 2) DEFAULT 0.00,
+    nhif DECIMAL(10, 2) DEFAULT 0.00,
+    nssf DECIMAL(10, 2) DEFAULT 0.00,
+    net_pay DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Router Performance History Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS router_performance_history (
+    id SERIAL PRIMARY KEY,
+    router_id VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cpu_usage DECIMAL(5,2),
+    memory_usage DECIMAL(5,2),
+    bandwidth_in BIGINT,
+    bandwidth_out BIGINT,
+    uptime INTEGER,
+    temperature DECIMAL(5,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Capacity Predictions Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS capacity_predictions (
+    id SERIAL PRIMARY KEY,
+    prediction_date DATE NOT NULL,
+    bandwidth_forecast BIGINT,
+    customer_growth INTEGER,
+    utilization_forecast DECIMAL(5,2),
+    confidence_score DECIMAL(3,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Network Forecasts Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS network_forecasts (
+    id SERIAL PRIMARY KEY,
+    forecast_date DATE NOT NULL,
+    metric_type VARCHAR(100),
+    forecast_value DECIMAL(15,2),
+    actual_value DECIMAL(15,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Capacity Alerts Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS capacity_alerts (
+    id SERIAL PRIMARY KEY,
+    alert_type VARCHAR(100) NOT NULL,
+    severity VARCHAR(50),
+    message TEXT,
+    threshold_value DECIMAL(10,2),
+    current_value DECIMAL(10,2),
+    acknowledged BOOLEAN DEFAULT false,
+    acknowledged_by INTEGER,
+    acknowledged_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bandwidth Patterns Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS bandwidth_patterns (
+    id SERIAL PRIMARY KEY,
+    router_id VARCHAR(50),
+    hour_of_day INTEGER,
+    day_of_week INTEGER,
+    avg_bandwidth BIGINT,
+    peak_bandwidth BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Infrastructure Investments Table (referenced by analytics-actions.ts)
+CREATE TABLE IF NOT EXISTS infrastructure_investments (
+    id SERIAL PRIMARY KEY,
+    investment_type VARCHAR(100),
+    description TEXT,
+    amount DECIMAL(15,2),
+    roi_expected DECIMAL(5,2),
+    status VARCHAR(50),
+    planned_date DATE,
+    completed_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Backup Settings Table (referenced by backup-actions.ts)
+CREATE TABLE IF NOT EXISTS backup_settings (
+    id SERIAL PRIMARY KEY,
+    auto_backup_enabled BOOLEAN DEFAULT true,
+    backup_frequency VARCHAR(50) DEFAULT 'daily',
+    backup_time VARCHAR(10) DEFAULT '02:00',
+    retention_days INTEGER DEFAULT 30,
+    backup_location TEXT,
+    compression_enabled BOOLEAN DEFAULT true,
+    encryption_enabled BOOLEAN DEFAULT false,
+    email_notifications BOOLEAN DEFAULT true,
+    notification_email VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Backup Jobs Table (referenced by backup-actions.ts)
+CREATE TABLE IF NOT EXISTS backup_jobs (
+    id SERIAL PRIMARY KEY,
+    job_type VARCHAR(50),
+    status VARCHAR(50),
+    file_size BIGINT,
+    file_path TEXT,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Backup Restore Logs Table (referenced by backup-actions.ts)
+CREATE TABLE IF NOT EXISTS backup_restore_logs (
+    id SERIAL PRIMARY KEY,
+    backup_id INTEGER REFERENCES backup_jobs(id) ON DELETE SET NULL,
+    status VARCHAR(50),
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    restored_by VARCHAR(255),
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Message Templates Table (referenced by message-actions.ts)
+CREATE TABLE IF NOT EXISTS message_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    category VARCHAR(100),
+    subject VARCHAR(255),
+    content TEXT NOT NULL,
+    variables TEXT,
+    is_active BOOLEAN DEFAULT true,
+    usage_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Messages Table (referenced by message-actions.ts)
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    message_type VARCHAR(50) NOT NULL,
+    recipient_id INTEGER,
+    recipient_type VARCHAR(50),
+    subject VARCHAR(255),
+    content TEXT NOT NULL,
+    template_id INTEGER REFERENCES message_templates(id) ON DELETE SET NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    sent_at TIMESTAMP,
+    delivered_at TIMESTAMP,
+    read_at TIMESTAMP,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tasks Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS tasks (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    task_type VARCHAR(100),
+    priority VARCHAR(50) DEFAULT 'medium',
+    status VARCHAR(50) DEFAULT 'pending',
+    assigned_to INTEGER,
+    assigned_by INTEGER,
+    due_date DATE,
+    progress INTEGER DEFAULT 0,
+    tags TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Task Comments Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS task_comments (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    author VARCHAR(255),
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Task Attachments Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS task_attachments (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    file_name VARCHAR(255),
+    file_path TEXT,
+    file_size BIGINT,
+    uploaded_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Task Notifications Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS task_notifications (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    recipient_id INTEGER,
+    type VARCHAR(50),
+    message TEXT,
+    read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Task Performance Metrics Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS task_performance_metrics (
+    id SERIAL PRIMARY KEY,
+    metric_name VARCHAR(255),
+    metric_value DECIMAL(10,2),
+    period_start DATE,
+    period_end DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Task Categories Table (referenced by task-actions.ts)
+CREATE TABLE IF NOT EXISTS task_categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    color VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Vehicles Table (referenced by vehicle-actions.ts)
+CREATE TABLE IF NOT EXISTS vehicles (
+    id SERIAL PRIMARY KEY,
+    registration_number VARCHAR(100) UNIQUE NOT NULL,
+    make VARCHAR(100),
+    model VARCHAR(100),
+    year INTEGER,
+    color VARCHAR(50),
+    vin VARCHAR(100),
+    status VARCHAR(50) DEFAULT 'active',
+    assigned_to VARCHAR(255),
+    mileage INTEGER DEFAULT 0,
+    last_service_date DATE,
+    next_service_date DATE,
+    insurance_expiry DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Fuel Logs Table (referenced by vehicle-actions.ts)
+CREATE TABLE IF NOT EXISTS fuel_logs (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    liters DECIMAL(10,2) NOT NULL,
+    cost DECIMAL(10,2) NOT NULL,
+    odometer INTEGER,
+    fuel_station VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Maintenance Logs Table (referenced by vehicle-actions.ts)
+CREATE TABLE IF NOT EXISTS maintenance_logs (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    maintenance_type VARCHAR(100),
+    description TEXT,
+    cost DECIMAL(10,2),
+    service_provider VARCHAR(255),
+    next_service_date DATE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RADIUS Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS radius_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    event_type VARCHAR(100),
+    username VARCHAR(255),
+    client_ip VARCHAR(50),
+    nas_ip VARCHAR(50),
+    session_id VARCHAR(255),
+    reply_message TEXT,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- OpenVPN Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS openvpn_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    event_type VARCHAR(100),
+    client_ip VARCHAR(50),
+    vpn_ip VARCHAR(50),
+    user_id INTEGER,
+    session_id VARCHAR(255),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- MPesa Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS mpesa_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    event_type VARCHAR(100),
+    transaction_id VARCHAR(255),
+    mpesa_receipt_number VARCHAR(255),
+    phone_number VARCHAR(50),
+    amount DECIMAL(10,2),
+    customer_id INTEGER,
+    result_code VARCHAR(10),
+    result_desc TEXT,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Router Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS router_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+    device_name VARCHAR(255),
+    device_ip VARCHAR(50),
+    event_type VARCHAR(100),
+    message TEXT,
+    cpu_usage DECIMAL(5,2),
+    memory_usage DECIMAL(5,2),
+    bandwidth_usage BIGINT,
+    alert_threshold_exceeded BOOLEAN DEFAULT false,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User Activity Logs Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS user_activity_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) DEFAULT 'info',
+    user_id INTEGER,
+    username VARCHAR(255),
+    activity_type VARCHAR(100),
+    page_accessed VARCHAR(255),
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    session_id VARCHAR(255),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Critical Events Table (referenced by log-actions.ts)
+CREATE TABLE IF NOT EXISTS critical_events (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(100) NOT NULL,
+    severity VARCHAR(50) DEFAULT 'critical',
+    message TEXT,
+    source VARCHAR(100),
+    affected_entity VARCHAR(100),
+    entity_id INTEGER,
+    acknowledged BOOLEAN DEFAULT false,
+    acknowledged_by VARCHAR(255),
+    acknowledged_at TIMESTAMP,
+    resolved BOOLEAN DEFAULT false,
+    resolved_at TIMESTAMP,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Invoice Items Table (referenced by run-migration.ts)
+CREATE TABLE IF NOT EXISTS invoice_items (
+    id SERIAL PRIMARY KEY,
+    invoice_id INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
+    service_id INTEGER REFERENCES customer_services(id) ON DELETE SET NULL,
+    description VARCHAR(255),
+    quantity INTEGER DEFAULT 1,
+    unit_price DECIMAL(10,2) NOT NULL,
+    total_price DECIMAL(10,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Insert default company profile
 INSERT INTO company_profiles (
     name, 
@@ -767,6 +1260,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 25';
-    RAISE NOTICE 'Total indexes created: 42';
+    RAISE NOTICE 'Total tables created: 30';
+    RAISE NOTICE 'Total indexes created: 54';
 END $$;

@@ -1655,16 +1655,20 @@ fix_database_schema() {
     DB_NAME="${DB_NAME:-isp_system}"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    # Change to /tmp to avoid permission issues
-    cd /tmp
-    
     # Apply the comprehensive fix script
     if [ -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" ]; then
         print_info "Executing 1000_fix_all_missing_columns.sql..."
-        sudo -u postgres psql -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql"
+        
+        cp "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" /tmp/fix_columns.sql
+        chmod 644 /tmp/fix_columns.sql
+        
+        # Change to /tmp and execute
+        cd /tmp
+        sudo -u postgres psql -d "$DB_NAME" -f /tmp/fix_columns.sql 2>/dev/null
         
         if [ $? -eq 0 ]; then
             print_success "All missing columns added successfully"
+            rm -f /tmp/fix_columns.sql
         else
             print_error "Failed to add some columns - check logs"
         fi
@@ -1672,7 +1676,7 @@ fix_database_schema() {
         print_warning "Comprehensive fix script not found, using fallback..."
         
         # Fallback inline SQL for critical tables
-        sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
+        sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL' 2>/dev/null
 -- Critical columns for customer_services
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
@@ -2230,6 +2234,11 @@ main() {
     echo "  npm run dev"
     echo ""
     print_info "Visit http://localhost:3000 in your browser."
+    echo ""
+}
+
+main
+localhost:3000 in your browser."
     echo ""
 }
 

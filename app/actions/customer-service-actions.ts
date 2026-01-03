@@ -152,14 +152,15 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Proceeding with service creation...")
 
-    const servicePlan = await getSql().query(`
-      SELECT id, name, price, speed_download, speed_upload 
+    const sql = await getSql()
+    const servicePlan = await sql`
+      SELECT id, name, price, download_speed, upload_speed 
       FROM service_plans 
-      WHERE id = ${servicePlanId} AND is_active = true
+      WHERE id = ${servicePlanId} AND status = 'active'
       LIMIT 1
-    `)
+    `
 
-    if (servicePlan.rows.length === 0) {
+    if (servicePlan.length === 0) {
       return {
         success: false,
         error: `Service plan not found (ID: ${servicePlanId}). Please select a valid service plan.`,
@@ -170,7 +171,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Creating new service with status:", initialStatus)
 
-    const result = await getSql().query(`
+    const result = await sql`
       INSERT INTO customer_services (
         customer_id, 
         service_plan_id, 
@@ -191,29 +192,29 @@ export async function addCustomerService(customerId: number, formData: FormData)
       ) VALUES (
         ${customerId},
         ${servicePlanId},
-        '${initialStatus}',
-        ${servicePlan.rows[0].price},
-        ${initialStatus === "active" ? "NOW()" : "null"},
-        '${connectionType || "pppoe"}',
-        ${ipAddressProvided ? `'${ipAddress}'` : "null"},
-        ${macAddress ? `'${macAddress}'` : "null"},
-        ${deviceId ? deviceId : "null"},
-        ${lockToMac ? "true" : "false"},
-        ${autoRenew ? "true" : "false"},
-        ${pppoeUsername ? `'${pppoeUsername}'` : "null"},
-        ${pppoePassword ? `'${pppoePassword}'` : "null"},
-        ${locationId ? locationId : "null"},
-        NOW(),
-        NOW()
+        ${initialStatus},
+        ${servicePlan[0].price},
+        ${initialStatus === "active" ? new Date() : null},
+        ${connectionType || "pppoe"},
+        ${ipAddressProvided ? ipAddress : null},
+        ${macAddress || null},
+        ${deviceId || null},
+        ${lockToMac},
+        ${autoRenew},
+        ${pppoeUsername || null},
+        ${pppoePassword || null},
+        ${locationId || null},
+        ${new Date()},
+        ${new Date()}
       )
       RETURNING id
-    `)
+    `
 
-    const serviceId = result.rows[0].id
+    const serviceId = result[0].id
     let allocatedIpAddress = ipAddressProvided ? ipAddress : null
 
     if (ipAddress === "auto" || !ipAddress) {
-      await getSql().query(`
+      await sql`
         INSERT INTO pending_tasks (
           task_type, 
           resource_type, 
@@ -225,52 +226,49 @@ export async function addCustomerService(customerId: number, formData: FormData)
           'allocate_ip',
           'customer_service',
           ${serviceId},
-          '${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })}'::jsonb,
+          ${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })},
           'pending',
-          NOW()
+          ${new Date()}
         )
-        ON CONFLICT DO NOTHING
-      `)
+      `
     } else if (ipAddressProvided && locationId) {
       console.log("[v0] Checking IP uniqueness for:", ipAddress)
 
-      // Check if IP is already assigned to any active service
-      const existingAssignment = await getSql().query(`
+      const existingAssignment = await sql`
         SELECT cs.id, cs.customer_id, c.first_name, c.last_name
         FROM customer_services cs
         JOIN customers c ON c.id = cs.customer_id
-        WHERE cs.ip_address = '${ipAddress}'
+        WHERE cs.ip_address = ${ipAddress}
         AND cs.status IN ('active', 'pending', 'suspended')
-        AND cs.id != 0
-      `)
+        AND cs.id != ${serviceId}
+      `
 
-      if (existingAssignment.rows.length > 0) {
-        const existing = existingAssignment.rows[0]
+      if (existingAssignment.length > 0) {
+        const existing = existingAssignment[0]
         throw new Error(
           `IP address ${ipAddress} is already assigned to ${existing.first_name} ${existing.last_name} (Customer ID: ${existing.customer_id})`,
         )
       }
 
-      // Mark IP as assigned
-      await getSql().query(`
+      await sql`
         UPDATE ip_addresses
         SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-        WHERE ip_address::text = '${ipAddress}'
-      `)
+        WHERE CAST(ip_address AS TEXT) = ${ipAddress}
+      `
       allocatedIpAddress = ipAddress
 
-      await getSql().query(`
+      await sql`
         UPDATE customer_services
-        SET ip_address = '${allocatedIpAddress}'
+        SET ip_address = ${allocatedIpAddress}
         WHERE id = ${serviceId}
-      `)
+      `
     }
 
     const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 30)
 
-    const invoice = await getSql().query(`
+    const invoice = await sql`
       INSERT INTO invoices (
         customer_id,
         invoice_number,
@@ -282,39 +280,39 @@ export async function addCustomerService(customerId: number, formData: FormData)
         created_at
       ) VALUES (
         ${customerId},
-        '${invoiceNumber}',
-        ${servicePlan.rows[0].price},
-        ${servicePlan.rows[0].price},
-        '${dueDate.toISOString().split("T")[0]}',
-        '${autoRenew ? "paid" : "pending"}',
-        'Initial invoice for ${servicePlan.rows[0].name}',
-        NOW()
+        ${invoiceNumber},
+        ${servicePlan[0].price},
+        ${servicePlan[0].price},
+        ${dueDate},
+        ${autoRenew ? "paid" : "pending"},
+        ${"Initial invoice for " + servicePlan[0].name},
+        ${new Date()}
       ) RETURNING id
-    `)
+    `
 
     if (autoRenew) {
-      await getSql().query(`
+      await sql`
         UPDATE invoices 
-        SET paid_amount = ${servicePlan.rows[0].price}
-        WHERE id = ${invoice.rows[0].id}
-      `)
+        SET paid_amount = ${servicePlan[0].price}
+        WHERE id = ${invoice[0].id}
+      `
 
-      await getSql().query(`
+      await sql`
         INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
         VALUES (
           1,
           'service_activation',
           'customer_service',
           ${serviceId},
-          '${JSON.stringify({
+          ${JSON.stringify({
             customer_id: customerId,
             service_id: serviceId,
-            invoice_id: invoice.rows[0].id,
+            invoice_id: invoice[0].id,
             reason: "auto_renew",
-          })}'::jsonb,
-          NOW()
+          })},
+          ${new Date()}
         )
-      `)
+      `
 
       console.log("[v0] Provisioning to RADIUS with credentials...")
       const radiusResult = await provisionRadiusUser({
@@ -323,8 +321,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
         username: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
         password: pppoePassword || Math.random().toString(36).substring(2, 15),
         ipAddress: allocatedIpAddress || undefined,
-        downloadSpeed: servicePlan.rows[0].speed_download,
-        uploadSpeed: servicePlan.rows[0].speed_upload,
+        downloadSpeed: servicePlan[0].download_speed,
+        uploadSpeed: servicePlan[0].upload_speed,
       })
 
       if (!radiusResult.success) {
@@ -344,8 +342,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
           connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
           pppoeUsername: pppoeUsername || `customer_${customerId}_service_${serviceId}`,
           pppoePassword: pppoePassword || Math.random().toString(36).substring(2, 15),
-          downloadSpeed: servicePlan.rows[0].speed_download,
-          uploadSpeed: servicePlan.rows[0].speed_upload,
+          downloadSpeed: servicePlan[0].download_speed,
+          uploadSpeed: servicePlan[0].upload_speed,
         })
 
         if (!provisionResult.success) {
@@ -359,30 +357,30 @@ export async function addCustomerService(customerId: number, formData: FormData)
     if (pppoeUsername && pppoePassword) {
       console.log("[v0] Storing PPPoE credentials in RADIUS tables:", pppoeUsername)
 
-      await getSql().query(`
-        INSERT INTO radcheck (username, attribute, op, value)
-        VALUES ('${pppoeUsername}', 'Cleartext-Password', ':=', '${pppoePassword}')
+      await sql`
+        INSERT INTO radcheck (username, attribute, op, value, created_at, updated_at)
+        VALUES (${pppoeUsername}, 'Cleartext-Password', ':=', ${pppoePassword}, ${new Date()}, ${new Date()})
         ON CONFLICT (username, attribute) 
-        DO UPDATE SET value = '${pppoePassword}', updated_at = NOW()
-      `)
+        DO UPDATE SET value = ${pppoePassword}, updated_at = ${new Date()}
+      `
 
-      const downloadLimit = servicePlan.rows[0].speed_download
-      const uploadLimit = servicePlan.rows[0].speed_upload
+      const downloadLimit = servicePlan[0].download_speed
+      const uploadLimit = servicePlan[0].upload_speed
 
-      await getSql().query(`
-        INSERT INTO radreply (username, attribute, op, value)
-        VALUES ('${pppoeUsername}', 'Mikrotik-Rate-Limit', ':=', '${downloadLimit}M/${uploadLimit}M')
+      await sql`
+        INSERT INTO radreply (username, attribute, op, value, created_at, updated_at)
+        VALUES (${pppoeUsername}, 'Mikrotik-Rate-Limit', ':=', ${downloadLimit + "M/" + uploadLimit + "M"}, ${new Date()}, ${new Date()})
         ON CONFLICT (username, attribute)
-        DO UPDATE SET value = '${downloadLimit}M/${uploadLimit}M', updated_at = NOW()
-      `)
+        DO UPDATE SET value = ${downloadLimit + "M/" + uploadLimit + "M"}, updated_at = ${new Date()}
+      `
 
       if (macAddress && lockToMac) {
-        await getSql().query(`
-          INSERT INTO radcheck (username, attribute, op, value)
-          VALUES ('${pppoeUsername}', 'Calling-Station-Id', '==', '${macAddress}')
+        await sql`
+          INSERT INTO radcheck (username, attribute, op, value, created_at, updated_at)
+          VALUES (${pppoeUsername}, 'Calling-Station-Id', '==', ${macAddress}, ${new Date()}, ${new Date()})
           ON CONFLICT (username, attribute)
-          DO UPDATE SET value = '${macAddress}', updated_at = NOW()
-        `)
+          DO UPDATE SET value = ${macAddress}, updated_at = ${new Date()}
+        `
       }
 
       console.log("[v0] PPPoE credentials stored in RADIUS tables successfully")

@@ -123,39 +123,31 @@ function AddServiceModal({
 
   const fetchIpPools = async () => {
     try {
-      let endpoint = "/api/network/ip-addresses?status=available"
+      const endpoint = "/api/network/ip-addresses?status=available"
 
-      // Get customer location from customerData or fetch it
-      const customerLocation = customerData?.city || customerData?.physical_city
-
-      if (customerLocation) {
-        console.log("[v0] Fetching IPs for location:", customerLocation)
-        endpoint = `/api/network/ip-addresses/by-location?location=${encodeURIComponent(customerLocation)}`
-      }
-
+      console.log("[v0] Fetching available IP addresses from database...")
       const response = await fetch(endpoint)
       const data = await response.json()
 
+      console.log("[v0] API Response:", data)
+
       if (data.success && Array.isArray(data.addresses)) {
         const availableIps = data.addresses.filter(
-          (ip: IPPool) =>
-            ip.status === "available" && !ip.customer_id && !ip.service_id && ip.ip_address !== selectedIpAddress,
+          (ip: IPPool) => !ip.service_id && ip.ip_address !== selectedIpAddress,
         )
-        console.log(`[v0] Available IP addresses in ${customerLocation || "all locations"}:`, availableIps.length)
+        console.log(`[v0] Available IP addresses:`, availableIps.length, "IPs")
+        console.log("[v0] Sample IPs:", availableIps.slice(0, 3))
         setIpPools(availableIps)
       } else if (Array.isArray(data)) {
-        const availableIps = data.filter(
-          (ip: IPPool) =>
-            ip.status === "available" && !ip.customer_id && !ip.service_id && ip.ip_address !== selectedIpAddress,
-        )
-        console.log("[v0] Available IP addresses from ip_addresses table:", availableIps.length)
+        const availableIps = data.filter((ip: IPPool) => !ip.service_id && ip.ip_address !== selectedIpAddress)
+        console.log("[v0] Available IP addresses (legacy format):", availableIps.length)
         setIpPools(availableIps)
       } else {
-        console.error("Unexpected response format:", data)
+        console.error("[v0] Unexpected response format:", data)
         setIpPools([])
       }
     } catch (error) {
-      console.error("Error fetching IP addresses:", error)
+      console.error("[v0] Error fetching IP addresses:", error)
       setIpPools([])
     }
   }
@@ -193,6 +185,8 @@ function AddServiceModal({
     console.log("[v0] === handleSubmit START ===")
     console.log("[v0] isLoading:", isLoading)
     console.log("[v0] Timestamp:", new Date().toISOString())
+    console.log("[v0] MAC Address state:", macAddress)
+    console.log("[v0] Lock to MAC:", lockToMac)
 
     if (isLoading) {
       console.log("[v0] Already loading, preventing duplicate submission")
@@ -224,6 +218,7 @@ function AddServiceModal({
       formData.append("admin_override", adminOverride ? "on" : "off")
 
       if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
+      console.log("[v0] About to append MAC address:", macAddress)
       if (macAddress) formData.append("mac_address", macAddress)
       formData.append("lock_to_mac", lockToMac ? "on" : "off")
       formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")

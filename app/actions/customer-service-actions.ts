@@ -6,6 +6,48 @@ import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/ro
 import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 
+async function storePPPoECredentials(serviceId: number, username: string, password: string) {
+  const sql = await getSql()
+  await sql`
+    INSERT INTO pending_tasks (
+      task_type,
+      entity_id,
+      entity_type,
+      task_data,
+      status,
+      created_at
+    ) VALUES (
+      'pppoe_credentials',
+      ${serviceId},
+      'service',
+      ${JSON.stringify({ username, password })},
+      'completed',
+      NOW()
+    )
+    ON CONFLICT (entity_id, entity_type, task_type)
+    DO UPDATE SET 
+      task_data = ${JSON.stringify({ username, password })},
+      updated_at = NOW()
+  `
+}
+
+async function retrievePPPoECredentials(serviceId: number): Promise<{ username?: string; password?: string }> {
+  const sql = await getSql()
+  const result = await sql`
+    SELECT task_data 
+    FROM pending_tasks 
+    WHERE entity_id = ${serviceId} 
+      AND entity_type = 'service' 
+      AND task_type = 'pppoe_credentials'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  if (result.length > 0 && result[0].task_data) {
+    return result[0].task_data as { username?: string; password?: string }
+  }
+  return {}
+}
+
 export async function getCustomerServices(customerId: number) {
   try {
     const sql = await getSql()
@@ -49,14 +91,13 @@ export async function getServicePlans() {
   }
 }
 
-export async function addCustomerService(formData: FormData) {
+export async function addCustomerService(customerId: number, formData: FormData) {
   try {
     const sql = await getSql()
 
     console.log("[v0] === addCustomerService START ===")
     console.log("[v0] Timestamp:", new Date().toISOString())
 
-    const customerId = formData.get("customer_id") as string
     const servicePlanIdStr = formData.get("service_plan_id") as string
     const servicePlanId = Number.parseInt(servicePlanIdStr)
     const connectionType = formData.get("connection_type") as string
@@ -77,9 +118,6 @@ export async function addCustomerService(formData: FormData) {
     console.log("[v0] MAC Address:", macAddress)
     console.log("[v0] Lock to MAC:", lockToMac)
     console.log("[v0] PPPoE Enabled:", pppoeEnabled)
-    console.log("[v0] PPPoE Username:", pppoeUsername)
-    console.log("[v0] PPPoE Password:", pppoePassword)
-    console.log("[v0] Inventory Items:", inventoryItems)
     console.log("[v0] Admin Override:", adminOverride)
     console.log("[v0] Router ID:", routerId)
 
@@ -141,6 +179,9 @@ export async function addCustomerService(formData: FormData) {
 
     console.log("[v0] Creating new service with status:", initialStatus)
 
+    const radiusUsername = pppoeUsername || `customer_${customerId}_${Date.now()}`
+    const radiusPassword = pppoePassword || Math.random().toString(36).substring(2, 15)
+
     const result = await sql`
       INSERT INTO customer_services (
         customer_id, 
@@ -148,9 +189,10 @@ export async function addCustomerService(formData: FormData) {
         status, 
         monthly_fee,
         activation_date,
-        ip_address,
-        device_id,
         connection_type,
+        ip_address,
+        mac_address,
+        device_id,
         lock_to_mac,
         auto_renew,
         pppoe_username,
@@ -163,20 +205,21 @@ export async function addCustomerService(formData: FormData) {
         ${initialStatus},
         ${servicePlan[0].price},
         ${initialStatus === "active" ? sql`NOW()` : null},
+        ${connectionType || "pppoe"},
         ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
         ${macAddress || null},
-        ${connectionType || "pppoe"},
+        ${routerId ? Number.parseInt(routerId) : null},
         ${lockToMac},
-        ${formData.get("auto_renew") === "on"},
-        ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
-        ${pppoeEnabled && pppoePassword ? pppoePassword : null},
+        ${true},
+        ${pppoeEnabled ? radiusUsername : null},
+        ${pppoeEnabled ? radiusPassword : null},
         NOW(),
         NOW()
       ) RETURNING *
     `
 
     const serviceId = result[0].id
-    let allocatedIpAddress = null
+    let allocatedIpAddress = ipAddress && ipAddress !== "auto" ? ipAddress : null
 
     if (ipAddress === "auto" || !ipAddress) {
       await sql`
@@ -191,7 +234,7 @@ export async function addCustomerService(formData: FormData) {
           'allocate_ip',
           'customer_service',
           ${serviceId},
-          ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
+          ${JSON.stringify({ customerId, serviceId, locationId, connectionType, macAddress, lockToMac })}::jsonb,
           'pending',
           NOW()
         )
@@ -262,13 +305,10 @@ export async function addCustomerService(formData: FormData) {
         )
       `
 
-      const radiusUsername = pppoeUsername || `customer_${customerId}`
-      const radiusPassword = pppoePassword || Math.random().toString(36).substring(2, 15)
-
-      console.log("[v0] Provisioning to RADIUS...")
+      console.log("[v0] Provisioning to RADIUS with credentials...")
       const radiusResult = await provisionRadiusUser({
         customerId,
-        serviceId,
+        serviceId: serviceId,
         username: radiusUsername,
         password: radiusPassword,
         ipAddress: allocatedIpAddress || undefined,
@@ -280,7 +320,7 @@ export async function addCustomerService(formData: FormData) {
       if (!radiusResult.success) {
         console.log("[v0] Warning: RADIUS provisioning failed:", radiusResult.error)
       } else {
-        console.log("[v0] RADIUS user provisioned successfully")
+        console.log("[v0] RADIUS user provisioned successfully with username:", radiusUsername)
       }
 
       if (routerId) {
@@ -300,12 +340,9 @@ export async function addCustomerService(formData: FormData) {
 
         if (!provisionResult.success) {
           console.log("[v0] Warning: Router provisioning failed:", provisionResult.error)
-          // Don't fail the entire operation, just log the warning
         } else {
           console.log("[v0] Service auto-provisioned to router successfully")
         }
-      } else {
-        console.log("[v0] No router ID provided, skipping physical router provisioning")
       }
     }
 
@@ -387,7 +424,6 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
 
-    // Get the service plan details
     const servicePlan = await sql`
       SELECT id, name, price, speed_download, speed_upload 
       FROM service_plans 
@@ -402,7 +438,6 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    // Update the service WITHOUT creating a new invoice
     const result = await sql`
       UPDATE customer_services
       SET
@@ -428,7 +463,6 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
       }
     }
 
-    // Provision PPPoE credentials to RADIUS if enabled
     if (pppoeEnabled && pppoeUsername && pppoePassword) {
       console.log("[v0] Provisioning PPPoE credentials to RADIUS...")
       try {
@@ -441,11 +475,9 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         console.log("[v0] PPPoE credentials provisioned to RADIUS successfully")
       } catch (radiusError) {
         console.error("[v0] RADIUS provisioning failed:", radiusError)
-        // Continue even if RADIUS provisioning fails
       }
     }
 
-    // Log the activity
     await sql`
       INSERT INTO activity_logs (
         user_id,
@@ -488,8 +520,10 @@ export async function updateCustomerService(formData: FormData) {
 
     const serviceId = formData.get("service_id") as string
     const servicePlanId = formData.get("service_plan_id") as string
+    const connectionType = formData.get("connection_type") as string
     const autoRenew = formData.get("auto_renew") === "on"
     const ipAddress = formData.get("ip_address") as string
+    const macAddress = formData.get("mac_address") as string
     const device_id = formData.get("device_id") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
@@ -498,12 +532,10 @@ export async function updateCustomerService(formData: FormData) {
 
     const serviceData = await sql`
       SELECT cs.*, c.id as customer_id, c.portal_username,
-             ia.ip_address, ia.router_id,
-             r.ip_address as router_ip, r.configuration
+             sp.speed_download, sp.speed_upload
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN ip_addresses ia ON ia.customer_id = cs.customer_id AND ia.status = 'allocated'
-      LEFT JOIN network_devices r ON r.id = ia.router_id
+      LEFT JOIN service_plans sp ON sp.id = cs.service_plan_id
       WHERE cs.id = ${serviceId}
       LIMIT 1
     `
@@ -522,8 +554,10 @@ export async function updateCustomerService(formData: FormData) {
         service_plan_id = ${servicePlanId},
         status = ${formData.get("status")},
         monthly_fee = ${formData.get("monthly_fee")},
+        connection_type = ${connectionType || "pppoe"},
         ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
-        device_id = ${device_id || null},
+        mac_address = ${macAddress || null},
+        device_id = ${device_id ? Number.parseInt(device_id) : null},
         lock_to_mac = ${lockToMac},
         auto_renew = ${autoRenew},
         pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
@@ -537,121 +571,37 @@ export async function updateCustomerService(formData: FormData) {
       return { success: false, error: "Service not found" }
     }
 
-    // Provision PPPoE credentials to RADIUS if enabled
-    if (pppoeEnabled && (pppoeUsername || pppoePassword)) {
-      const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}`
+    if (pppoeEnabled && pppoeUsername && pppoePassword) {
+      await storePPPoECredentials(Number.parseInt(serviceId), pppoeUsername, pppoePassword)
+
+      const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}_${serviceId}`
       const radiusPassword = pppoePassword || radiusUsername
 
-      console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
+      console.log(`[v0] Updating RADIUS credentials for service ${serviceId} username: ${radiusUsername}`)
+
       const radiusResult = await provisionRadiusUser({
         customerId: service.customer_id,
         serviceId: service.id,
         username: radiusUsername,
         password: radiusPassword,
         ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed || 10,
-        uploadSpeed: service.upload_speed || 10,
-        nasId: service.router_id || undefined,
+        downloadSpeed: service.speed_download || 10,
+        uploadSpeed: service.speed_upload || 10,
       })
 
       if (!radiusResult.success) {
         console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
       } else {
-        console.log(`[v0] RADIUS provisioning successful`)
+        console.log(`[v0] RADIUS credentials updated successfully`)
       }
     }
 
-    if (service.router_id && service.router_ip) {
-      // Fire and forget - don't await
-      Promise.resolve().then(async () => {
-        try {
-          // Status changed from pending to active - ADD to router AND RADIUS
-          if (service.status === "pending" && formData.get("status") === "active") {
-            console.log("[v0] Async provisioning: pending -> active")
-
-            const [routerResult, radiusResult] = await Promise.all([
-              provisionServiceToRouter({
-                serviceId: service.id,
-                customerId: service.customer_id,
-                routerId: service.router_id,
-                ipAddress: service.ip_address,
-                connectionType: service.ip_address ? "static_ip" : "pppoe",
-                pppoeUsername: service.portal_username,
-                pppoePassword: service.portal_username,
-                downloadSpeed: service.download_speed,
-                uploadSpeed: service.upload_speed,
-              }),
-              provisionRadiusUser({
-                customerId: service.customer_id,
-                serviceId: service.id,
-                username: service.portal_username || `customer_${service.customer_id}`,
-                password: service.portal_username || `customer_${service.customer_id}`,
-                ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed || 10,
-                uploadSpeed: service.upload_speed || 10,
-                nasId: service.router_id,
-              }),
-            ])
-
-            console.log("[v0] Router result:", routerResult.success ? "OK" : routerResult.error)
-            console.log("[v0] RADIUS result:", radiusResult.success ? "OK" : radiusResult.error)
-          }
-
-          // Status changed to suspended - REMOVE from router AND RADIUS
-          if (formData.get("status") === "suspended" && service.status !== "suspended") {
-            console.log("[v0] Async deprovisioning: -> suspended")
-
-            await Promise.all([
-              deprovisionServiceFromRouter({
-                serviceId: service.id,
-                customerId: service.customer_id,
-                routerId: service.router_id,
-                connectionType: service.ip_address ? "static_ip" : "pppoe",
-                ipAddress: service.ip_address,
-                pppoeUsername: service.portal_username,
-                reason: "Service suspended",
-              }),
-              suspendRadiusUser({
-                customerId: service.customer_id,
-                serviceId: service.id,
-                username: service.portal_username || `customer_${service.customer_id}`,
-                reason: "Service suspended",
-              }),
-            ])
-          }
-
-          // Status changed from suspended to active - RE-ADD to router AND RADIUS
-          if (formData.get("status") === "active" && service.status === "suspended") {
-            console.log("[v0] Async re-provisioning: suspended -> active")
-
-            await Promise.all([
-              provisionServiceToRouter({
-                serviceId: service.id,
-                customerId: service.customer_id,
-                routerId: service.router_id,
-                ipAddress: service.ip_address,
-                connectionType: service.ip_address ? "static_ip" : "pppoe",
-                pppoeUsername: service.portal_username,
-                pppoePassword: service.portal_username,
-                downloadSpeed: service.download_speed,
-                uploadSpeed: service.upload_speed,
-              }),
-              provisionRadiusUser({
-                customerId: service.customer_id,
-                serviceId: service.id,
-                username: service.portal_username || `customer_${service.customer_id}`,
-                password: service.portal_username || `customer_${service.customer_id}`,
-                ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed || 10,
-                uploadSpeed: service.upload_speed || 10,
-                nasId: service.router_id,
-              }),
-            ])
-          }
-        } catch (provisionError) {
-          console.error("[v0] Async router provisioning error:", provisionError)
-        }
-      })
+    if (ipAddress && ipAddress !== "auto") {
+      await sql`
+        UPDATE ip_addresses
+        SET status = 'assigned', customer_id = ${service.customer_id}, service_id = ${serviceId}
+        WHERE ip_address::text = ${ipAddress}
+      `
     }
 
     revalidatePath(`/customers`)
@@ -691,7 +641,6 @@ export async function deleteCustomerService(serviceId: number) {
       }).catch((err) => console.error("[v0] RADIUS deprovision error:", err))
     }
 
-    // Deprovision from router if provisioned
     if (service.router_id && (service.ip_address || service.portal_username)) {
       await deprovisionServiceFromRouter({
         serviceId,
@@ -781,7 +730,6 @@ export async function processPayment(customerId: number, invoiceId: number, amou
   try {
     const sql = await getSql()
 
-    // Update the invoice as paid
     await sql`
       UPDATE invoices
       SET status = 'paid',
@@ -791,7 +739,6 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       WHERE id = ${invoiceId} AND customer_id = ${customerId}
     `
 
-    // Get pending services for this customer
     const pendingServices = await sql`
       SELECT cs.*, sp.download_speed, sp.upload_speed, sp.name as service_name
       FROM customer_services cs
@@ -800,7 +747,18 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       AND cs.status = 'pending'
     `
 
-    // Activate all pending services
+    const customerRouter = await sql`
+      SELECT nd.customer_auth_method, nd.id as router_id
+      FROM customers c
+      LEFT JOIN network_devices nd ON nd.location_id = c.location_id
+      WHERE c.id = ${customerId}
+      AND nd.type = 'router'
+      LIMIT 1
+    `
+
+    const authMethod = customerRouter[0]?.customer_auth_method || "pppoe_radius"
+    console.log(`[v0] Customer router auth method: ${authMethod}`)
+
     for (const service of pendingServices) {
       await sql`
         UPDATE customer_services
@@ -810,30 +768,50 @@ export async function processPayment(customerId: number, invoiceId: number, amou
         WHERE id = ${service.id}
       `
 
-      // Generate PPPoE credentials
-      const pppoeUsername = service.pppoe_username || `customer_${customerId}_service_${service.id}`
-      const pppoePassword = service.pppoe_password || Math.random().toString(36).substring(2, 15)
+      console.log(`[v0] Successfully activated service ${service.id} ${service.service_name}`)
 
-      // Provision to RADIUS
-      await provisionRadiusUser({
-        customerId,
-        serviceId: service.id,
-        username: pppoeUsername,
-        password: pppoePassword,
-        ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed || 10,
-        uploadSpeed: service.upload_speed || 10,
-      })
+      const credentials = await retrievePPPoECredentials(service.id)
+      const pppoeUsername =
+        credentials?.username || service.pppoe_username || `customer_${customerId}_service_${service.id}`
+      const pppoePassword =
+        credentials?.password || service.pppoe_password || Math.random().toString(36).substring(2, 15)
 
-      // Provision to standard RADIUS tables
-      await provisionToStandardRadiusTables(
-        pppoeUsername,
-        pppoePassword,
-        service.download_speed || "10M",
-        service.upload_speed || "10M",
-      )
+      console.log(`[v0] Provisioning RADIUS credentials for service ${service.id} username: ${pppoeUsername}`)
 
-      // Log the activation
+      if (authMethod === "pppoe_radius") {
+        await provisionRadiusUser({
+          customerId,
+          serviceId: service.id,
+          username: pppoeUsername,
+          password: pppoePassword,
+          ipAddress: service.ip_address || undefined,
+          downloadSpeed: service.download_speed || 10,
+          uploadSpeed: service.upload_speed || 10,
+        })
+
+        await provisionToStandardRadiusTables(
+          pppoeUsername,
+          pppoePassword,
+          service.download_speed || "10M",
+          service.upload_speed || "10M",
+        )
+        console.log("[v0] ✓ Provisioned to FreeRADIUS")
+      } else if (authMethod === "pppoe_secrets") {
+        console.log("[v0] Provisioning to MikroTik router (PPPoE Secrets)...")
+        try {
+          await provisionServiceToRouter(service.id, {
+            username: pppoeUsername,
+            password: pppoePassword,
+            service: service.service_name,
+            downloadSpeed: service.download_speed || "10M",
+            uploadSpeed: service.upload_speed || "10M",
+          })
+          console.log("[v0] ✓ Provisioned to MikroTik router")
+        } catch (error) {
+          console.error("[v0] Failed to provision to MikroTik router:", error)
+        }
+      }
+
       await sql`
         INSERT INTO activity_logs (
           user_id,
@@ -878,7 +856,7 @@ export async function updateServiceStatus(
   try {
     const sql = await getSql()
 
-    const service = await sql`
+    const serviceData = await sql`
       SELECT cs.*, c.portal_username
       FROM customer_services cs
       JOIN customers c ON c.id = cs.customer_id
@@ -886,12 +864,12 @@ export async function updateServiceStatus(
       LIMIT 1
     `
 
-    if (service.length === 0) {
+    if (serviceData.length === 0) {
       return { success: false, error: "Service not found" }
     }
 
-    const serviceData = service[0]
-    const oldStatus = serviceData.status
+    const service = serviceData[0]
+    const oldStatus = service.status
 
     await sql`
       UPDATE customer_services
@@ -903,40 +881,35 @@ export async function updateServiceStatus(
       WHERE id = ${serviceId}
     `
 
-    // Handle RADIUS provisioning based on status change
-    const username = serviceData.pppoe_username || serviceData.portal_username || `customer_${serviceData.customer_id}`
-    const password = serviceData.pppoe_password || username
+    const username = service.pppoe_username || service.portal_username || `customer_${service.customer_id}`
+    const password = service.pppoe_password || username
 
     if (newStatus === "active" && oldStatus !== "active") {
-      // Activate in RADIUS
       await provisionRadiusUser({
-        customerId: serviceData.customer_id,
+        customerId: service.customer_id,
         serviceId,
         username,
         password,
-        ipAddress: serviceData.ip_address || undefined,
-        downloadSpeed: serviceData.download_speed || 10,
-        uploadSpeed: serviceData.upload_speed || 10,
+        ipAddress: service.ip_address || undefined,
+        downloadSpeed: service.download_speed || 10,
+        uploadSpeed: service.upload_speed || 10,
       })
     } else if (newStatus === "suspended") {
-      // Suspend in RADIUS
       await suspendRadiusUser({
-        customerId: serviceData.customer_id,
+        customerId: service.customer_id,
         serviceId,
         username,
         reason: reason || "Service suspended",
       })
     } else if (newStatus === "terminated") {
-      // Remove from RADIUS
       await deprovisionRadiusUser({
-        customerId: serviceData.customer_id,
+        customerId: service.customer_id,
         serviceId,
         username,
         reason: reason || "Service terminated",
       })
     }
 
-    // Log the status change
     await sql`
       INSERT INTO activity_logs (
         user_id,
@@ -956,7 +929,7 @@ export async function updateServiceStatus(
       ON CONFLICT DO NOTHING
     `
 
-    revalidatePath(`/customers/${serviceData.customer_id}`)
+    revalidatePath(`/customers/${service.customer_id}`)
 
     return {
       success: true,

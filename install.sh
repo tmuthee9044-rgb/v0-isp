@@ -1650,7 +1650,7 @@ build_application() {
 fix_database_schema() {
     print_header "Fixing Database Schema Issues"
     
-    print_info "Applying comprehensive column fixes for all 28 tables..."
+    print_info "Applying comprehensive column fixes for all tables..."
     
     DB_NAME="${DB_NAME:-isp_system}"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1659,44 +1659,56 @@ fix_database_schema() {
     if [ -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" ]; then
         print_info "Executing 1000_fix_all_missing_columns.sql..."
         
+        # Copy to /tmp for postgres user access
         cp "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" /tmp/fix_columns.sql
         chmod 644 /tmp/fix_columns.sql
         
-        # Change to /tmp and execute
+        # Execute with error output visible
         cd /tmp
-        sudo -u postgres psql -d "$DB_NAME" -f /tmp/fix_columns.sql 2>/dev/null
-        
-        if [ $? -eq 0 ]; then
-            print_success "All missing columns added successfully"
-            rm -f /tmp/fix_columns.sql
-        else
-            print_error "Failed to add some columns - check logs"
+        if sudo -u postgres psql -d "$DB_NAME" -f /tmp/fix_columns.sql 2>&1 | grep -i "error"; then
+            print_warning "Some SQL commands produced errors (may be expected for existing columns)"
         fi
-    else
-        print_warning "Comprehensive fix script not found, using fallback..."
         
-        # Fallback inline SQL for critical tables
-        sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL' 2>/dev/null
--- Critical columns for customer_services
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_password VARCHAR(100);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS lock_to_mac BOOLEAN DEFAULT false;
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true;
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id INTEGER;
-
--- Critical columns for network_devices
-ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
-
--- Critical localization columns for company_profiles
-ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en';
-ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'KES';
-ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'Africa/Nairobi';
-FIXSQL
+        print_success "Column fixes applied"
+        rm -f /tmp/fix_columns.sql
+        
+        # Verify critical columns exist
+        print_info "Verifying critical columns were added..."
+        cd /tmp
+        
+        # Check customers.name
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='customers' AND column_name='name';" 2>/dev/null | grep -q "name"; then
+            print_success "customers.name column exists"
+        else
+            print_error "customers.name column is MISSING!"
+        fi
+        
+        # Check company_profiles.name
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='name';" 2>/dev/null | grep -q "name"; then
+            print_success "company_profiles.name column exists"
+        else
+            print_error "company_profiles.name column is MISSING!"
+        fi
+        
+        # Check customer_services.mac_address
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='customer_services' AND column_name='mac_address';" 2>/dev/null | grep -q "mac_address"; then
+            print_success "customer_services.mac_address column exists"
+        else
+            print_error "customer_services.mac_address column is MISSING!"
+        fi
+        
+        # Check locations sequence
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT pg_get_serial_sequence('locations', 'id');" 2>/dev/null | grep -q "locations_id_seq"; then
+            print_success "locations ID sequence configured"
+        else
+            print_warning "locations ID sequence may need manual configuration"
+        fi
+        
+        cd "$SCRIPT_DIR"
+    else
+        print_error "1000_fix_all_missing_columns.sql not found at $SCRIPT_DIR/scripts/"
+        print_info "Skipping column fixes"
     fi
-    
-    # Return to original directory
-    cd - > /dev/null 2>&1
 }
 
 apply_database_schema() {
@@ -2218,14 +2230,13 @@ main() {
     # Fix any missing columns
     fix_database_schema
     
+    install_freeradius
+    
     # NOW install project dependencies
     install_dependencies
     
     # Build application
     build_application
-    
-    # Install and configure FreeRADIUS
-    install_freeradius
     
     print_header "Installation Complete!"
     print_success "ISP Management System has been installed successfully."

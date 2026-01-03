@@ -33,6 +33,7 @@ ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
 
 -- Fix company_profiles table (localization columns)
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS name VARCHAR(255) DEFAULT 'My ISP Company';
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en';
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'KES';
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'Africa/Nairobi';
@@ -89,6 +90,7 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255);
 
 -- Fix customers table
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS id_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;
@@ -284,6 +286,29 @@ CREATE TABLE IF NOT EXISTS account_balances_old (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create bandwidth_usage table for customer statistics from physical routers (rule 9)
+-- Create bandwidth_usage table if it doesn't exist
+CREATE TABLE IF NOT EXISTS bandwidth_usage (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+    device_id INTEGER REFERENCES network_devices(id) ON DELETE SET NULL,
+    ip_address INET,
+    date_hour TIMESTAMP NOT NULL,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0,
+    packets_in BIGINT DEFAULT 0,
+    packets_out BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT unique_bandwidth_entry UNIQUE(customer_id, device_id, ip_address, date_hour)
+);
+
+-- Create indexes for bandwidth_usage table (rule 6 - fast page loads)
+CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_customer_id ON bandwidth_usage(customer_id);
+CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_device_id ON bandwidth_usage(device_id);
+CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_date_hour ON bandwidth_usage(date_hour);
+CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_ip_address ON bandwidth_usage(ip_address);
+CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_customer_date ON bandwidth_usage(customer_id, date_hour DESC);
+
 -- Create performance indexes for all new columns
 CREATE INDEX IF NOT EXISTS idx_customer_services_mac ON customer_services(mac_address);
 CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_user ON customer_services(pppoe_username);
@@ -304,3 +329,53 @@ CREATE INDEX IF NOT EXISTS idx_capacity_predictions_device ON capacity_predictio
 CREATE INDEX IF NOT EXISTS idx_bandwidth_patterns_device ON bandwidth_patterns(network_device_id);
 CREATE INDEX IF NOT EXISTS idx_router_sync_status_router ON router_sync_status(router_id);
 CREATE INDEX IF NOT EXISTS idx_account_balances_old_customer ON account_balances_old(customer_id);
+
+-- Fix locations table id column to use auto-increment sequence
+-- Create sequence for locations id if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'locations_id_seq') THEN
+        CREATE SEQUENCE locations_id_seq;
+        -- Set the sequence to start from max existing id + 1
+        PERFORM setval('locations_id_seq', COALESCE((SELECT MAX(id) FROM locations), 0) + 1, false);
+        -- Set the default value for id column to use the sequence
+        ALTER TABLE locations ALTER COLUMN id SET DEFAULT nextval('locations_id_seq');
+    END IF;
+END $$;
+
+-- Create servers table for infrastructure monitoring
+-- Create servers table if it doesn't exist (for infrastructure overview API)
+CREATE TABLE IF NOT EXISTS servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(100) DEFAULT 'physical',
+    ip_address VARCHAR(50),
+    hostname VARCHAR(255),
+    location VARCHAR(255),
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    status VARCHAR(50) DEFAULT 'offline',
+    operating_system VARCHAR(100),
+    cpu_cores INTEGER,
+    cpu_usage DECIMAL(5,2) DEFAULT 0,
+    memory_total BIGINT,
+    memory_usage DECIMAL(5,2) DEFAULT 0,
+    disk_total BIGINT,
+    disk_usage DECIMAL(5,2) DEFAULT 0,
+    uptime_percentage DECIMAL(5,2) DEFAULT 0,
+    last_boot TIMESTAMP,
+    last_seen TIMESTAMP,
+    monitoring_enabled BOOLEAN DEFAULT true,
+    alert_threshold_cpu DECIMAL(5,2) DEFAULT 80,
+    alert_threshold_memory DECIMAL(5,2) DEFAULT 85,
+    alert_threshold_disk DECIMAL(5,2) DEFAULT 90,
+    notes TEXT,
+    configuration JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for servers table (rule 6 - fast page loads under 5ms)
+CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+CREATE INDEX IF NOT EXISTS idx_servers_location_id ON servers(location_id);
+CREATE INDEX IF NOT EXISTS idx_servers_monitoring ON servers(monitoring_enabled);
+CREATE INDEX IF NOT EXISTS idx_servers_last_seen ON servers(last_seen DESC);

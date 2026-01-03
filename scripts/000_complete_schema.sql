@@ -31,6 +31,10 @@ DROP TABLE IF EXISTS locations CASCADE;
 DROP TABLE IF EXISTS performance_reviews CASCADE;
 DROP TABLE IF EXISTS company_profiles CASCADE;
 DROP TABLE IF EXISTS system_config CASCADE;
+DROP TABLE IF EXISTS radius_users CASCADE;
+DROP TABLE IF EXISTS radius_sessions_active CASCADE;
+DROP TABLE IF EXISTS radius_sessions_archive CASCADE;
+DROP TABLE IF EXISTS radius_nas CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -617,6 +621,76 @@ CREATE TABLE IF NOT EXISTS system_config (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- FreeRADIUS Tables
+-- Added radius_users, radius_sessions_active, radius_sessions_archive, and radius_nas tables for FreeRADIUS integration per rule 10 and 11
+CREATE TABLE IF NOT EXISTS radius_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'active',
+    ip_address INET,
+    download_limit BIGINT,
+    upload_limit BIGINT,
+    session_timeout INTEGER,
+    idle_timeout INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_sessions_active (
+    id SERIAL PRIMARY KEY,
+    acct_session_id VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET NOT NULL,
+    nas_port_id VARCHAR(255),
+    framed_ip_address INET,
+    calling_station_id VARCHAR(255),
+    service_type VARCHAR(50),
+    start_time TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_update TIMESTAMP DEFAULT NOW(),
+    session_time INTEGER DEFAULT 0,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0,
+    packets_in BIGINT DEFAULT 0,
+    packets_out BIGINT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS radius_sessions_archive (
+    id SERIAL PRIMARY KEY,
+    acct_session_id VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET,
+    nas_port_id VARCHAR(255),
+    framed_ip_address INET,
+    calling_station_id VARCHAR(255),
+    service_type VARCHAR(50),
+    start_time TIMESTAMP NOT NULL,
+    stop_time TIMESTAMP NOT NULL,
+    session_time INTEGER,
+    bytes_in BIGINT,
+    bytes_out BIGINT,
+    packets_in BIGINT,
+    packets_out BIGINT,
+    terminate_cause VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_nas (
+    id SERIAL PRIMARY KEY,
+    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    short_name VARCHAR(32) NOT NULL,
+    ip_address INET NOT NULL UNIQUE,
+    secret VARCHAR(255) NOT NULL,
+    type VARCHAR(50) DEFAULT 'mikrotik',
+    ports INTEGER,
+    status VARCHAR(20) DEFAULT 'active',
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Insert default company profile
 INSERT INTO company_profiles (
     name, 
@@ -658,6 +732,15 @@ CREATE INDEX idx_performance_reviews_review_date ON performance_reviews(review_d
 CREATE INDEX idx_company_profiles_name ON company_profiles(name);
 CREATE INDEX idx_system_config_key ON system_config(key);
 
+-- Create indexes for FreeRADIUS performance
+CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username);
+CREATE INDEX IF NOT EXISTS idx_radius_users_customer_id ON radius_users(customer_id);
+CREATE INDEX IF NOT EXISTS idx_radius_users_status ON radius_users(status);
+CREATE INDEX IF NOT EXISTS idx_radius_sessions_username ON radius_sessions_active(username);
+CREATE INDEX IF NOT EXISTS idx_radius_sessions_acct_id ON radius_sessions_active(acct_session_id);
+CREATE INDEX IF NOT EXISTS idx_radius_archive_username ON radius_sessions_archive(username);
+CREATE INDEX IF NOT EXISTS idx_radius_nas_ip ON radius_nas(ip_address);
+
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')
 ON CONFLICT (migration_name) DO NOTHING;
@@ -666,6 +749,6 @@ ON CONFLICT (migration_name) DO NOTHING;
 DO $$
 BEGIN
     RAISE NOTICE 'Database schema created successfully!';
-    RAISE NOTICE 'Total tables created: 21';
-    RAISE NOTICE 'Total indexes created: 32';
+    RAISE NOTICE 'Total tables created: 25';
+    RAISE NOTICE 'Total indexes created: 37';
 END $$;

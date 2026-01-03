@@ -890,32 +890,53 @@ EOF_INNER
     if netstat -tuln 2>/dev/null | grep -q ":1812 " || ss -tuln 2>/dev/null | grep -q ":1812 "; then
         print_success "Radius is listening on port 1812"
         
-        print_info "Testing RADIUS authentication..."
-        TEST_USER="test_install_user_$(date +%s)"
-        TEST_PASS="test_pass_$(openssl rand -hex 8)"
-        
-        # Create test user in database
-        psql "$DATABASE_URL" << TESTUSER
+        if [ "$TEST_RADIUS" = true ]; then
+            print_info "Testing RADIUS authentication..."
+            
+            # Check if radius_users table exists
+            TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'radius_users');")
+            
+            if [ "$TABLE_EXISTS" = "t" ]; then
+                # Check if customers table has data
+                CUSTOMER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM customers;" 2>/dev/null || echo "0")
+                
+                if [ "$CUSTOMER_COUNT" -gt 0 ]; then
+                    TEST_USER="test_install_user_$(date +%s)"
+                    TEST_PASS="test_pass_$(openssl rand -hex 8)"
+                    
+                    # Create test user in database
+                    psql "$DATABASE_URL" << TESTUSER 2>/dev/null
 INSERT INTO radius_users (username, password_hash, status, customer_id) 
 SELECT '$TEST_USER', crypt('$TEST_PASS', gen_salt('bf')), 'active', id 
 FROM customers LIMIT 1
 ON CONFLICT (username) DO NOTHING;
 TESTUSER
-        
-        # Test with radtest if available
-        if command -v radtest &> /dev/null; then
-            if radtest "$TEST_USER" "$TEST_PASS" "$DETECTED_IP" 1812 "$RADIUS_SECRET" &> /dev/null; then
-                print_success "RADIUS authentication test PASSED"
+                    
+                    # Test with radtest if available
+                    if command -v radtest &> /dev/null; then
+                        if radtest "$TEST_USER" "$TEST_PASS" "$DETECTED_IP" 1812 "$RADIUS_SECRET" &> /dev/null; then
+                            print_success "RADIUS authentication test PASSED"
+                        else
+                            print_warning "RADIUS authentication test FAILED"
+                            print_info "This may be normal if radtest is not configured properly"
+                        fi
+                        
+                        # Clean up test user
+                        psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = '$TEST_USER';" > /dev/null 2>&1
+                    else
+                        print_info "radtest not available, skipping authentication test"
+                        print_info "You can test manually from /settings/servers page"
+                    fi
+                else
+                    print_warning "No customers in database, skipping RADIUS authentication test"
+                    print_info "Add customers first, then test RADIUS from /settings/servers page"
+                fi
             else
-                print_warning "RADIUS authentication test FAILED"
-                print_info "This may be normal if radtest is not configured properly"
+                print_warning "radius_users table does not exist, skipping authentication test"
+                print_info "Run database migration to create RADIUS tables"
             fi
             
-            # Clean up test user
-            psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = '$TEST_USER';" > /dev/null 2>&1
-        else
-            print_info "radtest not available, skipping authentication test"
-            print_info "You can test manually from /settings/servers page"
+        # ... (rest of the original code block in install_freeradius continues here)
         fi
         
         print_info "Checking for configured routers..."

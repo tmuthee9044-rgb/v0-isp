@@ -69,6 +69,15 @@ BEGIN
             status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED', 'CANCELLED')),
             next_billing_date DATE,
             start_date DATE DEFAULT CURRENT_DATE,
+            connection_type VARCHAR(50) DEFAULT 'pppoe',
+            ip_address VARCHAR(45),
+            mac_address VARCHAR(17),
+            device_id INTEGER,
+            lock_to_mac BOOLEAN DEFAULT false,
+            auto_renew BOOLEAN DEFAULT true,
+            pppoe_username VARCHAR(100),
+            pppoe_password VARCHAR(100),
+            location_id INTEGER,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
@@ -87,8 +96,44 @@ BEGIN
         CREATE INDEX idx_customer_services_customer ON customer_services(customer_id);
         CREATE INDEX idx_customer_services_status ON customer_services(status);
         CREATE INDEX idx_customer_services_billing_date ON customer_services(next_billing_date);
+        CREATE INDEX idx_customer_services_ip_address ON customer_services(ip_address);
+        CREATE INDEX idx_customer_services_mac_address ON customer_services(mac_address);
+        CREATE INDEX idx_customer_services_pppoe_username ON customer_services(pppoe_username);
         
         PERFORM log_table_creation('customer_services');
+    ELSE
+        -- Table exists, add missing columns if they don't exist
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'mac_address') THEN
+            ALTER TABLE customer_services ADD COLUMN mac_address VARCHAR(17);
+            CREATE INDEX idx_customer_services_mac_address ON customer_services(mac_address);
+            RAISE NOTICE 'Added mac_address column to customer_services';
+        END IF;
+        
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'pppoe_username') THEN
+            ALTER TABLE customer_services ADD COLUMN pppoe_username VARCHAR(100);
+            CREATE INDEX idx_customer_services_pppoe_username ON customer_services(pppoe_username);
+            RAISE NOTICE 'Added pppoe_username column to customer_services';
+        END IF;
+        
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'pppoe_password') THEN
+            ALTER TABLE customer_services ADD COLUMN pppoe_password VARCHAR(100);
+            RAISE NOTICE 'Added pppoe_password column to customer_services';
+        END IF;
+        
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'lock_to_mac') THEN
+            ALTER TABLE customer_services ADD COLUMN lock_to_mac BOOLEAN DEFAULT false;
+            RAISE NOTICE 'Added lock_to_mac column to customer_services';
+        END IF;
+        
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'auto_renew') THEN
+            ALTER TABLE customer_services ADD COLUMN auto_renew BOOLEAN DEFAULT true;
+            RAISE NOTICE 'Added auto_renew column to customer_services';
+        END IF;
+        
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'customer_services' AND column_name = 'location_id') THEN
+            ALTER TABLE customer_services ADD COLUMN location_id INTEGER;
+            RAISE NOTICE 'Added location_id column to customer_services';
+        END IF;
     END IF;
 END $$;
 
@@ -269,6 +314,7 @@ BEGIN
             status TEXT DEFAULT 'ACTIVE',
             model TEXT,
             serial_number TEXT,
+            customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
@@ -278,6 +324,12 @@ BEGIN
         CREATE INDEX idx_network_devices_location ON network_devices(location);
         
         PERFORM log_table_creation('network_devices');
+    ELSE
+        -- Table exists, add missing column if it doesn't exist
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'network_devices' AND column_name = 'customer_auth_method') THEN
+            ALTER TABLE network_devices ADD COLUMN customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
+            RAISE NOTICE 'Added customer_auth_method column to network_devices';
+        END IF;
     END IF;
 END $$;
 

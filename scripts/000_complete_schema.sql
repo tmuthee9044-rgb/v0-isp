@@ -268,6 +268,7 @@ CREATE TABLE network_devices (
     enable_traffic_recording BOOLEAN DEFAULT true,
     enable_speed_control BOOLEAN DEFAULT true,
     blocking_page_url TEXT,
+    customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius',
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
     model VARCHAR(100),

@@ -284,7 +284,28 @@ export default function SettingsPage() {
     setShowSyncDialog(true)
 
     try {
-      addSyncLog("Sending POST request to /api/admin/sync-all-146-tables...")
+      addSyncLog("Step 1: Detecting and fixing column mismatches...")
+
+      const fixRes = await fetch("/api/admin/fix-column-mismatches", {
+        method: "POST",
+      })
+
+      if (fixRes.ok) {
+        const fixData = await fixRes.json()
+        addSyncLog(
+          `✅ Column fix complete: ${fixData.results.columnsAdded} columns added to ${fixData.results.tablesFix} tables`,
+        )
+
+        if (fixData.results.errors.length > 0) {
+          fixData.results.errors.forEach((err: string) => addSyncLog(`⚠️ ${err}`))
+        }
+      } else {
+        addSyncLog(`⚠️ Column fix had issues, continuing with sync...`)
+      }
+
+      setSyncProgress(30)
+
+      addSyncLog("Step 2: Running comprehensive schema sync...")
 
       const res = await fetch("/api/admin/sync-all-146-tables", {
         method: "POST",

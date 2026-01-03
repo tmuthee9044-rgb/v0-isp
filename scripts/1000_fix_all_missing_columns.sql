@@ -1,6 +1,9 @@
 -- Comprehensive fix for all 28 tables with incorrect column counts
 -- This script adds ALL missing columns based on the complete schema
 
+-- Enable pgcrypto extension for password hashing (gen_salt function)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Fix customer_services table
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
@@ -11,6 +14,8 @@ ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id INTEGER;
 
 -- Fix network_devices table
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS password VARCHAR(255);
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS port INTEGER DEFAULT 8728;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS api_port INTEGER DEFAULT 8728;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS ssh_port INTEGER DEFAULT 22;
@@ -91,35 +96,73 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255);
 
 -- Fix customers table
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_primary VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_secondary VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_office VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS national_id VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS id_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS secondary_phone VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_address VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS region VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_county VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_postal_code VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_country VARCHAR(100) DEFAULT 'Kenya';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_gps_coordinates VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_postal_code VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS gps_coordinates VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_id INTEGER;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_type VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_reg_no VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_type VARCHAR(50) DEFAULT 'individual';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_category VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_balance DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_day INTEGER DEFAULT 1;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS auto_billing BOOLEAN DEFAULT true;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS auto_renewal BOOLEAN DEFAULT true;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_contact_method VARCHAR(50) DEFAULT 'email';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS paperless_billing BOOLEAN DEFAULT false;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sms_notifications BOOLEAN DEFAULT true;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS internal_notes TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS special_requirements TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS kyc_verified BOOLEAN DEFAULT false;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS kyc_documents JSONB;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10) DEFAULT 'en';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS vat_pin VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number VARCHAR(50) UNIQUE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_rep VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_manager VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
 
 -- Fix locations table
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
@@ -343,6 +386,35 @@ BEGIN
     END IF;
 END $$;
 
+-- Fix system_config table - add updated_at column if missing
+ALTER TABLE system_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Fix system_logs table - ensure id column has auto-increment sequence
+DO $$
+BEGIN
+    -- Create sequence for system_logs if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'system_logs_id_seq') THEN
+        CREATE SEQUENCE system_logs_id_seq;
+        
+        -- Set sequence to start from max existing id + 1
+        PERFORM setval('system_logs_id_seq', COALESCE((SELECT MAX(id) FROM system_logs WHERE id IS NOT NULL), 0) + 1, false);
+        
+        -- Set default value for id column
+        ALTER TABLE system_logs ALTER COLUMN id SET DEFAULT nextval('system_logs_id_seq');
+    END IF;
+END $$;
+
+-- Ensure system_logs id column is properly set as PRIMARY KEY
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'system_logs_pkey') THEN
+        ALTER TABLE system_logs ADD PRIMARY KEY (id);
+    END IF;
+END $$;
+
+-- Generate customer_number for existing customers without one
+UPDATE customers SET customer_number = 'CUST' || LPAD(id::TEXT, 6, '0') WHERE customer_number IS NULL;
+
 -- Create servers table for infrastructure monitoring
 -- Create servers table if it doesn't exist (for infrastructure overview API)
 CREATE TABLE IF NOT EXISTS servers (
@@ -376,6 +448,91 @@ CREATE TABLE IF NOT EXISTS servers (
 
 -- Create indexes for servers table (rule 6 - fast page loads under 5ms)
 CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+CREATE INDEX IF NOT EXISTS idx_servers_type ON servers(type);
 CREATE INDEX IF NOT EXISTS idx_servers_location_id ON servers(location_id);
 CREATE INDEX IF NOT EXISTS idx_servers_monitoring ON servers(monitoring_enabled);
 CREATE INDEX IF NOT EXISTS idx_servers_last_seen ON servers(last_seen DESC);
+
+-- Adding complete employees table with all HR/payroll compliance columns
+CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY,
+    employee_id VARCHAR(50) UNIQUE NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) UNIQUE,
+    phone VARCHAR(50),
+    national_id VARCHAR(100),
+    date_of_birth DATE,
+    gender VARCHAR(20),
+    marital_status VARCHAR(50),
+    address TEXT,
+    emergency_contact VARCHAR(255),
+    emergency_phone VARCHAR(50),
+    department VARCHAR(100),
+    position VARCHAR(100),
+    reporting_manager VARCHAR(255),
+    employment_type VARCHAR(50),
+    contract_type VARCHAR(50),
+    hire_date DATE,
+    probation_period INTEGER,
+    work_location VARCHAR(255),
+    salary DECIMAL(10, 2),
+    allowances DECIMAL(10, 2) DEFAULT 0.00,
+    benefits TEXT,
+    payroll_frequency VARCHAR(50) DEFAULT 'monthly',
+    bank_name VARCHAR(255),
+    bank_account VARCHAR(100),
+    kra_pin VARCHAR(50),
+    nssf_number VARCHAR(50),
+    sha_number VARCHAR(50),
+    portal_username VARCHAR(100),
+    portal_password VARCHAR(255),
+    qualifications TEXT,
+    experience TEXT,
+    skills TEXT,
+    notes TEXT,
+    photo_url TEXT,
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add missing columns to existing employees table if it exists
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS benefits TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS qualifications TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS experience TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS skills TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
+
+-- Create payroll table if it doesn't exist
+CREATE TABLE IF NOT EXISTS payroll (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    pay_period_start DATE NOT NULL,
+    pay_period_end DATE NOT NULL,
+    basic_salary DECIMAL(10, 2) NOT NULL,
+    allowances DECIMAL(10, 2) DEFAULT 0.00,
+    deductions DECIMAL(10, 2) DEFAULT 0.00,
+    gross_pay DECIMAL(10, 2) NOT NULL,
+    tax DECIMAL(10, 2) DEFAULT 0.00,
+    nhif DECIMAL(10, 2) DEFAULT 0.00,
+    nssf DECIMAL(10, 2) DEFAULT 0.00,
+    net_pay DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_employees_nssf ON employees(nssf_number);
+CREATE INDEX IF NOT EXISTS idx_employees_kra ON employees(kra_pin);
+CREATE INDEX IF NOT EXISTS idx_employees_sha ON employees(sha_number);
+CREATE INDEX IF NOT EXISTS idx_payroll_employee ON payroll(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll(pay_period_start, pay_period_end);

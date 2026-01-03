@@ -1646,16 +1646,34 @@ build_application() {
 }
 
 
-# Around line 5450 - Replace the incomplete fix_database_schema function
+# Around line 1650 - Replace the incomplete fix_database_schema function
 fix_database_schema() {
     print_header "Fixing Database Schema Issues"
     
-    print_info "Adding missing columns to customer_services and network_devices tables..."
+    print_info "Applying comprehensive column fixes for all 28 tables..."
     
-    DB_NAME="${DB_NAME:-isp_system}" # Ensure DB_NAME is defined
+    DB_NAME="${DB_NAME:-isp_system}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
--- Add missing columns to customer_services
+    # Change to /tmp to avoid permission issues
+    cd /tmp
+    
+    # Apply the comprehensive fix script
+    if [ -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" ]; then
+        print_info "Executing 1000_fix_all_missing_columns.sql..."
+        sudo -u postgres psql -d "$DB_NAME" -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql"
+        
+        if [ $? -eq 0 ]; then
+            print_success "All missing columns added successfully"
+        else
+            print_error "Failed to add some columns - check logs"
+        fi
+    else
+        print_warning "Comprehensive fix script not found, using fallback..."
+        
+        # Fallback inline SQL for critical tables
+        sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
+-- Critical columns for customer_services
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_password VARCHAR(100);
@@ -1663,85 +1681,18 @@ ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS lock_to_mac BOOLEAN DEFAU
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true;
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id INTEGER;
 
--- Add missing column to network_devices
+-- Critical columns for network_devices
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
 
--- Create RADIUS tables if missing
-CREATE TABLE IF NOT EXISTS radius_users (
-    username VARCHAR(255) PRIMARY KEY,
-    password_hash VARCHAR(255) NOT NULL,
-    status VARCHAR(50) DEFAULT 'active',
-    download_limit NUMERIC(10,2) DEFAULT 0,
-    upload_limit NUMERIC(10,2) DEFAULT 0,
-    session_timeout INTEGER,
-    idle_timeout INTEGER,
-    ip_address INET,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS radius_sessions_active (
-    acct_session_id VARCHAR(255) PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    nas_ip_address INET,
-    nas_port_id VARCHAR(255),
-    framed_ip_address INET,
-    calling_station_id VARCHAR(255),
-    service_type VARCHAR(50),
-    start_time TIMESTAMP NOT NULL,
-    last_update TIMESTAMP,
-    session_time INTEGER DEFAULT 0,
-    bytes_in BIGINT DEFAULT 0,
-    bytes_out BIGINT DEFAULT 0,
-    UNIQUE (username, nas_ip_address, start_time)
-);
-
-CREATE TABLE IF NOT EXISTS radius_sessions_archive (
-    acct_session_id VARCHAR(255) PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    nas_ip_address INET,
-    nas_port_id VARCHAR(255),
-    framed_ip_address INET,
-    calling_station_id VARCHAR(255),
-    service_type VARCHAR(50),
-    start_time TIMESTAMP NOT NULL,
-    stop_time TIMESTAMP NOT NULL,
-    session_time INTEGER,
-    bytes_in BIGINT,
-    bytes_out BIGINT,
-    packets_in BIGINT,
-    packets_out BIGINT,
-    terminate_cause VARCHAR(50)
-);
-
-CREATE TABLE IF NOT EXISTS radius_nas (
-    id SERIAL PRIMARY KEY,
-    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    short_name VARCHAR(32) NOT NULL,
-    ip_address INET NOT NULL UNIQUE,
-    secret VARCHAR(255) NOT NULL,
-    type VARCHAR(50) DEFAULT 'mikrotik',
-    status VARCHAR(20) DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_customer_services_mac_address ON customer_services(mac_address);
-CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_username ON customer_services(pppoe_username);
-CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id);
-CREATE INDEX IF NOT EXISTS idx_radius_users_status ON radius_users(status);
-CREATE INDEX IF NOT EXISTS idx_radius_sessions_active_username ON radius_sessions_active(username);
-CREATE INDEX IF NOT EXISTS idx_radius_sessions_archive_username ON radius_sessions_archive(username);
+-- Critical localization columns for company_profiles
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'KES';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'Africa/Nairobi';
 FIXSQL
-
-    if [ $? -eq 0 ]; then
-        print_success "Database schema fixes applied successfully"
-    else
-        print_error "Failed to apply database schema fixes"
-        return 1
     fi
+    
+    # Return to original directory
+    cd - > /dev/null 2>&1
 }
 
 apply_database_schema() {
@@ -1947,8 +1898,9 @@ verify_database_tables() {
     print_header "Verifying Database Tables"
     
     DB_NAME="${DB_NAME:-isp_system}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # Store script directory
     
-    print_info "Checking if required tables exist..."
+    cd /tmp
     
     # List of required tables
     REQUIRED_TABLES=(
@@ -1968,13 +1920,13 @@ verify_database_tables() {
         "radius_users"
         "radius_sessions_active"
         "radius_sessions_archive"
-        "radius_nas" # Added radius_nas
+        "radius_nas"
     )
     
     MISSING_TABLES=()
     
     for table in "${REQUIRED_TABLES[@]}"; do
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" 2>/dev/null | grep -q "t"; then
             print_success "Table exists: $table"
         else
             print_warning "Table missing: $table"
@@ -1986,7 +1938,7 @@ verify_database_tables() {
         print_success "All required tables exist"
         
         # Count total tables
-        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null)
         print_info "Total tables in database: $TABLE_COUNT"
         
     else
@@ -1994,27 +1946,35 @@ verify_database_tables() {
         print_info "Missing tables: ${MISSING_TABLES[*]}"
         print_info "Attempting to create missing tables..."
         
+        cd "$SCRIPT_DIR"
+        
         # Run migrations to create tables
         apply_database_schema
+        
+        cd /tmp
         
         # Verify again
         print_info "Re-checking tables after migration..."
         STILL_MISSING=()
         
         for table in "${MISSING_TABLES[@]}"; do
-            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" 2>/dev/null | grep -q "t"; then
                 STILL_MISSING+=("$table")
             fi
         done
         
         if [ ${#STILL_MISSING[@]} -gt 0 ]; then
             print_error "Still missing ${#STILL_MISSING[@]} tables after migration: ${STILL_MISSING[*]}"
+            cd "$SCRIPT_DIR"
             return 1
         else
             print_success "All missing tables have been created"
+            cd "$SCRIPT_DIR"
             return 0
         fi
     fi
+    
+    cd "$SCRIPT_DIR"
 }
 
 verify_database_schema() {

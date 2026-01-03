@@ -627,15 +627,15 @@ CREATE INDEX IF NOT EXISTS idx_interface_traffic_router_time ON interface_traffi
 -- Add comment
 COMMENT ON TABLE interface_traffic_history IS 'Historical traffic statistics per router interface/port for bandwidth monitoring';
 
--- Adding ip_subnets ID sequence fix
+-- Adding auto-increment sequence for ip_subnets table
 -- Fix ip_subnets table ID sequence for auto-increment
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'ip_subnets_id_seq') THEN
-        -- Creating sequence with proper ownership inline to avoid ownership errors
-        CREATE SEQUENCE ip_subnets_id_seq OWNED BY ip_subnets.id;
-        PERFORM setval('ip_subnets_id_seq', COALESCE((SELECT MAX(id) FROM ip_subnets), 0) + 1, false);
+        CREATE SEQUENCE IF NOT EXISTS ip_subnets_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''ip_subnets_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM ip_subnets), 0), 0) + 1, false)';
         ALTER TABLE ip_subnets ALTER COLUMN id SET DEFAULT nextval('ip_subnets_id_seq');
+        ALTER SEQUENCE ip_subnets_id_seq OWNED BY ip_subnets.id;
     END IF;
 END $$;
 
@@ -644,10 +644,10 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'inventory_items_id_seq') THEN
-        -- Creating sequence with proper ownership inline to avoid ownership errors
-        CREATE SEQUENCE inventory_items_id_seq OWNED BY inventory_items.id;
-        PERFORM setval('inventory_items_id_seq', COALESCE((SELECT MAX(id) FROM inventory_items), 0) + 1, false);
+        CREATE SEQUENCE IF NOT EXISTS inventory_items_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''inventory_items_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM inventory_items), 0), 0) + 1, false)';
         ALTER TABLE inventory_items ALTER COLUMN id SET DEFAULT nextval('inventory_items_id_seq');
+        ALTER SEQUENCE inventory_items_id_seq OWNED BY inventory_items.id;
     END IF;
 END $$;
 
@@ -656,9 +656,9 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'vehicles_id_seq') THEN
-        -- Creating sequence with proper ownership inline to avoid ownership errors
-        CREATE SEQUENCE vehicles_id_seq OWNED BY vehicles.id;
-        PERFORM setval('vehicles_id_seq', COALESCE((SELECT MAX(id) FROM vehicles), 0) + 1, false);
+        CREATE SEQUENCE IF NOT EXISTS vehicles_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''vehicles_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM vehicles), 0), 0) + 1, false)';
         ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT nextval('vehicles_id_seq');
+        ALTER SEQUENCE vehicles_id_seq OWNED BY vehicles.id;
     END IF;
 END $$;

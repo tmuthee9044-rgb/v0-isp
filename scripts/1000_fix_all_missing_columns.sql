@@ -168,6 +168,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number VARCHAR(50) UNIQUE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255); -- Adding billing_email column for separate billing contact
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_rep VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_manager VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
@@ -197,6 +198,9 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS limitations JSONB;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 5;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT true;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS service_type VARCHAR(100);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS speed_download INTEGER;
 
 -- Fix ip_addresses table  
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
@@ -394,6 +398,42 @@ BEGIN
     END IF;
 END $$;
 
+-- Add sequence for network_devices id if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'network_devices_id_seq') THEN
+        CREATE SEQUENCE network_devices_id_seq;
+        -- Set the sequence to start from max existing id + 1
+        PERFORM setval('network_devices_id_seq', COALESCE((SELECT MAX(id) FROM network_devices), 0) + 1, false);
+        -- Set the default value for id column to use the sequence
+        ALTER TABLE network_devices ALTER COLUMN id SET DEFAULT nextval('network_devices_id_seq');
+    END IF;
+END $$;
+
+-- Add sequence for suppliers id if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
+        CREATE SEQUENCE suppliers_id_seq;
+        -- Set the sequence to start from max existing id + 1
+        PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
+        -- Set the default value for id column to use the sequence
+        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
+    END IF;
+END $$;
+
+-- Add sequence for warehouses id if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'warehouses_id_seq') THEN
+        CREATE SEQUENCE warehouses_id_seq;
+        -- Set the sequence to start from max existing id + 1
+        PERFORM setval('warehouses_id_seq', COALESCE((SELECT MAX(id) FROM warehouses), 0) + 1, false);
+        -- Set the default value for id column to use the sequence
+        ALTER TABLE warehouses ALTER COLUMN id SET DEFAULT nextval('warehouses_id_seq');
+    END IF;
+END $$;
+
 -- Fix system_config table - add updated_at column if missing
 ALTER TABLE system_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
@@ -538,9 +578,46 @@ CREATE TABLE IF NOT EXISTS payroll (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Add missing columns to existing payroll table if it exists
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS pay_period_start DATE;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS pay_period_end DATE;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS basic_salary DECIMAL(10, 2);
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS deductions DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS gross_pay DECIMAL(10, 2);
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS tax DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS nhif DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS nssf DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS net_pay DECIMAL(10, 2);
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending';
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_employees_nssf ON employees(nssf_number);
 CREATE INDEX IF NOT EXISTS idx_employees_kra ON employees(kra_pin);
 CREATE INDEX IF NOT EXISTS idx_employees_sha ON employees(sha_number);
 CREATE INDEX IF NOT EXISTS idx_payroll_employee ON payroll(employee_id);
 CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll(pay_period_start, pay_period_end);
+
+-- Adding auto-increment sequence for inventory_items table
+-- Fix 5: Create sequence for inventory_items.id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'inventory_items_id_seq') THEN
+        CREATE SEQUENCE inventory_items_id_seq;
+        PERFORM setval('inventory_items_id_seq', COALESCE((SELECT MAX(id) FROM inventory_items), 0) + 1, false);
+        ALTER TABLE inventory_items ALTER COLUMN id SET DEFAULT nextval('inventory_items_id_seq');
+        ALTER SEQUENCE inventory_items_id_seq OWNED BY inventory_items.id;
+    END IF;
+END $$;
+
+-- Adding auto-increment sequence for vehicles table
+-- Fix 6: Create sequence for vehicles.id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'vehicles_id_seq') THEN
+        CREATE SEQUENCE vehicles_id_seq;
+        PERFORM setval('vehicles_id_seq', COALESCE((SELECT MAX(id) FROM vehicles), 0) + 1, false);
+        ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT nextval('vehicles_id_seq');
+        ALTER SEQUENCE vehicles_id_seq OWNED BY vehicles.id;
+    END IF;
+END $$;

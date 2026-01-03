@@ -204,6 +204,15 @@ CREATE TABLE customer_services (
     suspension_date DATE,
     termination_date DATE,
     monthly_fee DECIMAL(10, 2),
+    connection_type VARCHAR(50) DEFAULT 'pppoe',
+    ip_address VARCHAR(45),
+    mac_address VARCHAR(17),
+    device_id INTEGER,
+    lock_to_mac BOOLEAN DEFAULT false,
+    auto_renew BOOLEAN DEFAULT true,
+    pppoe_username VARCHAR(100),
+    pppoe_password VARCHAR(100),
+    location_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

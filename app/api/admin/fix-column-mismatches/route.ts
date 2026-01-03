@@ -27,9 +27,6 @@ export async function POST() {
 
     results.tablesChecked = tables.length
 
-    // Read the complete schema to know expected columns
-    const schemaFile = await import("@/scripts/1000_fix_all_missing_columns.sql")
-
     // For each table, compare actual vs expected columns
     for (const table of tables) {
       const tableName = table.table_name

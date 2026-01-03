@@ -11,6 +11,14 @@ ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_password VARCHAR(10
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS lock_to_mac BOOLEAN DEFAULT false;
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true;
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id INTEGER;
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS installation_date DATE;
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS activation_date DATE;
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS suspension_date DATE;
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS termination_date DATE;
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS monthly_fee DECIMAL(10, 2);
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'pppoe';
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45);
+ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS device_id INTEGER;
 
 -- Fix network_devices table
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';

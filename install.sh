@@ -1746,16 +1746,14 @@ FIXSQL
 
 apply_database_schema() {
     print_header "Applying Database Schema - Creating ALL Tables"
+    print_info "=========================================="
     
-    DB_NAME="${DB_NAME:-isp_system}"
+    SCRIPTS_PATH="$(cd "$(dirname "$0")/scripts" && pwd)"
     
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    SCRIPTS_PATH="$SCRIPT_DIR/scripts"
-    
-    print_info "Scripts directory: $SCRIPTS_PATH"
+    cd /tmp || exit 1
     
     print_info "Creating schema_migrations table for tracking..."
-    sudo -u postgres psql -d "$DB_NAME" <<'MIGRATIONS_TABLE'
+    sudo -u postgres psql -d "$DB_NAME" <<'MIGRATIONS'
 CREATE TABLE IF NOT EXISTS schema_migrations (
     id SERIAL PRIMARY KEY,
     filename VARCHAR(255) UNIQUE NOT NULL,
@@ -1763,16 +1761,72 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     success BOOLEAN DEFAULT true,
     error_message TEXT
 );
-MIGRATIONS_TABLE
-    
+MIGRATIONS
     print_success "Migration tracking table created"
     
-    # Look for comprehensive schema files first
+    print_info "Creating critical tables (activity_logs, payroll, leave_requests)..."
+    sudo -u postgres psql -d "$DB_NAME" <<'CRITICALTABLES'
+-- Activity Logs Table
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id INTEGER,
+    details TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+
+-- Payroll Table
+CREATE TABLE IF NOT EXISTS payroll (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    basic_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
+    allowances DECIMAL(12,2) DEFAULT 0,
+    deductions DECIMAL(12,2) DEFAULT 0,
+    net_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'pending',
+    paid_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_employee_id ON payroll(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_payroll_status ON payroll(status);
+
+-- Leave Requests Table
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER NOT NULL,
+    leave_type VARCHAR(50) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    days_count INTEGER NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    approved_by INTEGER,
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_id ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);
+CRITICALTABLES
+    print_success "Critical tables created"
+    
+    # Try comprehensive schema files first
     SCHEMA_FILES=(
         "$SCRIPTS_PATH/999_complete_all_tables_schema.sql"
-        "$SCRIPTS_PATH/create_complete_schema.sql"
         "$SCRIPTS_PATH/complete_schema_all_146_tables.sql"
-        "$SCRIPTS_PATH/sync-all-146-tables.sql"
+        "$SCRIPTS_PATH/create_complete_schema.sql"
         "$SCRIPTS_PATH/000_complete_schema.sql"
     )
     
@@ -1797,70 +1851,7 @@ MIGRATIONS_TABLE
         fi
     done
     
-    if [ "$SCHEMA_APPLIED" = false ]; then
-        print_warning "No comprehensive schema file found"
-        print_info "Will create tables from individual migration files..."
-    fi
-    
-    print_info "Ensuring critical tables exist..."
-    sudo -u postgres psql -d "$DB_NAME" <<'CRITICAL_TABLES'
--- Activity logs table
-CREATE TABLE IF NOT EXISTS activity_logs (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER,
-    action VARCHAR(255) NOT NULL,
-    entity_type VARCHAR(100),
-    entity_id INTEGER,
-    details TEXT,
-    ip_address INET,
-    user_agent TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Payroll table
-CREATE TABLE IF NOT EXISTS payroll (
-    id SERIAL PRIMARY KEY,
-    employee_id INTEGER NOT NULL,
-    period_start DATE NOT NULL,
-    period_end DATE NOT NULL,
-    basic_salary DECIMAL(10,2) NOT NULL DEFAULT 0,
-    allowances DECIMAL(10,2) DEFAULT 0,
-    deductions DECIMAL(10,2) DEFAULT 0,
-    net_salary DECIMAL(10,2) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending',
-    paid_date DATE,
-    payment_method VARCHAR(50),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Leave requests table
-CREATE TABLE IF NOT EXISTS leave_requests (
-    id SERIAL PRIMARY KEY,
-    employee_id INTEGER NOT NULL,
-    leave_type VARCHAR(100) NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    days_requested INTEGER NOT NULL,
-    reason TEXT,
-    status VARCHAR(50) DEFAULT 'pending',
-    approved_by INTEGER,
-    approved_at TIMESTAMP,
-    rejection_reason TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_payroll_employee_id ON payroll(employee_id);
-CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_id ON leave_requests(employee_id);
-CRITICAL_TABLES
-    
-    print_success "Critical tables created"
-    
-    # Now apply ALL individual SQL migration files in the scripts folder
+    # Apply individual migration files
     print_info "Scanning scripts folder for additional table definitions..."
     
     FILES_FOUND=0
@@ -1868,14 +1859,15 @@ CRITICAL_TABLES
     FILES_SKIPPED=0
     FILES_FAILED=0
     
-    for sql_file in "$SCRIPTS_PATH"/[0-9]*.sql; do
+    # Process numbered migration files first (000-999)
+    for sql_file in "$SCRIPTS_PATH"/[0-9][0-9][0-9]*.sql; do
         [ -f "$sql_file" ] || continue
-        
         FILES_FOUND=$((FILES_FOUND + 1))
+        
         FILENAME=$(basename "$sql_file")
         
         # Check if already applied
-        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$FILENAME' AND success = true;" 2>/dev/null || echo "0")
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename='$FILENAME';" 2>/dev/null || echo "0")
         
         if [ "$ALREADY_APPLIED" != "0" ]; then
             FILES_SKIPPED=$((FILES_SKIPPED + 1))
@@ -1897,20 +1889,21 @@ CRITICAL_TABLES
         fi
     done
     
+    # Process other SQL files
     for sql_file in "$SCRIPTS_PATH"/*.sql; do
         [ -f "$sql_file" ] || continue
         
         FILENAME=$(basename "$sql_file")
         
         # Skip if already processed in numbered migrations
-        if [[ "$FILENAME" =~ ^[0-9] ]]; then
+        if [[ "$FILENAME" =~ ^[0-9][0-9][0-9] ]]; then
             continue
         fi
         
         FILES_FOUND=$((FILES_FOUND + 1))
         
         # Check if already applied
-        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$FILENAME' AND success = true;" 2>/dev/null || echo "0")
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename='$FILENAME';" 2>/dev/null || echo "0")
         
         if [ "$ALREADY_APPLIED" != "0" ]; then
             FILES_SKIPPED=$((FILES_SKIPPED + 1))
@@ -1919,38 +1912,35 @@ CRITICAL_TABLES
         
         # Check if file contains CREATE TABLE statements
         if grep -q "CREATE TABLE" "$sql_file"; then
-            print_info "Applying: $FILENAME"
-            
             if sudo -u postgres psql -d "$DB_NAME" -f "$sql_file" 2>/tmp/migration_error_${FILENAME}.log; then
                 FILES_APPLIED=$((FILES_APPLIED + 1))
                 sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             else
                 FILES_FAILED=$((FILES_FAILED + 1))
-                print_warning "Failed to apply $FILENAME (see /tmp/migration_error_${FILENAME}.log)"
                 sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             fi
         fi
     done
     
     print_success "Database Schema Application Complete"
-    echo ""
     print_info "Migration Summary:"
     print_info "  Files found: $FILES_FOUND"
     print_info "  Files applied: $FILES_APPLIED"
     print_info "  Files skipped: $FILES_SKIPPED"
     print_info "  Files failed: $FILES_FAILED"
-    echo ""
     
-    # Count total tables created
-    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
+    # Count total tables
+    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" 2>/dev/null || echo "0")
     print_info "Total tables in database: $TABLE_COUNT"
     
-    if [ "$TABLE_COUNT" -lt 50 ]; then
-        print_warning "Expected at least 50 tables, but found only $TABLE_COUNT"
-        print_warning "Some table creation scripts may have failed"
-    else
+    if [ "$TABLE_COUNT" -ge 100 ]; then
         print_success "Database contains $TABLE_COUNT tables"
+    else
+        print_warning "Expected 200+ tables but found $TABLE_COUNT"
+        print_info "Some tables may not have been created. Check error logs in /tmp/"
     fi
+    
+    cd - > /dev/null || true
 }
 
 verify_database_tables() {
@@ -2276,15 +2266,6 @@ main() {
     print_header "Installation Complete!"
     print_success "ISP Management System has been installed successfully."
     print_info "You can now start the application:"
-    echo ""
-    echo "  npm run dev"
-    echo ""
-    print_info "Visit http://localhost:3000 in your browser."
-    echo ""
-}
-
-main
-
     echo ""
     echo "  npm run dev"
     echo ""

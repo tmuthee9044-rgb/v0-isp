@@ -1652,6 +1652,8 @@ fix_database_schema() {
     
     print_info "Adding missing columns to customer_services and network_devices tables..."
     
+    DB_NAME="${DB_NAME:-isp_system}" # Ensure DB_NAME is defined
+    
     sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
 -- Add missing columns to customer_services
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
@@ -1742,133 +1744,151 @@ FIXSQL
     fi
 }
 
-apply_database_fixes() {
-    print_header "Step 8.5: Applying Database Fixes"
+apply_database_schema() {
+    print_header "Applying Database Schema - Creating ALL Tables"
     
-    print_info "Creating missing tables and adding missing columns..."
-    print_info "This may take a few minutes..."
+    DB_NAME="${DB_NAME:-isp_system}"
     
-    DB_NAME="${DB_NAME:-isp_system}" # Ensure DB_NAME is defined
-
-    sudo -u postgres psql -d "$DB_NAME" <<'FIXSQL'
--- Create routers table if missing
-CREATE TABLE IF NOT EXISTS routers (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    hostname VARCHAR(255),
-    type VARCHAR(100),
-    model VARCHAR(255),
-    serial_number VARCHAR(255),
-    username VARCHAR(255),
-    password VARCHAR(255),
-    ssh_port INTEGER DEFAULT 22,
-    api_port INTEGER,
-    status VARCHAR(50) DEFAULT 'active',
-    location_id INTEGER,
-    firmware_version VARCHAR(100),
-    configuration JSONB,
-    connection_type VARCHAR(50),
-    cpu_usage NUMERIC(5,2),
-    memory_usage NUMERIC(5,2),
-    uptime BIGINT,
-    temperature NUMERIC(5,2),
-    sync_status VARCHAR(50),
-    last_sync TIMESTAMP,
-    sync_error TEXT,
-    last_seen TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create radius_users table if missing (for FreeRADIUS)
-CREATE TABLE IF NOT EXISTS radius_users (
-    username VARCHAR(255) PRIMARY KEY,
-    password_hash VARCHAR(255) NOT NULL,
-    status VARCHAR(50) DEFAULT 'active',
-    download_limit NUMERIC(10,2) DEFAULT 0,
-    upload_limit NUMERIC(10,2) DEFAULT 0,
-    session_timeout INTEGER,
-    idle_timeout INTEGER,
-    ip_address INET,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create radius_sessions_active table if missing
-CREATE TABLE IF NOT EXISTS radius_sessions_active (
-    acct_session_id VARCHAR(255) PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    nas_ip_address INET,
-    nas_port_id VARCHAR(255),
-    framed_ip_address INET,
-    calling_station_id VARCHAR(255),
-    service_type VARCHAR(50),
-    start_time TIMESTAMP NOT NULL,
-    last_update TIMESTAMP,
-    session_time INTEGER DEFAULT 0,
-    bytes_in BIGINT DEFAULT 0,
-    bytes_out BIGINT DEFAULT 0,
-    UNIQUE (username, nas_ip_address, start_time)
-);
-
--- Create radius_sessions_archive table if missing
-CREATE TABLE IF NOT EXISTS radius_sessions_archive (
-    acct_session_id VARCHAR(255) PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    nas_ip_address INET,
-    nas_port_id VARCHAR(255),
-    framed_ip_address INET,
-    calling_station_id VARCHAR(255),
-    service_type VARCHAR(50),
-    start_time TIMESTAMP NOT NULL,
-    stop_time TIMESTAMP NOT NULL,
-    session_time INTEGER,
-    bytes_in BIGINT,
-    bytes_out BIGINT,
-    packets_in BIGINT,
-    packets_out BIGINT,
-    terminate_cause VARCHAR(50)
-);
-
--- Create radius_nas table if missing
-CREATE TABLE IF NOT EXISTS radius_nas (
+    print_info "Creating schema_migrations table for tracking..."
+    sudo -u postgres psql -d "$DB_NAME" <<'MIGRATIONS_TABLE'
+CREATE TABLE IF NOT EXISTS schema_migrations (
     id SERIAL PRIMARY KEY,
-    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    short_name VARCHAR(32) NOT NULL,
-    ip_address INET NOT NULL UNIQUE,
-    secret VARCHAR(255) NOT NULL,
-    type VARCHAR(50) DEFAULT 'mikrotik',
-    status VARCHAR(20) DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    filename VARCHAR(255) UNIQUE NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    success BOOLEAN DEFAULT true,
+    error_message TEXT
 );
-
--- Add missing columns to customer_services
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_password VARCHAR(100);
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS lock_to_mac BOOLEAN DEFAULT false;
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true;
-ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id INTEGER;
-
--- Add missing column to network_devices
-ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
-
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_customer_services_mac_address ON customer_services(mac_address);
-CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_username ON customer_services(pppoe_username);
-CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id);
-CREATE INDEX IF NOT EXISTS idx_radius_users_status ON radius_users(status);
-CREATE INDEX IF NOT EXISTS idx_radius_sessions_active_username ON radius_sessions_active(username);
-CREATE INDEX IF NOT EXISTS idx_radius_sessions_archive_username ON radius_sessions_archive(username);
-FIXSQL
-
-    if [ $? -eq 0 ]; then
-        print_success "Database fixes applied successfully"
+MIGRATIONS_TABLE
+    
+    print_success "Migration tracking table created"
+    
+    # Look for comprehensive schema files first
+    SCHEMA_FILES=(
+        "scripts/999_complete_all_tables_schema.sql"
+        "scripts/create_complete_schema.sql"
+        "scripts/complete_schema_all_146_tables.sql"
+        "scripts/sync-all-146-tables.sql"
+        "scripts/000_complete_schema.sql"
+    )
+    
+    SCHEMA_APPLIED=false
+    
+    for schema_file in "${SCHEMA_FILES[@]}"; do
+        if [ -f "$schema_file" ]; then
+            print_info "Found comprehensive schema: $schema_file"
+            print_info "Applying schema (this may take 2-5 minutes)..."
+            
+            if sudo -u postgres psql -d "$DB_NAME" -f "$schema_file" 2>/tmp/schema_error.log; then
+                print_success "Schema applied successfully from $schema_file"
+                SCHEMA_APPLIED=true
+                
+                # Record in migrations table
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$(basename $schema_file)', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+                
+                break
+            else
+                print_warning "Error applying $schema_file (see /tmp/schema_error.log)"
+            fi
+        fi
+    done
+    
+    if [ "$SCHEMA_APPLIED" = false ]; then
+        print_warning "No comprehensive schema file found"
+        print_info "Will create tables from individual migration files..."
+    fi
+    
+    # Now apply ALL individual SQL migration files in the scripts folder
+    print_info "Scanning scripts folder for additional table definitions..."
+    
+    FILES_FOUND=0
+    FILES_APPLIED=0
+    FILES_SKIPPED=0
+    FILES_FAILED=0
+    
+    # Process numbered migrations first (000-999)
+    for sql_file in scripts/[0-9]*.sql; do
+        [ -f "$sql_file" ] || continue
+        
+        FILES_FOUND=$((FILES_FOUND + 1))
+        FILENAME=$(basename "$sql_file")
+        
+        # Check if already applied
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$FILENAME' AND success = true;" 2>/dev/null || echo "0")
+        
+        if [ "$ALREADY_APPLIED" != "0" ]; then
+            FILES_SKIPPED=$((FILES_SKIPPED + 1))
+            continue
+        fi
+        
+        # Check if file contains CREATE TABLE statements
+        if grep -q "CREATE TABLE" "$sql_file"; then
+            print_info "Applying: $FILENAME"
+            
+            if sudo -u postgres psql -d "$DB_NAME" -f "$sql_file" 2>/tmp/migration_error_${FILENAME}.log; then
+                FILES_APPLIED=$((FILES_APPLIED + 1))
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            else
+                FILES_FAILED=$((FILES_FAILED + 1))
+                print_warning "Failed to apply $FILENAME (see /tmp/migration_error_${FILENAME}.log)"
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            fi
+        fi
+    done
+    
+    # Process other SQL files
+    for sql_file in scripts/*.sql; do
+        [ -f "$sql_file" ] || continue
+        
+        FILENAME=$(basename "$sql_file")
+        
+        # Skip if already processed in numbered migrations
+        if [[ "$FILENAME" =~ ^[0-9] ]]; then
+            continue
+        fi
+        
+        FILES_FOUND=$((FILES_FOUND + 1))
+        
+        # Check if already applied
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$FILENAME' AND success = true;" 2>/dev/null || echo "0")
+        
+        if [ "$ALREADY_APPLIED" != "0" ]; then
+            FILES_SKIPPED=$((FILES_SKIPPED + 1))
+            continue
+        fi
+        
+        # Check if file contains CREATE TABLE statements
+        if grep -q "CREATE TABLE" "$sql_file"; then
+            print_info "Applying: $FILENAME"
+            
+            if sudo -u postgres psql -d "$DB_NAME" -f "$sql_file" 2>/tmp/migration_error_${FILENAME}.log; then
+                FILES_APPLIED=$((FILES_APPLIED + 1))
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            else
+                FILES_FAILED=$((FILES_FAILED + 1))
+                print_warning "Failed to apply $FILENAME (see /tmp/migration_error_${FILENAME}.log)"
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            fi
+        fi
+    done
+    
+    print_success "Database Schema Application Complete"
+    echo ""
+    print_info "Migration Summary:"
+    print_info "  Files found: $FILES_FOUND"
+    print_info "  Files applied: $FILES_APPLIED"
+    print_info "  Files skipped: $FILES_SKIPPED"
+    print_info "  Files failed: $FILES_FAILED"
+    echo ""
+    
+    # Count total tables created
+    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
+    print_info "Total tables in database: $TABLE_COUNT"
+    
+    if [ "$TABLE_COUNT" -lt 50 ]; then
+        print_warning "Expected at least 50 tables, but found only $TABLE_COUNT"
+        print_warning "Some table creation scripts may have failed"
     else
-        print_error "Failed to apply some database fixes"
-        return 1
+        print_success "Database contains $TABLE_COUNT tables"
     fi
 }
 
@@ -1924,7 +1944,7 @@ verify_database_tables() {
         print_info "Attempting to create missing tables..."
         
         # Run migrations to create tables
-        apply_database_fixes
+        apply_database_schema
         
         # Verify again
         print_info "Re-checking tables after migration..."
@@ -2165,13 +2185,31 @@ main() {
     check_directory_structure
     install_nodejs
     install_npm
-    setup_database
+    
+    # Install PostgreSQL first
     install_postgresql
-    install_dependencies
+    
+    # Setup database (create DB, user, credentials)
+    setup_database
+    
+    # CREATE ALL TABLES IMMEDIATELY - This is the critical step
+    print_header "Creating Database Tables and Columns"
+    apply_database_schema
+    
+    # Verify tables were created successfully
     verify_database_tables
     verify_database_schema
-    fix_database_schema # Merge point for the update
+    
+    # Fix any missing columns
+    fix_database_schema
+    
+    # NOW install project dependencies
+    install_dependencies
+    
+    # Build application
     build_application
+    
+    # Install and configure FreeRADIUS
     install_freeradius
     
     print_header "Installation Complete!"

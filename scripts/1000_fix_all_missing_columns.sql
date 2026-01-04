@@ -203,6 +203,15 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT f
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS service_type VARCHAR(100);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS category VARCHAR(100);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS speed_download INTEGER;
+-- Adding missing speed_upload column for service plans
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS speed_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_download INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_download INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_duration INTEGER DEFAULT 300;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS aggregation_ratio INTEGER DEFAULT 4;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_level VARCHAR(50) DEFAULT 'standard';
 
 -- Fix ip_addresses table  
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);

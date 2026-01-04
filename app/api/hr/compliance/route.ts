@@ -43,11 +43,12 @@ export async function GET() {
 
     const payrollStats = await sql`
       SELECT 
-        COALESCE(SUM(paye), 0) as total_paye,
+        COALESCE(SUM(tax), 0) as total_paye,
         COALESCE(SUM(nssf), 0) as total_nssf,
-        COALESCE(SUM(sha), 0) as total_sha
+        COALESCE(SUM(nhif), 0) as total_sha
       FROM payroll_records
-      WHERE period = ${`${currentYear}-${String(currentMonth).padStart(2, "0")}`}
+      WHERE EXTRACT(MONTH FROM pay_period_start) = ${currentMonth}
+        AND EXTRACT(YEAR FROM pay_period_start) = ${currentYear}
         AND status IN ('processed', 'paid')
     `
 

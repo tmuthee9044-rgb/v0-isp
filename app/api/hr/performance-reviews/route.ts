@@ -13,7 +13,7 @@ export async function GET() {
         e.employee_id,
         e.position
       FROM performance_reviews pr
-      LEFT JOIN employees e ON pr.employee_id = e.employee_id
+      LEFT JOIN employees e ON pr.employee_id = e.id::text
       ORDER BY pr.review_date DESC
       LIMIT 100
     `
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       await sql`
         UPDATE employees
         SET performance_rating = ${rating}
-        WHERE employee_id = ${employeeId}
+        WHERE id = ${Number.parseInt(employeeId)}
       `
     } catch (updateError) {
       console.log("[v0] Note: performance_rating column not available yet. Run migration script to add it.")

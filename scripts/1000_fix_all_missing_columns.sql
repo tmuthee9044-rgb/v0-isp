@@ -172,6 +172,8 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255); -- Ad
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_rep VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_manager VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
 
 -- Fix locations table
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
@@ -594,6 +596,7 @@ ALTER TABLE payroll ADD COLUMN IF NOT EXISTS nhif DECIMAL(10, 2) DEFAULT 0.00;
 ALTER TABLE payroll ADD COLUMN IF NOT EXISTS nssf DECIMAL(10, 2) DEFAULT 0.00;
 ALTER TABLE payroll ADD COLUMN IF NOT EXISTS net_pay DECIMAL(10, 2);
 ALTER TABLE payroll ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending';
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS period VARCHAR(50);
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_employees_nssf ON employees(nssf_number);
@@ -659,3 +662,14 @@ BEGIN
         ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT nextval('vehicles_id_seq');
     END IF;
 END $$;
+
+-- Adding period column to performance_reviews table for payroll compatibility
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS period VARCHAR(50);
+
+-- Ensure activity_logs.details is JSONB type for JSON operators
+ALTER TABLE activity_logs ALTER COLUMN details TYPE JSONB USING details::jsonb;
+
+-- Add missing columns to payroll_records for HR compliance
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS period VARCHAR(50);
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paye DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10,2) DEFAULT 0;

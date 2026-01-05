@@ -183,6 +183,10 @@ ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS location_type VARCHAR(50);
 
+-- Adding performance index on locations.name for fast ordering in /api/locations
+CREATE INDEX IF NOT EXISTS idx_locations_name_active ON locations(name) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status);
+
 -- Fix tasks table
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;

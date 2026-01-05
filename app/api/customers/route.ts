@@ -134,32 +134,6 @@ export async function POST(request: NextRequest) {
     const sql = await getSql()
     const data = await request.json()
 
-    console.log("[v0] Customer creation started")
-
-    if (data.email) {
-      const normalizedEmail = data.email.toLowerCase().trim()
-      const existingCustomer = await sql`
-        SELECT id, email, name
-        FROM customers 
-        WHERE email = ${normalizedEmail}
-      `
-
-      if (existingCustomer.length > 0) {
-        return NextResponse.json(
-          {
-            error: "Email address already exists",
-            message: `A customer with email ${data.email} already exists in the system.`,
-            existingCustomer: {
-              id: existingCustomer[0].id,
-              name: existingCustomer[0].name,
-              email: existingCustomer[0].email,
-            },
-          },
-          { status: 409 },
-        )
-      }
-    }
-
     const accountNumber = data.account_number
       ? data.account_number.trim().toUpperCase()
       : `ACC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
@@ -230,17 +204,26 @@ export async function POST(request: NextRequest) {
         ${data.paperless_billing || false}, ${data.sms_notifications !== false},
         ${customerType}, 'active',
         NOW(), NOW()
-      ) RETURNING *
+      )
+      ON CONFLICT (email) DO NOTHING
+      RETURNING *
     `
+
+    if (customerResult.length === 0) {
+      // Email conflict occurred
+      return NextResponse.json(
+        {
+          error: "Email address already exists",
+          message: `A customer with email ${data.email} already exists in the system.`,
+          code: "DUPLICATE_EMAIL",
+        },
+        { status: 409 },
+      )
+    }
 
     const customer = customerResult[0]
 
     const elapsedTime = Date.now() - startTime
-    console.log(`[v0] Customer created successfully in ${elapsedTime}ms:`, {
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-    })
 
     Promise.all([
       data.phone_primary

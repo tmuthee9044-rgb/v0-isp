@@ -5,14 +5,23 @@ export async function GET() {
   try {
     const sql = await getSql()
     const locations = await sql`
-      SELECT * FROM locations 
+      SELECT id, name, city, region
+      FROM locations 
+      WHERE status = 'active'
       ORDER BY name ASC
     `
 
-    return NextResponse.json({
-      success: true,
-      locations: locations,
-    })
+    return NextResponse.json(
+      {
+        success: true,
+        locations: locations,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
+    )
   } catch (error) {
     console.error("Error fetching locations:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch locations" }, { status: 500 })

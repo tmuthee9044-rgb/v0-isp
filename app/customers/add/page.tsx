@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -95,6 +95,7 @@ export default function AddCustomerPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
+  const [isPending, startTransition] = useTransition()
   const [formData, setFormData] = useState<CustomerFormData>({
     customer_type: "individual",
     first_name: "",
@@ -115,52 +116,36 @@ export default function AddCustomerPage() {
   })
 
   useEffect(() => {
-    const fetchLocations = async () => {
-      try {
-        console.log("[v0] Fetching locations...")
-        const response = await fetch("/api/locations")
-        if (response.ok) {
-          const data = await response.json()
-          console.log("[v0] Locations fetched:", data.locations)
-          setLocations(data.locations || [])
-        }
-      } catch (error) {
-        console.error("[v0] Failed to fetch locations:", error)
-      }
-    }
-    fetchLocations()
+    startTransition(() => {
+      fetch("/api/locations")
+        .then((res) => res.json())
+        .then((data) => setLocations(data.locations || []))
+        .catch(() => {})
+    })
   }, [])
 
   const handleInputChange = (field: keyof CustomerFormData, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value }
 
-    if (field === "first_name" || field === "last_name") {
-      if (formData.customer_type === "individual") {
-        const firstName = field === "first_name" ? value : formData.first_name
-        const lastName = field === "last_name" ? value : formData.last_name
-        setFormData((prev) => ({
-          ...prev,
-          name: `${firstName} ${lastName}`.trim(),
-        }))
+      if (field === "first_name" || field === "last_name") {
+        if (prev.customer_type === "individual") {
+          const firstName = field === "first_name" ? value : prev.first_name
+          const lastName = field === "last_name" ? value : prev.last_name
+          updated.name = `${firstName} ${lastName}`.trim()
+        }
       }
-    }
 
-    if (field === "phone_primary") {
-      setFormData((prev) => ({
-        ...prev,
-        phone: value,
-      }))
-    }
+      if (field === "phone_primary") {
+        updated.phone = value
+      }
 
-    if (field === "account_number") {
-      setFormData((prev) => ({
-        ...prev,
-        account_number: value.toUpperCase(),
-      }))
-    }
+      if (field === "account_number") {
+        updated.account_number = value.toUpperCase()
+      }
+
+      return updated
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

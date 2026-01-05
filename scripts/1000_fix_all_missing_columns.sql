@@ -22,7 +22,7 @@ ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS device_id INTEGER;
 
 -- Fix network_devices table
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
-ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+ALTERTABLE network_devices ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS password VARCHAR(255);
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS port INTEGER DEFAULT 8728;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS api_port INTEGER DEFAULT 8728;
@@ -366,7 +366,7 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS qos_enabled BOOLEAN DEFAULT f
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS traffic_shaping BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS bandwidth_allocation JSONB;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS latency_optimization BOOLEAN DEFAULT false;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS packet_prioritization BOOLEAN DEFAULT false;
+ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS packet_prioritization BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS static_ip BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS port_forwarding BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS vpn_access BOOLEAN DEFAULT false;
@@ -414,7 +414,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;

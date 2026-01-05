@@ -332,6 +332,57 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_duration INTEGER DEFAUL
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS aggregation_ratio INTEGER DEFAULT 4;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_level VARCHAR(50) DEFAULT 'standard';
 
+-- Adding all 54 service_plans columns for /services/add page (Rule 7)
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_download INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_download INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_duration INTEGER DEFAULT 300;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS aggregation_ratio INTEGER DEFAULT 4;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_level VARCHAR(50) DEFAULT 'standard';
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS setup_fee DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50) DEFAULT 'monthly';
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS contract_period INTEGER DEFAULT 12;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD';
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS promo_enabled BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS promo_price DECIMAL(10,2);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS promo_duration INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS tax_included BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(5,2) DEFAULT 0;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS fup_enabled BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS data_limit INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS fup_limit INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS fup_speed INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS limit_type VARCHAR(50) DEFAULT 'monthly';
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS action_after_limit VARCHAR(50) DEFAULT 'throttle';
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS reset_day INTEGER DEFAULT 1;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS exempt_hours TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS exempt_days TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS warning_threshold INTEGER DEFAULT 80;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS qos_enabled BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS traffic_shaping BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS bandwidth_allocation JSONB;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS latency_optimization BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS packet_prioritization BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS static_ip BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS port_forwarding BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS vpn_access BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_support BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sla_guarantee BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS redundancy BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS monitoring BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS custom_dns BOOLEAN DEFAULT false;
+ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS content_filtering BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS port_blocking TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS time_restrictions BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS bandwidth_scheduling BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS device_limit INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS concurrent_connections INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
 -- Fix ip_addresses table
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
@@ -363,7 +414,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -697,7 +748,7 @@ CREATE TABLE IF NOT EXISTS employees (
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
@@ -812,7 +863,7 @@ ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS period VARCHAR(50);
 -- Ensure activity_logs.details is JSONB type for JSON operators
 ALTER TABLE activity_logs ALTER COLUMN details TYPE JSONB USING details::jsonb;
 
--- Add missing columns to payroll_records for HR compliance
+-- Add missing columns to payroll_records for HR payroll API
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS period VARCHAR(50);
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paye DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10,2) DEFAULT 0;
@@ -1102,3 +1153,74 @@ CREATE INDEX IF NOT EXISTS idx_suppliers_email ON suppliers(email);
 CREATE INDEX IF NOT EXISTS idx_suppliers_is_active ON suppliers(is_active);
 CREATE INDEX IF NOT EXISTS idx_suppliers_supplier_code ON suppliers(supplier_code);
 CREATE INDEX IF NOT EXISTS idx_suppliers_supplier_type ON suppliers(supplier_type);
+
+-- Adding all support_tickets columns for /support page (Rule 7)
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(50) UNIQUE;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS customer_id INTEGER;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS title VARCHAR(500);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS subject VARCHAR(500);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'medium';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'open';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS assigned_to INTEGER;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'web';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS tags TEXT;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS satisfaction_rating INTEGER;
+
+-- Create function to auto-generate ticket numbers if not exists
+CREATE OR REPLACE FUNCTION generate_ticket_number()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.ticket_number IS NULL THEN
+        NEW.ticket_number := 'TKT-' || LPAD(NEW.id::text, 6, '0');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop and recreate trigger for ticket number generation
+DROP TRIGGER IF EXISTS trigger_generate_ticket_number ON support_tickets;
+CREATE TRIGGER trigger_generate_ticket_number
+    BEFORE INSERT ON support_tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION generate_ticket_number();
+
+-- Performance indexes for service_plans, support_tickets (Rule 6)
+CREATE INDEX IF NOT EXISTS idx_service_plans_service_type ON service_plans(service_type);
+CREATE INDEX IF NOT EXISTS idx_service_plans_category ON service_plans(category);
+CREATE INDEX IF NOT EXISTS idx_service_plans_status ON service_plans(status);
+CREATE INDEX IF NOT EXISTS idx_service_plans_is_active ON service_plans(is_active);
+CREATE INDEX IF NOT EXISTS idx_service_plans_price ON service_plans(price);
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_customer ON support_tickets(customer_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_priority ON support_tickets(priority);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_assigned ON support_tickets(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_ticket_number ON support_tickets(ticket_number);
+
+-- ID sequences for service_plans and support_tickets
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'service_plans_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS service_plans_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''service_plans_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM service_plans), 0), 0) + 1, false)';
+        ALTER TABLE service_plans ALTER COLUMN id SET DEFAULT nextval('service_plans_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'support_tickets_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS support_tickets_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''support_tickets_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM support_tickets), 0), 0) + 1, false)';
+        ALTER TABLE support_tickets ALTER COLUMN id SET DEFAULT nextval('support_tickets_id_seq');
+    END IF;
+END $$;
+
+-- Rule 11: Update complete schema file timestamp
+-- This ensures the 000_complete_schema.sql file stays synchronized with all changes
+SELECT 'Schema updated: ' || NOW()::TEXT as update_log;

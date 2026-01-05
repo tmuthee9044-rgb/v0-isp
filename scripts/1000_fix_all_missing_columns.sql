@@ -172,6 +172,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_postal_code VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_country VARCHAR(100) DEFAULT 'Kenya';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS physical_gps_coordinates VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_street_1 TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_city VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_postal_code VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_address TEXT;

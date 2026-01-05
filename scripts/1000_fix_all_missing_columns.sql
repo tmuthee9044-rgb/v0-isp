@@ -682,3 +682,14 @@ ALTER TABLE activity_logs ALTER COLUMN details TYPE JSONB USING details::jsonb;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS period VARCHAR(50);
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paye DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10,2) DEFAULT 0;
+
+-- Adding auto-increment sequence for customers table
+-- Fix customers table ID sequence for auto-increment
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customers_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS customers_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''customers_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM customers), 0), 0) + 1, false)';
+        ALTER TABLE customers ALTER COLUMN id SET DEFAULT nextval('customers_id_seq');
+    END IF;
+END $$;

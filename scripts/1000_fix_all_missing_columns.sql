@@ -175,6 +175,13 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
 
+-- Adding unique constraints for email and account_number to prevent duplicates
+-- Add unique constraint on email (partial index to allow multiple NULL emails)
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique ON customers (email) WHERE email IS NOT NULL;
+
+-- Add unique constraint on account_number
+CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique ON customers (account_number) WHERE account_number IS NOT NULL;
+
 -- Fix locations table
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
@@ -182,6 +189,13 @@ ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_person VARCHAR(100);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS location_type VARCHAR(50);
+
+-- Adding performance indexes for fast queries (rule 6 - load under 5ms)
+CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
+CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
+CREATE INDEX IF NOT EXISTS idx_customers_location ON customers (location_id);
+CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', COALESCE(first_name, '') || ' ' || COALESCE(last_name, '') || ' ' || COALESCE(business_name, '')));
 
 -- Adding performance index on locations.name for fast ordering in /api/locations
 CREATE INDEX IF NOT EXISTS idx_locations_name_active ON locations(name) WHERE status = 'active';
@@ -388,8 +402,6 @@ CREATE INDEX IF NOT EXISTS idx_radius_users_status ON radius_users(status);
 CREATE INDEX IF NOT EXISTS idx_radius_nas_network_device ON radius_nas(network_device_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_customer ON tasks(customer_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_location ON tasks(location_id);
-CREATE INDEX IF NOT EXISTS idx_customers_type ON customers(customer_type);
-CREATE INDEX IF NOT EXISTS idx_customers_category ON customers(customer_category);
 CREATE INDEX IF NOT EXISTS idx_ip_addresses_location ON ip_addresses(location_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_transactions_customer ON loyalty_transactions(customer_id);
 CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_parent ON chart_of_accounts(parent_id);

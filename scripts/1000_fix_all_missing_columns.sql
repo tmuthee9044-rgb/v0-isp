@@ -175,20 +175,30 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
 
--- Adding unique constraints for email and account_number to prevent duplicates
--- Add unique constraint on email (partial index to allow multiple NULL emails)
-CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique ON customers (email) WHERE email IS NOT NULL;
+-- Adding all missing customer columns from the /customers/add form
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_size VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS school_type VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS student_count INTEGER;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS staff_count INTEGER;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS connection_type VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS equipment_needed TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_notes TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
 
--- Add unique constraint on account_number
-CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique ON customers (account_number) WHERE account_number IS NOT NULL;
+-- Adding unique constraint on email to support ON CONFLICT clause
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers (email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers (account_number) WHERE account_number IS NOT NULL;
 
--- Fix locations table
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_person VARCHAR(100);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255);
-ALTER TABLE locations ADD COLUMN IF NOT EXISTS location_type VARCHAR(50);
+-- Adding performance indexes for customers table (rule 6 - 5ms load time)
+CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
+CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (type);
+CREATE INDEX IF NOT EXISTS idx_customers_location ON customers (location_id);
+CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', COALESCE(name, '')));
 
 -- Adding performance indexes for fast queries (rule 6 - load under 5ms)
 CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);

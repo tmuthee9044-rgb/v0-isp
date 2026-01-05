@@ -263,7 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers(email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers(account_number) WHERE account_number IS NOT NULL;
 CREATE INDEX IF NOT EXISTS customers_status_idx ON customers(status);
-CREATE INDEX IF NOT EXISTS customers_type_idx ON customers(type);
+CREATE INDEX IF NOT EXISTS customers_type_idx ON customers(customer_type);
 CREATE INDEX IF NOT EXISTS customers_location_idx ON customers(location_id);
 CREATE INDEX IF NOT EXISTS customers_created_at_idx ON customers(created_at DESC);
 CREATE INDEX IF NOT EXISTS customers_name_search_idx ON customers USING gin(to_tsvector('english', name));
@@ -280,8 +280,8 @@ CREATE INDEX IF NOT EXISTS idx_locations_name_active ON locations(name) WHERE st
 CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status);
 
 -- Adding performance indexes for locations table for sub-5ms page load
-CREATE INDEX IF NOT EXISTS locations_active_name_idx ON locations(active, name) WHERE active = true;
-CREATE INDEX IF NOT EXISTS locations_status_idx ON locations(active);
+CREATE INDEX IF NOT EXISTS locations_active_name_idx ON locations(status, name) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS locations_status_idx ON locations(status);
 
 -- Locations table performance indexes for /customers/add page
 CREATE INDEX IF NOT EXISTS idx_locations_status_name ON locations(status, name) WHERE status = 'active';
@@ -363,7 +363,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -696,8 +696,8 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
@@ -1093,8 +1093,8 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 5;
 -- Generate supplier codes for existing records without one
 UPDATE suppliers SET supplier_code = 'SUP-' || id WHERE supplier_code IS NULL;
 
--- Sync is_active with status field
-UPDATE suppliers SET is_active = (status = 'active') WHERE is_active IS NULL;
+-- Sync is_active to true by default for existing records
+UPDATE suppliers SET is_active = true WHERE is_active IS NULL;
 
 -- Create indexes for performance (rule 6)
 CREATE INDEX IF NOT EXISTS idx_suppliers_company_name ON suppliers(company_name);

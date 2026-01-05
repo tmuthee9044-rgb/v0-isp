@@ -375,7 +375,7 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sla_guarantee BOOLEAN DEFAULT
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS redundancy BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS monitoring BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS custom_dns BOOLEAN DEFAULT false;
-ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS content_filtering BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS content_filtering BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS port_blocking TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS time_restrictions BOOLEAN DEFAULT false;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS bandwidth_scheduling BOOLEAN DEFAULT false;
@@ -414,7 +414,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -422,7 +422,7 @@ ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
 -- Fix loyalty_redemptions table
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS points_required INTEGER NOT NULL;
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_type VARCHAR(50);
-ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_value DECIMAL(10,2);
+ALTERTABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_value DECIMAL(10,2);
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS expiry_date DATE;
 
 -- Fix financial_reports table
@@ -1024,7 +1024,7 @@ CREATE TABLE IF NOT EXISTS leave_requests (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Add missing performance_reviews columns
+-- Add missing columns to performance_reviews
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
 ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS position VARCHAR(100);

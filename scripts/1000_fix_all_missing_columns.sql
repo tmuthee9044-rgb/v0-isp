@@ -414,7 +414,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -422,7 +422,7 @@ ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
 -- Fix loyalty_redemptions table
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS points_required INTEGER NOT NULL;
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_type VARCHAR(50);
-ALTERTABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_value DECIMAL(10,2);
+ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS reward_value DECIMAL(10,2);
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS expiry_date DATE;
 
 -- Fix financial_reports table

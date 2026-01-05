@@ -116,12 +116,25 @@ export default function AddCustomerPage() {
   })
 
   useEffect(() => {
+    const controller = new AbortController()
+
     startTransition(() => {
-      fetch("/api/locations")
-        .then((res) => res.json())
-        .then((data) => setLocations(data.locations || []))
-        .catch(() => {})
+      fetch("/api/locations", { signal: controller.signal })
+        .then((res) => {
+          if (res.ok) return res.json()
+          throw new Error("Failed to fetch")
+        })
+        .then((data) => {
+          if (data.locations) setLocations(data.locations)
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") {
+            console.error("[v0] Failed to load locations:", err)
+          }
+        })
     })
+
+    return () => controller.abort()
   }, [])
 
   const handleInputChange = (field: keyof CustomerFormData, value: any) => {

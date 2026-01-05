@@ -61,6 +61,43 @@ ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS fiscal_year_start VARCHAR(
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_prefix VARCHAR(10);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS tax_system VARCHAR(50) DEFAULT 'vat';
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(5,2) DEFAULT 16.00;
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_trading_name VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_registration_number VARCHAR(100);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_tax_number VARCHAR(100);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_description TEXT;
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_industry VARCHAR(100) DEFAULT 'telecommunications';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_size VARCHAR(50) DEFAULT 'medium';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_founded_year INTEGER;
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS branding_primary_color VARCHAR(7) DEFAULT '#3b82f6';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS branding_secondary_color VARCHAR(7) DEFAULT '#64748b';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS branding_accent_color VARCHAR(7) DEFAULT '#16a34a';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_secondary_phone VARCHAR(20);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_support_email VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_facebook VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_twitter VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_linkedin VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_city VARCHAR(100);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_state VARCHAR(100);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_postal_code VARCHAR(20);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_country VARCHAR(100) DEFAULT 'Kenya';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_language VARCHAR(10) DEFAULT 'en';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_currency VARCHAR(10) DEFAULT 'KES';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_timezone VARCHAR(50) DEFAULT 'Africa/Nairobi';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_date_format VARCHAR(20) DEFAULT 'dd/mm/yyyy';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_time_format VARCHAR(10) DEFAULT '24h';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_number_format VARCHAR(20) DEFAULT 'comma';
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS localization_week_start VARCHAR(10) DEFAULT 'monday';
+
+-- Adding missing company_profiles column aliases to match API expectations
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS main_phone VARCHAR(20);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS main_email VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS support_email VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS physical_address TEXT;
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS social_facebook VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS social_twitter VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS social_linkedin VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS logo TEXT;
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS favicon TEXT;
 
 -- Fix radius_users table
 ALTER TABLE radius_users ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE;
@@ -73,7 +110,7 @@ ALTER TABLE radius_users ADD COLUMN IF NOT EXISTS idle_timeout INTEGER;
 ALTER TABLE radius_sessions_active ADD COLUMN IF NOT EXISTS packets_in BIGINT DEFAULT 0;
 ALTER TABLE radius_sessions_active ADD COLUMN IF NOT EXISTS packets_out BIGINT DEFAULT 0;
 
--- Fix radius_sessions_archive table  
+-- Fix radius_sessions_archive table
 ALTER TABLE radius_sessions_archive ADD COLUMN IF NOT EXISTS packets_in BIGINT;
 ALTER TABLE radius_sessions_archive ADD COLUMN IF NOT EXISTS packets_out BIGINT;
 
@@ -174,31 +211,62 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_manager VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_preferences JSONB;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
-
--- Adding all missing customer columns from the /customers/add form
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_size VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS school_type VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS student_count INTEGER;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS staff_count INTEGER;
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS connection_type VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS equipment_needed TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_notes TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact VARCHAR(255);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
 
--- Adding unique constraint on email to support ON CONFLICT clause
+-- Adding all missing customer form fields from /customers/add page
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_size VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS school_type VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS student_count INTEGER;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS staff_count INTEGER;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS equipment_needed TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_notes TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_manager VARCHAR(255);
+
+-- Adding all missing network_devices columns from the router add/edit forms
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS model VARCHAR(100);
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS hostname VARCHAR(255);
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(50);
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS configuration JSONB;
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
+
+-- Adding unique constraints and performance indexes for customers table
 CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers (account_number) WHERE account_number IS NOT NULL;
-
--- Adding performance indexes for customers table (rule 6 - 5ms load time)
 CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
-CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (type);
+CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
 CREATE INDEX IF NOT EXISTS idx_customers_location ON customers (location_id);
 CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', COALESCE(name, '')));
+
+-- Adding unique constraints and performance indexes for customers table
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers(account_number) WHERE account_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS customers_status_idx ON customers(status);
+CREATE INDEX IF NOT EXISTS customers_type_idx ON customers(type);
+CREATE INDEX IF NOT EXISTS customers_location_idx ON customers(location_id);
+CREATE INDEX IF NOT EXISTS customers_created_at_idx ON customers(created_at DESC);
+CREATE INDEX IF NOT EXISTS customers_name_search_idx ON customers USING gin(to_tsvector('english', name));
 
 -- Adding performance indexes for fast queries (rule 6 - load under 5ms)
 CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
@@ -210,6 +278,29 @@ CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_t
 -- Adding performance index on locations.name for fast ordering in /api/locations
 CREATE INDEX IF NOT EXISTS idx_locations_name_active ON locations(name) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status);
+
+-- Adding performance indexes for locations table for sub-5ms page load
+CREATE INDEX IF NOT EXISTS locations_active_name_idx ON locations(active, name) WHERE active = true;
+CREATE INDEX IF NOT EXISTS locations_status_idx ON locations(active);
+
+-- Locations table performance indexes for /customers/add page
+CREATE INDEX IF NOT EXISTS idx_locations_status_name ON locations(status, name) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_locations_active_lookup ON locations(id) WHERE status = 'active';
+
+-- Customers table performance indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_customers_email_lookup ON customers(email) WHERE email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_account_number ON customers(account_number) WHERE account_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status);
+CREATE INDEX IF NOT EXISTS idx_customers_type ON customers(customer_type);
+CREATE INDEX IF NOT EXISTS idx_customers_location ON customers(location_id);
+CREATE INDEX IF NOT EXISTS idx_customers_created ON customers(created_at DESC);
+
+-- Add unique constraints for customers (fixes ON CONFLICT errors)
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique ON customers(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique ON customers(account_number) WHERE account_number IS NOT NULL;
+
+-- Full-text search index for customer names
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', name));
 
 -- Fix tasks table
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE;
@@ -241,13 +332,16 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_duration INTEGER DEFAUL
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS aggregation_ratio INTEGER DEFAULT 4;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority_level VARCHAR(50) DEFAULT 'standard';
 
--- Fix ip_addresses table  
+-- Fix ip_addresses table
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS dns_primary VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS dns_secondary VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS vlan_id INTEGER;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+-- Adding service_id to link IP addresses to customer services
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS service_id INTEGER REFERENCES customer_services(id) ON DELETE SET NULL;
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS assigned_date DATE;
 
 -- Fix invoices table
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_type VARCHAR(50) DEFAULT 'service';
@@ -269,7 +363,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -361,7 +455,7 @@ ALTER TABLE bandwidth_patterns ADD COLUMN IF NOT EXISTS user_count INTEGER;
 -- Create router_sync_status table if it doesn't exist
 CREATE TABLE IF NOT EXISTS router_sync_status (
     id SERIAL PRIMARY KEY,
-    router_id INTEGER REFERENCES routers(id) ON DELETE CASCADE,
+    router_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
     last_sync_at TIMESTAMP,
     sync_status VARCHAR(50) DEFAULT 'pending',
     sync_message TEXT,
@@ -370,6 +464,13 @@ CREATE TABLE IF NOT EXISTS router_sync_status (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Adding missing columns to router_sync_status table for tracking IP addresses, services, retry attempts, and check times
+ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS ip_address_id INTEGER REFERENCES ip_addresses(id) ON DELETE SET NULL;
+ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS customer_service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE;
+ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
+ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS last_synced TIMESTAMP;
 
 -- Create account_balances_old table if it doesn't exist
 CREATE TABLE IF NOT EXISTS account_balances_old (
@@ -403,7 +504,7 @@ CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_date_hour ON bandwidth_usage(date
 CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_ip_address ON bandwidth_usage(ip_address);
 CREATE INDEX IF NOT EXISTS idx_bandwidth_usage_customer_date ON bandwidth_usage(customer_id, date_hour DESC);
 
--- Create performance indexes for all new columns
+-- Performance indexes for all new columns
 CREATE INDEX IF NOT EXISTS idx_customer_services_mac ON customer_services(mac_address);
 CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_user ON customer_services(pppoe_username);
 CREATE INDEX IF NOT EXISTS idx_customer_services_location ON customer_services(location_id);
@@ -413,6 +514,7 @@ CREATE INDEX IF NOT EXISTS idx_radius_nas_network_device ON radius_nas(network_d
 CREATE INDEX IF NOT EXISTS idx_tasks_customer ON tasks(customer_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_location ON tasks(location_id);
 CREATE INDEX IF NOT EXISTS idx_ip_addresses_location ON ip_addresses(location_id);
+CREATE INDEX IF NOT EXISTS idx_ip_addresses_service ON ip_addresses(service_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_transactions_customer ON loyalty_transactions(customer_id);
 CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_parent ON chart_of_accounts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_customer_equipment_customer ON customer_equipment(customer_id);
@@ -421,6 +523,12 @@ CREATE INDEX IF NOT EXISTS idx_capacity_predictions_device ON capacity_predictio
 CREATE INDEX IF NOT EXISTS idx_bandwidth_patterns_device ON bandwidth_patterns(network_device_id);
 CREATE INDEX IF NOT EXISTS idx_router_sync_status_router ON router_sync_status(router_id);
 CREATE INDEX IF NOT EXISTS idx_account_balances_old_customer ON account_balances_old(customer_id);
+
+-- Create index for fast sync status queries
+CREATE INDEX IF NOT EXISTS idx_router_sync_status_ip_address ON router_sync_status(ip_address_id);
+CREATE INDEX IF NOT EXISTS idx_router_sync_status_customer_service ON router_sync_status(customer_service_id);
+CREATE INDEX IF NOT EXISTS idx_router_sync_status_status ON router_sync_status(sync_status);
+CREATE INDEX IF NOT EXISTS idx_router_sync_status_last_checked ON router_sync_status(last_checked DESC);
 
 -- Fix locations table id column to use auto-increment sequence
 -- Create sequence for locations id if it doesn't exist
@@ -452,10 +560,10 @@ DO $$
 DECLARE
     id_type text;
 BEGIN
-    SELECT data_type INTO id_type 
-    FROM information_schema.columns 
+    SELECT data_type INTO id_type
+    FROM information_schema.columns
     WHERE table_name = 'suppliers' AND column_name = 'id';
-    
+
     IF id_type IN ('integer', 'bigint') THEN
         IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
             CREATE SEQUENCE suppliers_id_seq;
@@ -484,10 +592,10 @@ BEGIN
     -- Create sequence for system_logs if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'system_logs_id_seq') THEN
         CREATE SEQUENCE system_logs_id_seq;
-        
+
         -- Set sequence to start from max existing id + 1
         PERFORM setval('system_logs_id_seq', COALESCE((SELECT MAX(id) FROM system_logs WHERE id IS NOT NULL), 0) + 1, false);
-        
+
         -- Set default value for id column
         ALTER TABLE system_logs ALTER COLUMN id SET DEFAULT nextval('system_logs_id_seq');
     END IF;
@@ -535,7 +643,7 @@ CREATE TABLE IF NOT EXISTS servers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for servers table (rule 6 - fast page loads under 5ms)
+-- Create indexes for servers table (rule 6 - fast page loads)
 CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
 CREATE INDEX IF NOT EXISTS idx_servers_type ON servers(type);
 CREATE INDEX IF NOT EXISTS idx_servers_location_id ON servers(location_id);
@@ -588,7 +696,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
@@ -719,3 +827,278 @@ BEGIN
         ALTER TABLE customers ALTER COLUMN id SET DEFAULT nextval('customers_id_seq');
     END IF;
 END $$;
+
+-- Adding missing ip_subnets columns for subnet management
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS vlan_id INTEGER;
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS allocation_mode VARCHAR(50) DEFAULT 'dynamic';
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS total_ips_generated INTEGER DEFAULT 0;
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'private';
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS version VARCHAR(10) DEFAULT 'IPv4';
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
+ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Adding missing finance-related columns for invoices, payments, and billing configuration
+-- Add missing columns to invoices table for detailed invoice tracking
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_period_start DATE;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_period_end DATE;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Add missing columns to payments table for payment tracking
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference_number VARCHAR(100);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_response JSONB;
+
+-- Add missing columns to customer_billing_configurations for finance settings
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS preferred_payment_method VARCHAR(50);
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS mpesa_number VARCHAR(20);
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50);
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS card_token VARCHAR(255);
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS auto_payment_enabled BOOLEAN DEFAULT false;
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS reminder_days_before INTEGER DEFAULT 3;
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS late_fee_percentage DECIMAL(5,2) DEFAULT 5.0;
+ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS grace_period_days INTEGER DEFAULT 7;
+
+-- Create unique indexes on invoices and payments
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_email_unique ON invoices(customer_id, invoice_number);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer_status ON invoices(customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments(customer_id);
+CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+
+-- Performance indexes for finance queries (Rule 6 - sub-5ms load time)
+CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at DESC);
+
+-- Adding missing finance table columns for expenses, ledger, tax records, audit logs
+-- Create expenses table if not exists with all required columns
+CREATE TABLE IF NOT EXISTS expenses (
+    id SERIAL PRIMARY KEY,
+    category_id INTEGER REFERENCES expense_categories(id) ON DELETE SET NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    description TEXT NOT NULL,
+    vendor VARCHAR(255),
+    expense_date DATE DEFAULT CURRENT_DATE,
+    payment_method VARCHAR(50) DEFAULT 'bank',
+    status VARCHAR(50) DEFAULT 'paid',
+    notes TEXT,
+    receipt_url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create expense_categories table if not exists
+CREATE TABLE IF NOT EXISTS expense_categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    color VARCHAR(50),
+    budget_limit DECIMAL(10,2),
+    employee_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create tax_records table if not exists
+CREATE TABLE IF NOT EXISTS tax_records (
+    id SERIAL PRIMARY KEY,
+    tax_type VARCHAR(100) NOT NULL,
+    period VARCHAR(50) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    due_date DATE NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    penalty DECIMAL(10,2) DEFAULT 0,
+    paid_date DATE,
+    reference_number VARCHAR(100),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create audit_logs table if not exists for financial activity tracking
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user_id INTEGER,
+    user_name VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    resource VARCHAR(100) NOT NULL,
+    details TEXT,
+    ip_address VARCHAR(50),
+    status VARCHAR(50) DEFAULT 'success',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding missing payroll_records columns for HR payroll API
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS overtime DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS other_deductions DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP;
+
+-- Adding missing employees columns for HR management
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS position VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS department VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS salary DECIMAL(10,2);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+
+-- Create leave_requests table if not exists
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    leave_type VARCHAR(50) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    days_requested INTEGER NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    reason TEXT,
+    approved_by INTEGER,
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add missing performance_reviews columns
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS position VARCHAR(100);
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_date DATE;
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS rating VARCHAR(50);
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS goals_met_percentage INTEGER DEFAULT 0;
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS next_review_date DATE;
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS comments TEXT;
+ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS reviewer_id INTEGER;
+
+-- Create departments table if not exists
+CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    manager_id INTEGER,
+    budget DECIMAL(12,2),
+    employee_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Adding performance indexes for finance and HR pages (Rule 6)
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_vendor ON expenses(vendor);
+CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status);
+
+CREATE INDEX IF NOT EXISTS idx_tax_records_period ON tax_records(period);
+CREATE INDEX IF NOT EXISTS idx_tax_records_due_date ON tax_records(due_date);
+CREATE INDEX IF NOT EXISTS idx_tax_records_status ON tax_records(status);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_records_period ON payroll_records(period);
+CREATE INDEX IF NOT EXISTS idx_payroll_records_employee ON payroll_records(employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status);
+CREATE INDEX IF NOT EXISTS idx_employees_department ON employees(department);
+CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);
+
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_employee ON performance_reviews(employee_id);
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_date ON performance_reviews(review_date DESC);
+
+-- Add sequences for all finance and HR tables
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'expenses_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS expenses_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''expenses_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM expenses), 0), 0) + 1, false)';
+        ALTER TABLE expenses ALTER COLUMN id SET DEFAULT nextval('expenses_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'expense_categories_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS expense_categories_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''expense_categories_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM expense_categories), 0), 0) + 1, false)';
+        ALTER TABLE expense_categories ALTER COLUMN id SET DEFAULT nextval('expense_categories_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'tax_records_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS tax_records_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''tax_records_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM tax_records), 0), 0) + 1, false)';
+        ALTER TABLE tax_records ALTER COLUMN id SET DEFAULT nextval('tax_records_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'audit_logs_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS audit_logs_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''audit_logs_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM audit_logs), 0), 0) + 1, false)';
+        ALTER TABLE audit_logs ALTER COLUMN id SET DEFAULT nextval('audit_logs_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'leave_requests_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS leave_requests_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''leave_requests_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM leave_requests), 0), 0) + 1, false)';
+        ALTER TABLE leave_requests ALTER COLUMN id SET DEFAULT nextval('leave_requests_id_seq');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'departments_id_seq') THEN
+        CREATE SEQUENCE IF NOT EXISTS departments_id_seq START WITH 1 INCREMENT BY 1;
+        EXECUTE 'SELECT setval(''departments_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM departments), 0), 0) + 1, false)';
+        ALTER TABLE departments ALTER COLUMN id SET DEFAULT nextval('departments_id_seq');
+    END IF;
+END $$;
+
+-- Adding all missing suppliers table columns
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_code VARCHAR(50) UNIQUE;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website VARCHAR(255);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'general';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 5;
+
+-- Generate supplier codes for existing records without one
+UPDATE suppliers SET supplier_code = 'SUP-' || id WHERE supplier_code IS NULL;
+
+-- Sync is_active with status field
+UPDATE suppliers SET is_active = (status = 'active') WHERE is_active IS NULL;
+
+-- Create indexes for performance (rule 6)
+CREATE INDEX IF NOT EXISTS idx_suppliers_company_name ON suppliers(company_name);
+CREATE INDEX IF NOT EXISTS idx_suppliers_email ON suppliers(email);
+CREATE INDEX IF NOT EXISTS idx_suppliers_is_active ON suppliers(is_active);
+CREATE INDEX IF NOT EXISTS idx_suppliers_supplier_code ON suppliers(supplier_code);
+CREATE INDEX IF NOT EXISTS idx_suppliers_supplier_type ON suppliers(supplier_type);

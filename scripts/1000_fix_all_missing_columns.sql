@@ -4,7 +4,15 @@
 -- Enable pgcrypto extension for password hashing (gen_salt function)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Add UNIQUE constraint on customers.email for ON CONFLICT support
+-- ISP Management System - Comprehensive Column Fixes
+-- This script adds all missing columns to existing tables
+-- Run this AFTER tables are created
+
+-- ============================================================================
+-- CRITICAL FIXES FIRST: Column type corrections and sequence setup
+-- ============================================================================
+
+-- Fix customers.email UNIQUE constraint for ON CONFLICT to work
 DO $$
 BEGIN
     -- Check if unique constraint exists, if not create it
@@ -17,10 +25,7 @@ BEGIN
     END IF;
 END $$;
 
--- Fix column types that were created as INTEGER but should be VARCHAR
--- This fixes "invalid input syntax for type integer: 'standard'" errors
-
--- Drop and recreate service_plans columns with correct VARCHAR types
+-- Fix service_plans column types from INTEGER to VARCHAR for text values
 DO $$
 BEGIN
     -- Fix priority_level (should be VARCHAR, not INTEGER)
@@ -55,6 +60,75 @@ BEGIN
         ALTER TABLE service_plans ADD COLUMN limit_type VARCHAR(50) DEFAULT 'monthly';
     END IF;
 END $$;
+
+-- Fix ip_addresses.id to use proper SERIAL sequence
+DO $$
+BEGIN
+    -- Check if id column exists but doesn't have a default sequence
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='ip_addresses' AND column_name='id'
+        AND column_default IS NULL
+    ) THEN
+        -- Create sequence if it doesn't exist
+        CREATE SEQUENCE IF NOT EXISTS ip_addresses_id_seq;
+        -- Set the sequence as default for id column
+        ALTER TABLE ip_addresses ALTER COLUMN id SET DEFAULT nextval('ip_addresses_id_seq');
+        -- Set sequence ownership
+        ALTER SEQUENCE ip_addresses_id_seq OWNED BY ip_addresses.id;
+        -- Sync sequence with existing data
+        SELECT setval('ip_addresses_id_seq', COALESCE(MAX(id), 1)) FROM ip_addresses;
+    END IF;
+END $$;
+
+-- Create admin_logs table for error logging if it doesn't exist
+CREATE TABLE IF NOT EXISTS admin_logs (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    level VARCHAR(50) DEFAULT 'info',
+    source VARCHAR(255),
+    message TEXT NOT NULL,
+    details JSONB,
+    user_id INTEGER,
+    ip_address VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_level ON admin_logs(level);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
+
+-- Create performance_reviews table with employee_id as VARCHAR to match API JOIN logic
+CREATE TABLE IF NOT EXISTS performance_reviews (
+    id SERIAL PRIMARY KEY,
+    employee_id VARCHAR(50) NOT NULL,
+    reviewer_id INTEGER,
+    review_period VARCHAR(100),
+    review_type VARCHAR(50) DEFAULT 'quarterly',
+    rating VARCHAR(50),
+    score INTEGER DEFAULT 0,
+    goals TEXT,
+    achievements TEXT,
+    areas_for_improvement TEXT,
+    development_plan TEXT,
+    reviewed_by VARCHAR(100),
+    review_date DATE,
+    next_review_date DATE,
+    status VARCHAR(50) DEFAULT 'completed',
+    review_period_start DATE,
+    review_period_end DATE,
+    overall_rating INTEGER,
+    goals_achievement TEXT,
+    strengths TEXT,
+    comments TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_employee ON performance_reviews(employee_id);
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_date ON performance_reviews(review_date DESC);
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_status ON performance_reviews(status);
+
 
 -- Fix customer_services table
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
@@ -457,6 +531,8 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT 
 
 
 -- Fix ip_addresses table
+-- Adding router_id column for subnet-to-router relationship tracking
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS router_id INTEGER REFERENCES network_devices(id) ON DELETE SET NULL;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS id INTEGER;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
@@ -488,7 +564,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -590,7 +666,7 @@ CREATE TABLE IF NOT EXISTS router_sync_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Adding missing columns to router_sync_status table for tracking IP addresses, services, retry attempts, and check times
+-- Adding missing columns to router_sync_status table for tracking IP addresses, services, retry attempts, and retry times
 ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS ip_address_id INTEGER REFERENCES ip_addresses(id) ON DELETE SET NULL;
 ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS customer_service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE;
 ALTER TABLE router_sync_status ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
@@ -821,7 +897,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
@@ -939,146 +1015,21 @@ ALTER TABLE activity_logs ALTER COLUMN details TYPE JSONB USING details::jsonb;
 
 -- Add missing columns to payroll_records for HR payroll API
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS period VARCHAR(50);
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS tax DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paye DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS nssf DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS nhif DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10,2) DEFAULT 0;
-
--- Adding auto-increment sequence for customers table
--- Fix customers table ID sequence for auto-increment
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customers_id_seq') THEN
-        CREATE SEQUENCE IF NOT EXISTS customers_id_seq START WITH 1 INCREMENT BY 1;
-        EXECUTE 'SELECT setval(''customers_id_seq'', GREATEST(COALESCE((SELECT MAX(id) FROM customers), 0), 0) + 1, false)';
-        ALTER TABLE customers ALTER COLUMN id SET DEFAULT nextval('customers_id_seq');
-    END IF;
-END $$;
-
--- Adding missing ip_subnets columns for subnet management
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS vlan_id INTEGER;
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS allocation_mode VARCHAR(50) DEFAULT 'dynamic';
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS total_ips_generated INTEGER DEFAULT 0;
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS name VARCHAR(255);
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS description TEXT;
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'private';
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS version VARCHAR(10) DEFAULT 'IPv4';
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
-ALTER TABLE ip_subnets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-
--- Adding missing finance-related columns for invoices, payments, and billing configuration
--- Add missing columns to invoices table for detailed invoice tracking
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE DEFAULT CURRENT_DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_period_start DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_period_end DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_date DATE;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS notes TEXT;
-
--- Add missing columns to payments table for payment tracking
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference_number VARCHAR(100);
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT;
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL;
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_response JSONB;
-
--- Add missing columns to customer_billing_configurations for finance settings
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS preferred_payment_method VARCHAR(50);
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS mpesa_number VARCHAR(20);
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50);
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS card_token VARCHAR(255);
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS auto_payment_enabled BOOLEAN DEFAULT false;
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS reminder_days_before INTEGER DEFAULT 3;
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS late_fee_percentage DECIMAL(5,2) DEFAULT 5.0;
-ALTER TABLE customer_billing_configurations ADD COLUMN IF NOT EXISTS grace_period_days INTEGER DEFAULT 7;
-
--- Create unique indexes on invoices and payments
-CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_email_unique ON invoices(customer_id, invoice_number);
-CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
-CREATE INDEX IF NOT EXISTS idx_invoices_customer_status ON invoices(customer_id, status);
-CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments(customer_id);
-CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date);
-CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
-
--- Performance indexes for finance queries (Rule 6 - sub-5ms load time)
-CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at DESC);
-
--- Adding missing finance table columns for expenses, ledger, tax records, audit logs
--- Create expenses table if not exists with all required columns
-CREATE TABLE IF NOT EXISTS expenses (
-    id SERIAL PRIMARY KEY,
-    category_id INTEGER REFERENCES expense_categories(id) ON DELETE SET NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    description TEXT NOT NULL,
-    vendor VARCHAR(255),
-    expense_date DATE DEFAULT CURRENT_DATE,
-    payment_method VARCHAR(50) DEFAULT 'bank',
-    status VARCHAR(50) DEFAULT 'paid',
-    notes TEXT,
-    receipt_url TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create expense_categories table if not exists
-CREATE TABLE IF NOT EXISTS expense_categories (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    color VARCHAR(50),
-    budget_limit DECIMAL(10,2),
-    employee_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create tax_records table if not exists
-CREATE TABLE IF NOT EXISTS tax_records (
-    id SERIAL PRIMARY KEY,
-    tax_type VARCHAR(100) NOT NULL,
-    period VARCHAR(50) NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    due_date DATE NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending',
-    penalty DECIMAL(10,2) DEFAULT 0,
-    paid_date DATE,
-    reference_number VARCHAR(100),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create audit_logs table if not exists for financial activity tracking
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    user_id INTEGER,
-    user_name VARCHAR(255),
-    action VARCHAR(100) NOT NULL,
-    resource VARCHAR(100) NOT NULL,
-    details TEXT,
-    ip_address VARCHAR(50),
-    status VARCHAR(50) DEFAULT 'success',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Adding missing payroll_records columns for HR payroll API
-ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS overtime DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS other_deductions DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS housing_levy DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pay_period_start DATE;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pay_period_end DATE;
 
 -- Adding missing employees columns for HR management
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS position VARCHAR(100);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS department VARCHAR(100);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS salary DECIMAL(10,2);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS nhif_number VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_end_date DATE;
 
 -- Create leave_requests table if not exists
 CREATE TABLE IF NOT EXISTS leave_requests (
@@ -1296,5 +1247,8 @@ BEGIN
 END $$;
 
 -- Rule 11: Update complete schema file timestamp
+-- This ensures the 000_complete_schema.sql file stays synchronized with all changes
+SELECT 'Schema updated: ' || NOW()::TEXT as update_log;
+ schema file timestamp
 -- This ensures the 000_complete_schema.sql file stays synchronized with all changes
 SELECT 'Schema updated: ' || NOW()::TEXT as update_log;

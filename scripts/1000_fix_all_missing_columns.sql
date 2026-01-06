@@ -957,6 +957,15 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
 -- ============================================================================
 
 -- Add all 36 employee form fields to database
+--added by the user
+ALTER TABLE employees
+ALTER COLUMN id SET DATA TYPE UUID
+USING gen_random_uuid();
+ALTER TABLE employees
+ALTER COLUMN id SET DEFAULT gen_random_uuid();
+ALTER TABLE employees
+ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+--added end by useer
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);

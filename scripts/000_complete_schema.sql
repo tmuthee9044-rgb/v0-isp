@@ -6,68 +6,69 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Commented out all DROP statements to prevent failures and allow idempotent execution
 -- Drop existing tables if they exist (for clean reinstall)
-DROP TABLE IF EXISTS schema_migrations CASCADE;
-DROP TABLE IF EXISTS supplier_invoice_items CASCADE;
-DROP TABLE IF EXISTS supplier_invoices CASCADE;
-DROP TABLE IF EXISTS inventory_serial_numbers CASCADE;
-DROP TABLE IF EXISTS inventory_movements CASCADE;
-DROP TABLE IF EXISTS purchase_order_items CASCADE;
-DROP TABLE IF EXISTS purchase_orders CASCADE;
-DROP TABLE IF EXISTS inventory_items CASCADE;
-DROP TABLE IF EXISTS suppliers CASCADE;
-DROP TABLE IF EXISTS activity_logs CASCADE;
-DROP TABLE IF EXISTS leave_requests CASCADE;
-DROP TABLE IF EXISTS payroll CASCADE;
-DROP TABLE IF EXISTS employees CASCADE;
-DROP TABLE IF EXISTS ip_addresses CASCADE;
-DROP TABLE IF EXISTS network_devices CASCADE;
-DROP TABLE IF EXISTS invoices CASCADE;
-DROP TABLE IF EXISTS payments CASCADE;
-DROP TABLE IF EXISTS customer_services CASCADE;
-DROP TABLE IF EXISTS service_plans CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-DROP TABLE IF EXISTS locations CASCADE;
-DROP TABLE IF EXISTS performance_reviews CASCADE;
-DROP TABLE IF EXISTS company_profiles CASCADE;
-DROP TABLE IF EXISTS system_config CASCADE;
-DROP TABLE IF EXISTS radius_users CASCADE;
-DROP TABLE IF EXISTS radius_sessions_active CASCADE;
-DROP TABLE IF EXISTS radius_sessions_archive CASCADE;
-DROP TABLE IF EXISTS radius_nas CASCADE;
-DROP TABLE IF EXISTS system_logs CASCADE;
-DROP TABLE IF EXISTS pending_tasks CASCADE;
-DROP TABLE IF EXISTS admin_logs CASCADE;
-DROP TABLE IF EXISTS service_inventory CASCADE;
-DROP TABLE IF EXISTS inventory CASCADE;
-DROP TABLE IF EXISTS payroll_records CASCADE;
-DROP TABLE IF EXISTS router_performance_history CASCADE;
-DROP TABLE IF EXISTS capacity_predictions CASCADE;
-DROP TABLE IF EXISTS network_forecasts CASCADE;
-DROP TABLE IF EXISTS capacity_alerts CASCADE;
-DROP TABLE IF EXISTS bandwidth_patterns CASCADE;
-DROP TABLE IF EXISTS infrastructure_investments CASCADE;
-DROP TABLE IF EXISTS backup_settings CASCADE;
-DROP TABLE IF EXISTS backup_jobs CASCADE;
-DROP TABLE IF EXISTS backup_restore_logs CASCADE;
-DROP TABLE IF EXISTS message_templates CASCADE;
-DROP TABLE IF EXISTS messages CASCADE;
-DROP TABLE IF EXISTS tasks CASCADE;
-DROP TABLE IF EXISTS task_comments CASCADE;
-DROP TABLE IF EXISTS task_attachments CASCADE;
-DROP TABLE IF EXISTS task_notifications CASCADE;
-DROP TABLE IF EXISTS task_performance_metrics CASCADE;
-DROP TABLE IF EXISTS task_categories CASCADE;
-DROP TABLE IF EXISTS vehicles CASCADE;
-DROP TABLE IF EXISTS fuel_logs CASCADE;
-DROP TABLE IF EXISTS maintenance_logs CASCADE;
-DROP TABLE IF EXISTS radius_logs CASCADE;
-DROP TABLE IF EXISTS openvpn_logs CASCADE;
-DROP TABLE IF EXISTS mpesa_logs CASCADE;
-DROP TABLE IF EXISTS router_logs CASCADE;
-DROP TABLE IF EXISTS user_activity_logs CASCADE;
-DROP TABLE IF EXISTS critical_events CASCADE;
-DROP TABLE IF EXISTS invoice_items CASCADE;
+-- DROP TABLE IF EXISTS schema_migrations CASCADE;
+-- DROP TABLE IF EXISTS supplier_invoice_items CASCADE;
+-- DROP TABLE IF EXISTS supplier_invoices CASCADE;
+-- DROP TABLE IF EXISTS inventory_serial_numbers CASCADE;
+-- DROP TABLE IF EXISTS inventory_movements CASCADE;
+-- DROP TABLE IF EXISTS purchase_order_items CASCADE;
+-- DROP TABLE IF EXISTS purchase_orders CASCADE;
+-- DROP TABLE IF EXISTS inventory_items CASCADE;
+-- DROP TABLE IF EXISTS suppliers CASCADE;
+-- DROP TABLE IF EXISTS activity_logs CASCADE;
+-- DROP TABLE IF EXISTS leave_requests CASCADE;
+-- DROP TABLE IF EXISTS payroll CASCADE;
+-- DROP TABLE IF EXISTS employees CASCADE;
+-- DROP TABLE IF EXISTS ip_addresses CASCADE;
+-- DROP TABLE IF EXISTS network_devices CASCADE;
+-- DROP TABLE IF EXISTS invoices CASCADE;
+-- DROP TABLE IF EXISTS payments CASCADE;
+-- DROP TABLE IF EXISTS customer_services CASCADE;
+-- DROP TABLE IF EXISTS service_plans CASCADE;
+-- DROP TABLE IF EXISTS customers CASCADE;
+-- DROP TABLE IF EXISTS locations CASCADE;
+-- DROP TABLE IF EXISTS performance_reviews CASCADE;
+-- DROP TABLE IF EXISTS company_profiles CASCADE;
+-- DROP TABLE IF EXISTS system_config CASCADE;
+-- DROP TABLE IF EXISTS radius_users CASCADE;
+-- DROP TABLE IF EXISTS radius_sessions_active CASCADE;
+-- DROP TABLE IF EXISTS radius_sessions_archive CASCADE;
+-- DROP TABLE IF EXISTS radius_nas CASCADE;
+-- DROP TABLE IF EXISTS system_logs CASCADE;
+-- DROP TABLE IF EXISTS pending_tasks CASCADE;
+-- DROP TABLE IF EXISTS admin_logs CASCADE;
+-- DROP TABLE IF EXISTS service_inventory CASCADE;
+-- DROP TABLE IF EXISTS inventory CASCADE;
+-- DROP TABLE IF EXISTS payroll_records CASCADE;
+-- DROP TABLE IF EXISTS router_performance_history CASCADE;
+-- DROP TABLE IF EXISTS capacity_predictions CASCADE;
+-- DROP TABLE IF EXISTS network_forecasts CASCADE;
+-- DROP TABLE IF EXISTS capacity_alerts CASCADE;
+-- DROP TABLE IF EXISTS bandwidth_patterns CASCADE;
+-- DROP TABLE IF EXISTS infrastructure_investments CASCADE;
+-- DROP TABLE IF EXISTS backup_settings CASCADE;
+-- DROP TABLE IF EXISTS backup_jobs CASCADE;
+-- DROP TABLE IF EXISTS backup_restore_logs CASCADE;
+-- DROP TABLE IF EXISTS message_templates CASCADE;
+-- DROP TABLE IF EXISTS messages CASCADE;
+-- DROP TABLE IF EXISTS tasks CASCADE;
+-- DROP TABLE IF EXISTS task_comments CASCADE;
+-- DROP TABLE IF EXISTS task_attachments CASCADE;
+-- DROP TABLE IF EXISTS task_notifications CASCADE;
+-- DROP TABLE IF EXISTS task_performance_metrics CASCADE;
+-- DROP TABLE IF EXISTS task_categories CASCADE;
+-- DROP TABLE IF EXISTS vehicles CASCADE;
+-- DROP TABLE IF EXISTS fuel_logs CASCADE;
+-- DROP TABLE IF EXISTS maintenance_logs CASCADE;
+-- DROP TABLE IF EXISTS radius_logs CASCADE;
+-- DROP TABLE IF EXISTS openvpn_logs CASCADE;
+-- DROP TABLE IF EXISTS mpesa_logs CASCADE;
+-- DROP TABLE IF EXISTS router_logs CASCADE;
+-- DROP TABLE IF EXISTS user_activity_logs CASCADE;
+-- DROP TABLE IF EXISTS critical_events CASCADE;
+-- DROP TABLE IF EXISTS invoice_items CASCADE;
 
 -- Create schema_migrations table first (for tracking)
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -738,7 +739,7 @@ CREATE TABLE IF NOT EXISTS radius_nas (
 -- System Logs Table (referenced by log-actions.ts)
 CREATE TABLE IF NOT EXISTS system_logs (
     id SERIAL PRIMARY KEY,
-    level VARCHAR(20) NOT NULL DEFAULT 'info',
+    level VARCHAR(20) DEFAULT 'info',
     source VARCHAR(100),
     category VARCHAR(100),
     message TEXT NOT NULL,

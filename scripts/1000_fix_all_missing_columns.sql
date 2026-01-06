@@ -4,6 +4,45 @@
 -- Enable pgcrypto extension for password hashing (gen_salt function)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Fix column types that were created as INTEGER but should be VARCHAR
+-- This fixes "invalid input syntax for type integer: 'standard'" errors
+
+-- Drop and recreate service_plans columns with correct VARCHAR types
+DO $$ 
+BEGIN
+    -- Fix priority_level (should be VARCHAR, not INTEGER)
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'service_plans' AND column_name = 'priority_level' 
+               AND data_type = 'integer') THEN
+        ALTER TABLE service_plans DROP COLUMN priority_level;
+        ALTER TABLE service_plans ADD COLUMN priority_level VARCHAR(50) DEFAULT 'standard';
+    END IF;
+
+    -- Fix billing_cycle (should be VARCHAR, not INTEGER)
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'service_plans' AND column_name = 'billing_cycle' 
+               AND data_type = 'integer') THEN
+        ALTER TABLE service_plans DROP COLUMN billing_cycle;
+        ALTER TABLE service_plans ADD COLUMN billing_cycle VARCHAR(50) DEFAULT 'monthly';
+    END IF;
+
+    -- Fix action_after_limit (should be VARCHAR, not INTEGER)
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'service_plans' AND column_name = 'action_after_limit' 
+               AND data_type = 'integer') THEN
+        ALTER TABLE service_plans DROP COLUMN action_after_limit;
+        ALTER TABLE service_plans ADD COLUMN action_after_limit VARCHAR(50) DEFAULT 'throttle';
+    END IF;
+
+    -- Fix limit_type (should be VARCHAR, not INTEGER)
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'service_plans' AND column_name = 'limit_type' 
+               AND data_type = 'integer') THEN
+        ALTER TABLE service_plans DROP COLUMN limit_type;
+        ALTER TABLE service_plans ADD COLUMN limit_type VARCHAR(50) DEFAULT 'monthly';
+    END IF;
+END $$;
+
 -- Fix customer_services table
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17);
 ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100);
@@ -768,7 +807,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);

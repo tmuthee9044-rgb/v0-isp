@@ -362,8 +362,3 @@ CREATE INDEX IF NOT EXISTS idx_payroll_records_period_start ON payroll_records(p
 -- ============================================================================
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;
-
--- Log completion
-INSERT INTO schema_migrations (migration_name) 
-VALUES ('002_create_12_critical_tables') 
-ON CONFLICT (migration_name) DO NOTHING;

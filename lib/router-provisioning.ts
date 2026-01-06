@@ -44,6 +44,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
     const routerInfo = await sql`
       SELECT 
         ip_address as router_ip,
+        customer_auth_method,
         configuration->>'gateway_ip' as gateway_ip,
         configuration->>'pppoe_local_address' as pppoe_local_ip
       FROM network_devices
@@ -56,7 +57,10 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
     }
 
     const router = routerInfo[0]
+    const customerAuthMethod = router.customer_auth_method || "pppoe_radius"
     const localAddress = router.pppoe_local_ip || router.gateway_ip || router.router_ip
+
+    console.log(`[v0] Router auth method: ${customerAuthMethod}`)
 
     const mikrotik = await Promise.race([
       createMikroTikClient(params.routerId),
@@ -74,24 +78,52 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
     if (params.connectionType === "pppoe" && params.pppoeUsername && params.pppoePassword) {
       console.log(`[v0] Provisioning PPPoE service for ${params.pppoeUsername}`)
 
-      const profile = params.speedProfile || "default"
-      const remoteAddress = params.ipAddress || "auto"
+      if (customerAuthMethod === "pppoe_secrets") {
+        console.log(`[v0] Router configured for PPPoE Secrets - writing credentials directly to router`)
 
-      provisionResult = await mikrotik.createPPPoESecret(
-        params.pppoeUsername,
-        params.pppoePassword,
-        remoteAddress,
-        profile,
-        localAddress,
-      )
+        const profile = params.speedProfile || "default"
+        const remoteAddress = params.ipAddress || "auto"
 
-      if (!provisionResult.success) {
-        throw new Error(`Failed to create PPPoE secret: ${provisionResult.error}`)
+        // Write PPPoE secret directly to the router (bypass RADIUS)
+        provisionResult = await mikrotik.createPPPoESecret(
+          params.pppoeUsername,
+          params.pppoePassword,
+          remoteAddress,
+          profile,
+          localAddress,
+        )
+
+        if (!provisionResult.success) {
+          throw new Error(`Failed to create PPPoE secret: ${provisionResult.error}`)
+        }
+
+        console.log(`[v0] PPPoE secret created successfully on router for ${params.pppoeUsername}`)
+        console.log(`[v0] Customer IP (remote-address): ${remoteAddress}`)
+        console.log(`[v0] Gateway IP (local-address): ${localAddress}`)
+        console.log(`[v0] RADIUS NOT USED - credentials stored locally on router`)
+      } else {
+        // Use RADIUS authentication (existing behavior)
+        console.log(`[v0] Router configured for RADIUS - PPPoE credentials will be validated via FreeRADIUS`)
+
+        const profile = params.speedProfile || "default"
+        const remoteAddress = params.ipAddress || "auto"
+
+        // For RADIUS mode, we still need to configure the PPPoE server on the router
+        // but authentication happens via RADIUS
+        provisionResult = await mikrotik.createPPPoESecret(
+          params.pppoeUsername,
+          params.pppoePassword,
+          remoteAddress,
+          profile,
+          localAddress,
+        )
+
+        if (!provisionResult.success) {
+          throw new Error(`Failed to configure PPPoE on router: ${provisionResult.error}`)
+        }
+
+        console.log(`[v0] PPPoE configured on router, authentication via RADIUS`)
       }
-
-      console.log(`[v0] PPPoE secret created successfully for ${params.pppoeUsername}`)
-      console.log(`[v0] Customer IP (remote-address): ${remoteAddress}`)
-      console.log(`[v0] Gateway IP (local-address): ${localAddress}`)
 
       await sql`
         UPDATE customer_services
@@ -102,7 +134,6 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
         WHERE id = ${params.serviceId}
       `
     } else if (params.connectionType === "static_ip" && params.ipAddress) {
-      // Provision static IP service
       console.log(`[v0] Provisioning static IP ${params.ipAddress}`)
 
       provisionResult = await mikrotik.addFirewallRule(
@@ -134,7 +165,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
           user_id, action, entity_type, entity_id, description, created_at
         ) VALUES (
           1, 'provision', 'customer_service', ${params.serviceId},
-          ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId}${params.ipAddress ? ` with IP ${params.ipAddress}` : ""}`},
+          ${`Provisioned ${params.connectionType} service for customer ${params.customerId} to router ${params.routerId} using ${customerAuthMethod} auth${params.ipAddress ? ` with IP ${params.ipAddress}` : ""}`},
           NOW()
         ) ON CONFLICT DO NOTHING
       `,
@@ -144,7 +175,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
           ${params.routerId},
           'service_provisioned',
           'success',
-          ${`Service ${params.serviceId} provisioned for customer ${params.customerId}${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername}, IP: ${params.ipAddress || "auto"})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
+          ${`Service ${params.serviceId} provisioned for customer ${params.customerId} (Auth: ${customerAuthMethod})${params.pppoeUsername ? ` (PPPoE: ${params.pppoeUsername}, IP: ${params.ipAddress || "auto"})` : params.ipAddress ? ` (IP: ${params.ipAddress})` : ""}`},
           NOW()
         ) ON CONFLICT DO NOTHING
       `,
@@ -156,7 +187,7 @@ export async function provisionServiceToRouter(params: ProvisionServiceParams): 
 
     return {
       success: true,
-      message: `Service successfully provisioned to router with IP ${params.ipAddress || "auto"}`,
+      message: `Service successfully provisioned to router with IP ${params.ipAddress || "auto"} using ${customerAuthMethod} authentication`,
     }
   } catch (error) {
     console.error(`[v0] Provisioning error:`, error)

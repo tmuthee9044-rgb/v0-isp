@@ -89,7 +89,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       INSERT INTO customer_services (
         customer_id, service_plan_id, status, monthly_fee, 
         start_date, end_date, ip_address, device_id, 
-        connection_type, config_id, created_at
+        connection_type, config_id, mac_address, lock_to_mac,
+        pppoe_username, pppoe_password, auto_renew, location_id,
+        created_at
       ) VALUES (
         ${customerId}, 
         ${servicePlanId}, 
@@ -101,6 +103,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${deviceId}, 
         ${connectionType},
         ${serviceData.config_id || null},
+        ${serviceData.mac_address || null},
+        ${serviceData.lock_to_mac === "on" || serviceData.lock_to_mac === true},
+        ${pppoeUsername},
+        ${pppoePassword},
+        ${serviceData.auto_renew === "on" || serviceData.auto_renew === true},
+        ${serviceData.location_id || null},
         NOW()
       ) RETURNING *
     `
@@ -135,20 +143,79 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           console.log("[v0] Saved PPPoE credentials to customer_services table")
         }
 
-        const radiusResult = await provisionRadiusUser({
-          username: radiusUsername,
-          password: radiusPassword,
-          customerId: Number.parseInt(customerId),
-          serviceId: result[0].id,
-          ipAddress: ipAddress !== "auto" ? ipAddress : undefined,
-          downloadSpeed: servicePlan.download_speed,
-          uploadSpeed: servicePlan.upload_speed,
-        })
+        let routerAuthMethod = "pppoe_radius" // default
 
-        if (radiusResult.success) {
-          console.log(
-            "[v0] RADIUS user provisioned successfully to FreeRADIUS tables (radcheck/radreply) for physical router authentication",
-          )
+        if (ipAddress && ipAddress !== "auto") {
+          const routerCheck = await sql`
+            SELECT nd.customer_auth_method
+            FROM ip_addresses ia
+            JOIN network_devices nd ON nd.id = ia.router_id
+            WHERE ia.ip_address = ${ipAddress}
+            LIMIT 1
+          `
+
+          if (routerCheck.length > 0) {
+            routerAuthMethod = routerCheck[0].customer_auth_method || "pppoe_radius"
+            console.log(`[v0] Router auth method detected: ${routerAuthMethod}`)
+          }
+        }
+
+        // Only provision to RADIUS if router uses RADIUS authentication
+        if (routerAuthMethod === "pppoe_radius" || routerAuthMethod === "dhcp_lease") {
+          console.log("[v0] Router uses RADIUS - provisioning user to FreeRADIUS")
+
+          const radiusResult = await provisionRadiusUser({
+            username: radiusUsername,
+            password: radiusPassword,
+            customerId: Number.parseInt(customerId),
+            serviceId: result[0].id,
+            ipAddress: ipAddress !== "auto" ? ipAddress : undefined,
+            downloadSpeed: servicePlan.download_speed,
+            uploadSpeed: servicePlan.upload_speed,
+          })
+
+          if (radiusResult.success) {
+            console.log(
+              "[v0] RADIUS user provisioned successfully to FreeRADIUS tables (radcheck/radreply) for physical router authentication",
+            )
+
+            // Log activity per rule 3
+            await sql`
+              INSERT INTO activity_logs (action, entity_type, entity_id, details, created_at)
+              VALUES (
+                'create', 'customer_service', ${result[0].id},
+                ${JSON.stringify({
+                  customer_id: customerId,
+                  service_id: result[0].id,
+                  radius_username: radiusUsername,
+                  pppoe_enabled: pppoeEnabled,
+                  auth_method: routerAuthMethod,
+                  speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
+                  ip_address: ipAddress,
+                })},
+                CURRENT_TIMESTAMP
+              )
+            `
+          } else {
+            console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
+            // Don't fail the whole operation, but log the error
+            await sql`
+              INSERT INTO system_logs (level, category, source, message, details, created_at)
+              VALUES (
+                'ERROR', 'radius', 'provisioning',
+                'Failed to provision RADIUS user for customer service',
+                ${JSON.stringify({
+                  customer_id: customerId,
+                  service_id: result[0].id,
+                  error: radiusResult.error,
+                })},
+                CURRENT_TIMESTAMP
+              )
+            `
+          }
+        } else if (routerAuthMethod === "pppoe_secrets") {
+          console.log("[v0] Router uses PPPoE Secrets - skipping RADIUS provisioning")
+          console.log("[v0] Credentials will be written directly to router when service is activated")
 
           // Log activity per rule 3
           await sql`
@@ -158,26 +225,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               ${JSON.stringify({
                 customer_id: customerId,
                 service_id: result[0].id,
-                radius_username: radiusUsername,
+                pppoe_username: pppoeUsername,
                 pppoe_enabled: pppoeEnabled,
+                auth_method: "pppoe_secrets",
+                note: "Credentials stored locally on router, not in RADIUS",
                 speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
                 ip_address: ipAddress,
-              })},
-              CURRENT_TIMESTAMP
-            )
-          `
-        } else {
-          console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
-          // Don't fail the whole operation, but log the error
-          await sql`
-            INSERT INTO system_logs (level, category, source, message, details, created_at)
-            VALUES (
-              'ERROR', 'radius', 'provisioning',
-              'Failed to provision RADIUS user for customer service',
-              ${JSON.stringify({
-                customer_id: customerId,
-                service_id: result[0].id,
-                error: radiusResult.error,
               })},
               CURRENT_TIMESTAMP
             )
@@ -347,6 +400,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         "pppoe_password",
         "lock_to_mac",
         "auto_renew",
+        "mac_address",
+        "location_id",
       ]
       const updateFields = []
       const updateValues = []

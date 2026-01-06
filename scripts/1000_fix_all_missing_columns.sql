@@ -12,6 +12,46 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- CRITICAL FIXES FIRST: Column type corrections and sequence setup
 -- ============================================================================
 
+-- Improved admin_logs sequence fix to handle all cases
+DO $$
+BEGIN
+    -- Drop and recreate admin_logs table if it exists without proper sequence
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='admin_logs') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                       WHERE table_name='admin_logs' AND column_name='id' 
+                       AND column_default LIKE '%admin_logs_id_seq%') THEN
+            DROP TABLE IF EXISTS admin_logs CASCADE;
+        END IF;
+    END IF;
+    
+    -- Create admin_logs table with proper SERIAL sequence
+    CREATE TABLE IF NOT EXISTS admin_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        action VARCHAR(255),
+        entity_type VARCHAR(100),
+        entity_id INTEGER,
+        details TEXT,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+END $$;
+
+-- Ensure sequence exists and is owned by the column
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'admin_logs_id_seq') THEN
+        CREATE SEQUENCE admin_logs_id_seq;
+        ALTER TABLE admin_logs ALTER COLUMN id SET DEFAULT nextval('admin_logs_id_seq');
+        ALTER SEQUENCE admin_logs_id_seq OWNED BY admin_logs.id;
+        SELECT setval('admin_logs_id_seq', COALESCE((SELECT MAX(id) FROM admin_logs), 0) + 1);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_level ON admin_logs(level);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
+
 -- Fix customers.email UNIQUE constraint for ON CONFLICT to work
 DO $$
 BEGIN
@@ -61,42 +101,23 @@ BEGIN
     END IF;
 END $$;
 
--- Fix ip_addresses.id to use proper SERIAL sequence
+-- Improved ip_addresses sequence fix to handle all cases  
 DO $$
 BEGIN
-    -- Check if id column exists but doesn't have a default sequence
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name='ip_addresses' AND column_name='id'
-        AND column_default IS NULL
-    ) THEN
-        -- Create sequence if it doesn't exist
-        CREATE SEQUENCE IF NOT EXISTS ip_addresses_id_seq;
-        -- Set the sequence as default for id column
-        ALTER TABLE ip_addresses ALTER COLUMN id SET DEFAULT nextval('ip_addresses_id_seq');
-        -- Set sequence ownership
+    -- Create sequence if it doesn't exist
+    CREATE SEQUENCE IF NOT EXISTS ip_addresses_id_seq;
+    
+    -- If table exists, sync sequence with max id
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='ip_addresses') THEN
+        -- Set sequence to max existing id
+        PERFORM setval('ip_addresses_id_seq', COALESCE((SELECT MAX(id) FROM ip_addresses), 0) + 1, false);
+        
+        -- Drop and recreate id column with proper sequence
+        ALTER TABLE ip_addresses DROP COLUMN IF EXISTS id CASCADE;
+        ALTER TABLE ip_addresses ADD COLUMN id INTEGER NOT NULL DEFAULT nextval('ip_addresses_id_seq') PRIMARY KEY;
         ALTER SEQUENCE ip_addresses_id_seq OWNED BY ip_addresses.id;
-        -- Sync sequence with existing data
-        SELECT setval('ip_addresses_id_seq', COALESCE(MAX(id), 1)) FROM ip_addresses;
     END IF;
 END $$;
-
--- Create admin_logs table for error logging if it doesn't exist
-CREATE TABLE IF NOT EXISTS admin_logs (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    level VARCHAR(50) DEFAULT 'info',
-    source VARCHAR(255),
-    message TEXT NOT NULL,
-    details JSONB,
-    user_id INTEGER,
-    ip_address VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_level ON admin_logs(level);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
 
 -- Create performance_reviews table with employee_id as VARCHAR to match API JOIN logic
 CREATE TABLE IF NOT EXISTS performance_reviews (
@@ -124,6 +145,23 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Fix performance_reviews.employee_id type mismatch - convert from INTEGER to VARCHAR
+DO $$
+BEGIN
+    -- Check if performance_reviews table exists and employee_id is INTEGER
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'performance_reviews' 
+        AND column_name = 'employee_id' 
+        AND data_type = 'integer'
+    ) THEN
+        -- Drop and recreate the column as VARCHAR
+        ALTER TABLE performance_reviews DROP COLUMN IF EXISTS employee_id;
+        ALTER TABLE performance_reviews ADD COLUMN employee_id VARCHAR(50) NOT NULL;
+        RAISE NOTICE 'Converted performance_reviews.employee_id from INTEGER to VARCHAR(50)';
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_performance_reviews_employee ON performance_reviews(employee_id);
 CREATE INDEX IF NOT EXISTS idx_performance_reviews_date ON performance_reviews(review_date DESC);
@@ -256,7 +294,7 @@ ALTER TABLE routers ADD COLUMN IF NOT EXISTS enable_traffic_recording BOOLEAN DE
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS enable_speed_control BOOLEAN DEFAULT true;
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS blocking_page_url TEXT;
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS model VARCHAR(100);
-ALTER TABLE routers ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
+ALTERTABLE routers ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS hostname VARCHAR(255);
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(50);
 ALTER TABLE routers ADD COLUMN IF NOT EXISTS configuration JSONB;

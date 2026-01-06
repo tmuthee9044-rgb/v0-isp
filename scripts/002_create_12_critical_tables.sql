@@ -44,14 +44,75 @@ CREATE TABLE IF NOT EXISTS customers (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS service_plans (
     id SERIAL PRIMARY KEY,
+    -- Basic Information (5 fields)
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    speed_download INTEGER,
-    speed_upload INTEGER,
-    price DECIMAL(10, 2) NOT NULL,
-    bandwidth_limit INTEGER,
-    service_type VARCHAR(50) DEFAULT 'internet',
+    service_type VARCHAR(50) DEFAULT 'residential',
+    category VARCHAR(100),
     status VARCHAR(50) DEFAULT 'active',
+    
+    -- Speed Configuration (9 fields)
+    speed_download INTEGER DEFAULT 0,
+    speed_upload INTEGER DEFAULT 0,
+    guaranteed_download INTEGER,
+    guaranteed_upload INTEGER,
+    burst_download INTEGER,
+    burst_upload INTEGER,
+    burst_duration INTEGER DEFAULT 300,
+    aggregation_ratio INTEGER DEFAULT 4,
+    priority_level VARCHAR(50) DEFAULT 'standard',
+    
+    -- Pricing Configuration (10 fields)
+    price DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    setup_fee DECIMAL(10, 2) DEFAULT 0,
+    billing_cycle VARCHAR(50) DEFAULT 'monthly',
+    contract_period INTEGER DEFAULT 12,
+    currency VARCHAR(10) DEFAULT 'USD',
+    promo_enabled BOOLEAN DEFAULT FALSE,
+    promo_price DECIMAL(10, 2),
+    promo_duration INTEGER,
+    tax_included BOOLEAN DEFAULT FALSE,
+    tax_rate DECIMAL(5, 2) DEFAULT 0,
+    
+    -- FUP (Fair Usage Policy) Configuration (9 fields)
+    fup_enabled BOOLEAN DEFAULT FALSE,
+    data_limit INTEGER,
+    fup_limit INTEGER,
+    fup_speed INTEGER,
+    limit_type VARCHAR(50) DEFAULT 'monthly',
+    action_after_limit VARCHAR(50) DEFAULT 'throttle',
+    reset_day INTEGER DEFAULT 1,
+    exempt_hours JSONB,
+    exempt_days JSONB,
+    warning_threshold INTEGER DEFAULT 80,
+    
+    -- QoS (Quality of Service) Configuration (6 fields)
+    qos_enabled BOOLEAN DEFAULT FALSE,
+    traffic_shaping BOOLEAN DEFAULT FALSE,
+    bandwidth_allocation JSONB,
+    latency_optimization BOOLEAN DEFAULT FALSE,
+    packet_prioritization BOOLEAN DEFAULT FALSE,
+    
+    -- Advanced Features (8 fields)
+    static_ip BOOLEAN DEFAULT FALSE,
+    port_forwarding BOOLEAN DEFAULT FALSE,
+    vpn_access BOOLEAN DEFAULT FALSE,
+    priority_support BOOLEAN DEFAULT FALSE,
+    sla_guarantee BOOLEAN DEFAULT FALSE,
+    redundancy BOOLEAN DEFAULT FALSE,
+    monitoring BOOLEAN DEFAULT FALSE,
+    custom_dns BOOLEAN DEFAULT FALSE,
+    
+    -- Restrictions (7 fields)
+    content_filtering BOOLEAN DEFAULT FALSE,
+    port_blocking JSONB,
+    time_restrictions BOOLEAN DEFAULT FALSE,
+    bandwidth_scheduling BOOLEAN DEFAULT FALSE,
+    device_limit INTEGER,
+    concurrent_connections INTEGER,
+    
+    -- Metadata
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

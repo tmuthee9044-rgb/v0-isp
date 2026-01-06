@@ -4,39 +4,52 @@
 -- Enable pgcrypto extension for password hashing (gen_salt function)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Add UNIQUE constraint on customers.email for ON CONFLICT support
+DO $$
+BEGIN
+    -- Check if unique constraint exists, if not create it
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'customers_email_key'
+        AND conrelid = 'customers'::regclass
+    ) THEN
+        ALTER TABLE customers ADD CONSTRAINT customers_email_key UNIQUE (email);
+    END IF;
+END $$;
+
 -- Fix column types that were created as INTEGER but should be VARCHAR
 -- This fixes "invalid input syntax for type integer: 'standard'" errors
 
 -- Drop and recreate service_plans columns with correct VARCHAR types
-DO $$ 
+DO $$
 BEGIN
     -- Fix priority_level (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns 
-               WHERE table_name = 'service_plans' AND column_name = 'priority_level' 
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'service_plans' AND column_name = 'priority_level'
                AND data_type = 'integer') THEN
         ALTER TABLE service_plans DROP COLUMN priority_level;
         ALTER TABLE service_plans ADD COLUMN priority_level VARCHAR(50) DEFAULT 'standard';
     END IF;
 
     -- Fix billing_cycle (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns 
-               WHERE table_name = 'service_plans' AND column_name = 'billing_cycle' 
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'service_plans' AND column_name = 'billing_cycle'
                AND data_type = 'integer') THEN
         ALTER TABLE service_plans DROP COLUMN billing_cycle;
         ALTER TABLE service_plans ADD COLUMN billing_cycle VARCHAR(50) DEFAULT 'monthly';
     END IF;
 
     -- Fix action_after_limit (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns 
-               WHERE table_name = 'service_plans' AND column_name = 'action_after_limit' 
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'service_plans' AND column_name = 'action_after_limit'
                AND data_type = 'integer') THEN
         ALTER TABLE service_plans DROP COLUMN action_after_limit;
         ALTER TABLE service_plans ADD COLUMN action_after_limit VARCHAR(50) DEFAULT 'throttle';
     END IF;
 
     -- Fix limit_type (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns 
-               WHERE table_name = 'service_plans' AND column_name = 'limit_type' 
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'service_plans' AND column_name = 'limit_type'
                AND data_type = 'integer') THEN
         ALTER TABLE service_plans DROP COLUMN limit_type;
         ALTER TABLE service_plans ADD COLUMN limit_type VARCHAR(50) DEFAULT 'monthly';
@@ -444,6 +457,7 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT 
 
 
 -- Fix ip_addresses table
+ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS id INTEGER;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS gateway VARCHAR(50);
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS dns_primary VARCHAR(50);

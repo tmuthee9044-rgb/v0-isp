@@ -311,7 +311,6 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_primary VARCHAR(50);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS partner_id VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_secondary VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_office VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
@@ -405,7 +404,6 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
 -- Adding all missing customer form fields from /customers/add page
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS added_by VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
@@ -494,7 +492,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments JSONB;
 
 -- Fix service_plans table
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS upload_speed INTEGER;
-ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS setup_fee DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS features JSONB;
@@ -610,7 +608,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -943,7 +941,6 @@ CREATE TABLE IF NOT EXISTS employees (
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
@@ -961,7 +958,7 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
 
 -- Add all 36 employee form fields to database
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
@@ -969,7 +966,7 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS marital_status VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS reporting_manager VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS reporting_manager VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_type VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS probation_period INTEGER;
@@ -978,7 +975,6 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS benefits TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS reporting_manager VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_account VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);

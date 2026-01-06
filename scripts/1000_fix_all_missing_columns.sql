@@ -44,6 +44,7 @@ ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(50
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS configuration JSONB;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
+ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
 
 -- Fix company_profiles table (localization columns)
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS name VARCHAR(255) DEFAULT 'My ISP Company';
@@ -149,6 +150,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_name VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS national_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS prepaid_monthly_costs VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS id_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;
@@ -257,12 +259,16 @@ ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
 ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius';
 
 -- Adding unique constraints and performance indexes for customers table
-CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers (email) WHERE email IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers (account_number) WHERE account_number IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
-CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
-CREATE INDEX IF NOT EXISTS idx_customers_location ON customers (location_id);
-CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
+-- Unique constraints for customers table (fixes ON CONFLICT errors)
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_account_number_unique_idx ON customers(account_number) WHERE account_number IS NOT NULL;
+
+-- Performance indexes for customers table (rule 6 - load under 5ms)
+CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status);
+CREATE INDEX IF NOT EXISTS idx_customers_type ON customers(customer_type);
+CREATE INDEX IF NOT EXISTS idx_customers_location ON customers(location_id);
+CREATE INDEX IF NOT EXISTS idx_customers_created ON customers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', COALESCE(name, '') || ' ' || COALESCE(first_name, '') || ' ' || COALESCE(last_name, '') || ' ' || COALESCE(business_name, '')));
 
 -- Adding unique constraints and performance indexes for customers table
 CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers(email) WHERE email IS NOT NULL;
@@ -329,6 +335,7 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS category VARCHAR(100);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS speed_download INTEGER;
 -- Adding missing speed_upload column for service plans
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS speed_upload INTEGER;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS updated_at DATE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_download INTEGER;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS guaranteed_upload INTEGER;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS burst_download INTEGER;
@@ -387,6 +394,15 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS bandwidth_scheduling BOOLEAN 
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS device_limit INTEGER;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS concurrent_connections INTEGER;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS features JSONB;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS limitations JSONB;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 5;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT true;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
 
 -- Fix ip_addresses table
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);
@@ -419,7 +435,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;

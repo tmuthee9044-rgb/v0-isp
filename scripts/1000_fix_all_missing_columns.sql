@@ -492,7 +492,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments JSONB;
 
 -- Fix service_plans table
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS upload_speed INTEGER;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
+ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS setup_fee DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS features JSONB;
@@ -927,8 +927,6 @@ CREATE TABLE IF NOT EXISTS employees (
     kra_pin VARCHAR(50),
     nssf_number VARCHAR(50),
     sha_number VARCHAR(50),
-    portal_username VARCHAR(100),
-    portal_password VARCHAR(255),
     qualifications TEXT,
     experience TEXT,
     skills TEXT,
@@ -941,7 +939,8 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
@@ -952,6 +951,44 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS qualifications TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS experience TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS skills TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
+
+-- ============================================================================
+-- EMPLOYEES TABLE - Add all missing form fields
+-- ============================================================================
+
+-- Add all 36 employee form fields to database
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS marital_status VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS reporting_manager VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_type VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS probation_period INTEGER;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS work_location VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS benefits TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_account VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS nhif_number VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS qualifications TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS experience TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS skills TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_end_date DATE;
+
 
 -- Create payroll table if it doesn't exist
 CREATE TABLE IF NOT EXISTS payroll (
@@ -1290,9 +1327,25 @@ BEGIN
     END IF;
 END $$;
 
+-- Adding performance indexes for /customers/[id] page to load under 5ms (rule 6)
+-- These indexes optimize the LEFT JOINs in the customer detail query
+
+-- customer_phone_numbers: optimize JOIN on customer_id
+CREATE INDEX IF NOT EXISTS idx_customer_phone_numbers_customer_id ON customer_phone_numbers(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_phone_numbers_primary ON customer_phone_numbers(customer_id, is_primary) WHERE is_primary = true;
+
+-- customer_emergency_contacts: optimize JOIN on customer_id
+CREATE INDEX IF NOT EXISTS idx_customer_emergency_contacts_customer_id ON customer_emergency_contacts(customer_id);
+
+-- customer_services: optimize JOIN on customer_id and service_plan_id
+CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_services_plan_lookup ON customer_services(service_plan_id);
+CREATE INDEX IF NOT EXISTS idx_customer_services_active ON customer_services(customer_id, status) WHERE status = 'active';
+
+-- service_plans: optimize lookups for service details
+CREATE INDEX IF NOT EXISTS idx_service_plans_id_name ON service_plans(id, name);
+
+-- Performance indexes for all new columns
 -- Rule 11: Update complete schema file timestamp
--- This ensures the 000_complete_schema.sql file stays synchronized with all changes
-SELECT 'Schema updated: ' || NOW()::TEXT as update_log;
- schema file timestamp
 -- This ensures the 000_complete_schema.sql file stays synchronized with all changes
 SELECT 'Schema updated: ' || NOW()::TEXT as update_log;

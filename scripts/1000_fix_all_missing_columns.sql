@@ -105,16 +105,19 @@ END $$;
 DO $$
 BEGIN
     -- Create sequence if it doesn't exist
-    CREATE SEQUENCE IF NOT EXISTS ip_addresses_id_seq;
+    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'ip_addresses_id_seq') THEN
+        CREATE SEQUENCE ip_addresses_id_seq;
+    END IF;
     
-    -- If table exists, sync sequence with max id
+    -- If table exists, configure the sequence properly
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='ip_addresses') THEN
-        -- Set sequence to max existing id
+        -- Set sequence to max existing id + 1
         PERFORM setval('ip_addresses_id_seq', COALESCE((SELECT MAX(id) FROM ip_addresses), 0) + 1, false);
         
-        -- Drop and recreate id column with proper sequence
-        ALTER TABLE ip_addresses DROP COLUMN IF EXISTS id CASCADE;
-        ALTER TABLE ip_addresses ADD COLUMN id INTEGER NOT NULL DEFAULT nextval('ip_addresses_id_seq') PRIMARY KEY;
+        -- Set the default value for id column to use the sequence
+        ALTER TABLE ip_addresses ALTER COLUMN id SET DEFAULT nextval('ip_addresses_id_seq');
+        
+        -- Link sequence ownership to the column
         ALTER SEQUENCE ip_addresses_id_seq OWNED BY ip_addresses.id;
     END IF;
 END $$;

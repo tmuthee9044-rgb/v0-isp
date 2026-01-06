@@ -216,6 +216,33 @@ CREATE TABLE IF NOT EXISTS radius_nas (
 );
 
 -- ============================================================================
+-- 14. PAYROLL_RECORDS TABLE (for HR compliance and payroll history)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS payroll_records (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    period VARCHAR(50) NOT NULL,
+    pay_period_start DATE,
+    pay_period_end DATE,
+    basic_salary DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    allowances DECIMAL(10, 2) DEFAULT 0,
+    overtime DECIMAL(10, 2) DEFAULT 0,
+    gross_pay DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    tax DECIMAL(10, 2) DEFAULT 0,
+    paye DECIMAL(10, 2) DEFAULT 0,
+    nssf DECIMAL(10, 2) DEFAULT 0,
+    nhif DECIMAL(10, 2) DEFAULT 0,
+    sha DECIMAL(10, 2) DEFAULT 0,
+    other_deductions DECIMAL(10, 2) DEFAULT 0,
+    total_deductions DECIMAL(10, 2) DEFAULT 0,
+    net_pay DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'pending',
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================================
 -- CREATE ESSENTIAL INDEXES FOR PERFORMANCE (Rule 6: Sub-5ms loads)
 -- ============================================================================
 
@@ -262,6 +289,12 @@ CREATE INDEX IF NOT EXISTS idx_radius_sessions_active_session ON radius_sessions
 CREATE INDEX IF NOT EXISTS idx_radius_sessions_archive_username ON radius_sessions_archive(username);
 CREATE INDEX IF NOT EXISTS idx_radius_sessions_archive_start ON radius_sessions_archive(start_time);
 CREATE INDEX IF NOT EXISTS idx_radius_nas_ip ON radius_nas(nas_ip_address);
+
+-- Payroll records indexes
+CREATE INDEX IF NOT EXISTS idx_payroll_records_employee ON payroll_records(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_records_period ON payroll_records(period);
+CREATE INDEX IF NOT EXISTS idx_payroll_records_status ON payroll_records(status);
+CREATE INDEX IF NOT EXISTS idx_payroll_records_period_start ON payroll_records(pay_period_start);
 
 -- ============================================================================
 -- GRANT PERMISSIONS

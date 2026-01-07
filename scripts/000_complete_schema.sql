@@ -841,6 +841,12 @@ CREATE TABLE IF NOT EXISTS router_performance_history (
     memory_usage DECIMAL(5,2),
     bandwidth_in BIGINT,
     bandwidth_out BIGINT,
+    bandwidth_usage INTEGER,
+    peak_usage INTEGER,
+    connections INTEGER,
+    latency DECIMAL(10,2),
+    packet_loss DECIMAL(5,2),
+    uptime_percentage DECIMAL(5,2),
     uptime INTEGER,
     temperature DECIMAL(5,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

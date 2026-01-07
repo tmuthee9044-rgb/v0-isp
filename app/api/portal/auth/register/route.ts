@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/database"
-import { crypto } from "crypto"
 
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder()

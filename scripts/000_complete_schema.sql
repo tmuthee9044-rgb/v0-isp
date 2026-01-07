@@ -462,7 +462,9 @@ CREATE TABLE suppliers (
     phone VARCHAR(50),
     address TEXT,
     city VARCHAR(100),
+    state VARCHAR(100),
     country VARCHAR(100),
+    supplier_type VARCHAR(50) DEFAULT 'vendor',
     tax_id VARCHAR(100),
     payment_terms INTEGER DEFAULT 30,
     credit_limit DECIMAL(15, 2) DEFAULT 0.00,
@@ -1262,6 +1264,12 @@ CREATE INDEX IF NOT EXISTS idx_customer_services_mac_address ON customer_service
 CREATE INDEX IF NOT EXISTS idx_customer_services_pppoe_username ON customer_services(pppoe_username);
 CREATE INDEX IF NOT EXISTS idx_customer_services_device_id ON customer_services(device_id);
 CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id);
+
+-- Adding indexes for customer detail page sub-5ms performance (rule 6)
+CREATE INDEX IF NOT EXISTS idx_customer_phone_numbers_customer_id ON customer_phone_numbers(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_emergency_contacts_customer_id ON customer_emergency_contacts(customer_id);
+CREATE INDEX IF NOT EXISTS idx_service_plans_id ON service_plans(id);
+CREATE INDEX IF NOT EXISTS idx_service_plans_status ON service_plans(status);
 
 -- Record this migration
 INSERT INTO schema_migrations (migration_name) VALUES ('000_complete_schema.sql')

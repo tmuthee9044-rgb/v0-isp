@@ -89,19 +89,20 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO suppliers (
-        company_name, name, contact_name, email, phone, address,
-        website, tax_id, payment_terms, is_active
+        company_name, contact_person, email, phone, address,
+        city, state, country, supplier_type, notes, status
       ) VALUES (
         ${data.company_name}, 
-        ${data.name || data.company_name}, 
         ${data.contact_person || null},
         ${data.email || null}, 
         ${data.phone || null}, 
         ${data.address || null},
-        ${data.website || null}, 
-        ${data.tax_number || null}, 
-        ${data.payment_terms || 30}, 
-        ${data.status === "active"}
+        ${data.city || null},
+        ${data.state || null},
+        ${data.country || null},
+        ${data.supplier_type || "vendor"},
+        ${data.notes || null},
+        ${data.status || "active"}
       )
       RETURNING *
     `

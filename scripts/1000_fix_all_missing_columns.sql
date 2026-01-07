@@ -358,6 +358,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS login VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS mrr_total VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_type VARCHAR(50) DEFAULT 'individual';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_category VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS category VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS account_balance DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_day INTEGER DEFAULT 1;
@@ -597,6 +598,8 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT 
 
 -- Fix ip_addresses table
 -- Adding router_id column for subnet-to-router relationship tracking
+ALTER TABLE ip_addresses
+ALTER COLUMN id SET DEFAULT uuid_generate_v4();
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS router_id INTEGER REFERENCES network_devices(id) ON DELETE SET NULL;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS id INTEGER;
 ALTER TABLE ip_addresses ADD COLUMN IF NOT EXISTS subnet VARCHAR(50);

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   const sql = await getSql()

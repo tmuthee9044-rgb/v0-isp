@@ -1,6 +1,35 @@
 import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
+async function ensureSequenceExists(sql: any) {
+  try {
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_phone_numbers_id_seq') THEN
+          CREATE SEQUENCE customer_phone_numbers_id_seq;
+          ALTER TABLE customer_phone_numbers ALTER COLUMN id SET DEFAULT nextval('customer_phone_numbers_id_seq');
+          SELECT setval('customer_phone_numbers_id_seq', COALESCE((SELECT MAX(id) FROM customer_phone_numbers), 0) + 1, false);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_emergency_contacts_id_seq') THEN
+          CREATE SEQUENCE customer_emergency_contacts_id_seq;
+          ALTER TABLE customer_emergency_contacts ALTER COLUMN id SET DEFAULT nextval('customer_emergency_contacts_id_seq');
+          SELECT setval('customer_emergency_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_emergency_contacts), 0) + 1, false);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_contacts_id_seq') THEN
+          CREATE SEQUENCE customer_contacts_id_seq;
+          ALTER TABLE customer_contacts ALTER COLUMN id SET DEFAULT nextval('customer_contacts_id_seq');
+          SELECT setval('customer_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_contacts), 0) + 1, false);
+        END IF;
+      END $$;
+    `
+  } catch (error) {
+    console.error("Error ensuring sequences exist:", error)
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
@@ -166,6 +195,8 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
+    await ensureSequenceExists(sql)
+
     const customerId = Number.parseInt(params.id)
 
     if (isNaN(customerId)) {

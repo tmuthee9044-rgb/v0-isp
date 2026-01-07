@@ -144,13 +144,27 @@ export default function ServicesPage() {
   const handleToggleStatus = async (planId: number, currentStatus: boolean) => {
     console.log("[v0] Toggle status clicked for plan:", planId, "current status:", currentStatus)
     try {
-      const newStatus = currentStatus ? "deactivated" : "activated"
-      toast({
-        title: `Plan ${newStatus}`,
-        description: `Service plan has been ${newStatus}.`,
+      const newStatus = !currentStatus
+      const result = await fetch(`/api/service-plans/${planId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: newStatus }),
       })
+      const data = await result.json()
 
-      setServicePlans((prev) => prev.map((plan) => (plan.id === planId ? { ...plan, active: !currentStatus } : plan)))
+      if (data.success) {
+        toast({
+          title: `Plan ${newStatus ? "activated" : "deactivated"}`,
+          description: `Service plan has been ${newStatus ? "activated" : "deactivated"}.`,
+        })
+        setServicePlans((prev) => prev.map((plan) => (plan.id === planId ? { ...plan, active: newStatus } : plan)))
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to update plan status",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.log("[v0] Error toggling status:", error)
       toast({

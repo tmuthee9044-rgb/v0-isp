@@ -109,6 +109,7 @@ export async function generatePayroll(
 
     const employees = await sql`
       SELECT 
+        id,
         employee_id,
         first_name,
         last_name,
@@ -175,7 +176,7 @@ export async function generatePayroll(
           allowances, overtime, gross_pay, paye, nssf, sha,
           other_deductions, total_deductions, net_pay, status, created_at
         ) VALUES (
-          ${employee.employee_id}, ${`${employee.first_name} ${employee.last_name}`}, ${period}, ${basicSalary},
+          ${employee.id}, ${`${employee.first_name} ${employee.last_name}`}, ${period}, ${basicSalary},
           ${allowances}, ${overtime}, ${grossPay}, ${paye}, ${nssf}, ${sha},
           ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
         )

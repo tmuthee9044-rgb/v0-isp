@@ -1,10 +1,40 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 
+async function ensureSequenceExists(sql: any) {
+  try {
+    await sql`
+      DO $$
+      BEGIN
+        -- Check if sequence exists, if not create it
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customer_billing_configurations_id_seq') THEN
+          -- Get current max id
+          DECLARE
+            max_id INTEGER;
+          BEGIN
+            SELECT COALESCE(MAX(id), 0) INTO max_id FROM customer_billing_configurations;
+            
+            -- Create sequence
+            EXECUTE 'CREATE SEQUENCE customer_billing_configurations_id_seq START WITH ' || (max_id + 1);
+            
+            -- Link sequence to id column
+            ALTER TABLE customer_billing_configurations ALTER COLUMN id SET DEFAULT nextval('customer_billing_configurations_id_seq');
+            ALTER SEQUENCE customer_billing_configurations_id_seq OWNED BY customer_billing_configurations.id;
+          END;
+        END IF;
+      END $$;
+    `
+  } catch (error) {
+    console.error("[v0] Error ensuring sequence exists:", error)
+  }
+}
+
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
     const customerId = params.id
+
+    await ensureSequenceExists(sql)
 
     const customerCheck = await sql`
       SELECT id FROM customers WHERE id = ${customerId}
@@ -118,6 +148,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       )
     }
 
+    await ensureSequenceExists(sql)
+
     // Map UI fields to database fields
     const dbUpdates: any = {}
 
@@ -227,6 +259,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         { status: 404 },
       )
     }
+
+    await ensureSequenceExists(sql)
 
     const billingCycle =
       configData.billing_cycle ||

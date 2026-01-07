@@ -8,10 +8,45 @@ import {
 } from "@/lib/radius-integration"
 import { allocateIPByLocation } from "@/lib/location-ip-allocation"
 
+async function ensureSequenceExists(sql: any) {
+  try {
+    // Check if sequence exists
+    const sequenceExists = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_sequences 
+        WHERE schemaname = 'public' 
+        AND sequencename = 'customer_services_id_seq'
+      ) as exists
+    `
+
+    if (!sequenceExists[0]?.exists) {
+      console.log("[v0] Creating customer_services_id_seq sequence...")
+
+      // Get max id
+      const maxId = await sql`SELECT COALESCE(MAX(id), 0) as max_id FROM customer_services`
+      const nextId = (maxId[0]?.max_id || 0) + 1
+
+      // Create sequence
+      await sql`CREATE SEQUENCE IF NOT EXISTS customer_services_id_seq START WITH ${nextId}`
+
+      // Set default
+      await sql`ALTER TABLE customer_services ALTER COLUMN id SET DEFAULT nextval('customer_services_id_seq')`
+
+      console.log("[v0] Sequence created successfully with start value:", nextId)
+    }
+  } catch (error) {
+    console.error("[v0] Error ensuring sequence exists:", error)
+    throw error // Re-throw to prevent INSERT from proceeding
+  }
+}
+
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
     const customerId = params.id
+
+    await ensureSequenceExists(sql)
+
     const serviceData = await request.json()
 
     console.log("[v0] Received service data:", serviceData)

@@ -32,7 +32,6 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { getServicePlans, createServicePlan, updateServicePlan, deleteServicePlan } from "@/app/actions/service-actions"
 import { formatCurrency, formatCurrencyCompact, TAX_RATES } from "@/lib/currency"
 
 export default function ServicesPage() {
@@ -45,220 +44,60 @@ export default function ServicesPage() {
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
-  const fallbackServicePlans = [
-    {
-      id: 1,
-      name: "Basic Home",
-      speed: "10/5 Mbps",
-      price: 2999,
-      customers: 450,
-      active: true,
-      description: "Perfect for light browsing and email",
-      fup_limit: 50,
-      fup_speed: "2/1 Mbps",
-      tax_rate: 16,
-      setup_fee: 500,
-      installation_fee: 1000,
-      equipment_fee: 2500,
-      category: "residential",
-      contract_period: 12,
-      early_termination_fee: 5000,
-      features: ["Email Support", "Basic Firewall", "Fair Usage Policy"],
-    },
-    {
-      id: 2,
-      name: "Standard Home",
-      speed: "25/10 Mbps",
-      price: 4999,
-      customers: 1200,
-      active: true,
-      description: "Great for streaming and working from home",
-      fup_limit: 100,
-      fup_speed: "5/2 Mbps",
-      tax_rate: 16,
-      setup_fee: 500,
-      installation_fee: 1500,
-      equipment_fee: 3500,
-      category: "residential",
-      contract_period: 12,
-      early_termination_fee: 7500,
-      features: ["24/7 Support", "Advanced Firewall", "Parental Controls", "100GB FUP"],
-    },
-    {
-      id: 3,
-      name: "Premium Home",
-      speed: "50/25 Mbps",
-      price: 7999,
-      customers: 890,
-      active: true,
-      description: "Ideal for heavy usage and gaming",
-      fup_limit: 200,
-      fup_speed: "10/5 Mbps",
-      tax_rate: 16,
-      setup_fee: 0, // Waived
-      installation_fee: 2000,
-      equipment_fee: 5000,
-      category: "residential",
-      contract_period: 12,
-      early_termination_fee: 10000,
-      features: ["Priority Support", "Gaming Optimization", "Static IP Option", "200GB FUP"],
-    },
-    {
-      id: 4,
-      name: "Business Starter",
-      speed: "100/50 Mbps",
-      price: 14999,
-      customers: 307,
-      active: true,
-      description: "Enterprise-grade connectivity for small business",
-      fup_limit: null, // Unlimited
-      fup_speed: null,
-      tax_rate: 16,
-      setup_fee: 0,
-      installation_fee: 3000,
-      equipment_fee: 8000,
-      category: "business",
-      contract_period: 24,
-      early_termination_fee: 25000,
-      features: ["SLA Guarantee", "Dedicated Support", "Static IP Included", "Unlimited Data"],
-    },
-    {
-      id: 5,
-      name: "Enterprise Pro",
-      speed: "500/250 Mbps",
-      price: 49999,
-      customers: 89,
-      active: true,
-      description: "Maximum performance for large enterprises",
-      fup_limit: null,
-      fup_speed: null,
-      tax_rate: 16,
-      setup_fee: 0,
-      installation_fee: 5000,
-      equipment_fee: 15000,
-      category: "enterprise",
-      contract_period: 36,
-      early_termination_fee: 75000,
-      features: ["99.9% SLA", "24/7 Dedicated Support", "Multiple Static IPs", "Redundant Connection"],
-    },
-  ]
-
   useEffect(() => {
-    const loadPlans = async () => {
-      try {
-        console.log("[v0] Loading service plans from database...")
-        const result = await getServicePlans()
-        console.log("[v0] Service plans result:", result)
-
-        if (result.success && result.data && result.data.length > 0) {
-          console.log("[v0] Found", result.data.length, "service plans in database")
-
-          const dbPlans = result.data.map((plan: any, index: number) => {
-            console.log(`[v0] Processing plan ${index + 1}:`, plan.name)
-
-            // Simple plan processing without complex logic
-            return {
-              id: plan.id,
-              name: plan.name,
-              speed:
-                plan.download_speed && plan.upload_speed ? `${plan.download_speed}/${plan.upload_speed} Mbps` : "N/A",
-              price: Number.parseFloat(plan.price) || 0,
-              customers: Number.parseInt(plan.customer_count) || 0,
-              active: plan.status === "active",
-              description: plan.description || "",
-              fup_limit: plan.data_limit,
-              fup_speed: null, // Simplified - no throttled_speed processing
-              tax_rate: 16,
-              setup_fee: 0,
-              installation_fee: 1000,
-              equipment_fee: 2500,
-              category: plan.category || "residential",
-              contract_period: 12,
-              early_termination_fee: 5000,
-              features: Array.isArray(plan.features) ? plan.features : ["Basic Support", "Standard Installation"], // Simplified features processing
-            }
-          })
-
-          console.log("[v0] All plans processed successfully")
-          setServicePlans(dbPlans)
-        } else {
-          console.log("[v0] No database plans found or query failed. Result:", result)
-          toast({
-            title: "No Service Plans Found",
-            description: "No service plans found in database. Please add service plans to see real data.",
-            variant: "destructive",
-          })
-          setServicePlans([])
-        }
-      } catch (error) {
-        console.error("[v0] Error loading plans:", error)
-        console.error("[v0] Error stack:", error instanceof Error ? error.stack : "No stack trace")
-        toast({
-          title: "Database Error",
-          description: "Failed to load service plans from database. Please check your connection.",
-          variant: "destructive",
-        })
-        setServicePlans([])
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadPlans()
+    loadServicePlans()
   }, [])
+
+  const loadServicePlans = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/service-plans")
+      const data = await response.json()
+
+      if (data.success && data.plans) {
+        setServicePlans(data.plans)
+      } else {
+        setServicePlans([])
+        if (data.message) {
+          toast({
+            title: "No Service Plans",
+            description: data.message,
+            variant: "default",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Error loading service plans:", error)
+      setServicePlans([])
+      toast({
+        title: "Error",
+        description: "Failed to load service plans from database",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleAddPlan = async (formData: FormData) => {
     try {
-      const result = await createServicePlan(formData)
-      if (result.success) {
+      const result = await fetch("/api/service-plans", {
+        method: "POST",
+        body: formData,
+      })
+      const data = await result.json()
+
+      if (data.success) {
         toast({
           title: "Service Plan Added",
-          description: result.message || "New service plan has been created successfully.",
+          description: data.message || "New service plan has been created successfully.",
         })
         setAddPlanOpen(false)
-        const updatedPlans = await getServicePlans()
-        if (updatedPlans.success && updatedPlans.data) {
-          const dbPlans = updatedPlans.data.map((plan: any) => ({
-            id: plan.id,
-            name: plan.name,
-            speed:
-              plan.download_speed && plan.upload_speed
-                ? `${plan.download_speed}/${plan.upload_speed} Mbps`
-                : plan.speed || "N/A",
-            price: Number.parseFloat(plan.price) || 0,
-            customers: plan.customer_count || 0,
-            active: plan.status === "active",
-            description: plan.description || "",
-            fup_limit: plan.data_limit,
-            fup_speed: plan.throttled_speed,
-            tax_rate: 16,
-            setup_fee: 0,
-            installation_fee: 1000,
-            equipment_fee: 2500,
-            category: plan.category || "residential",
-            contract_period: 12,
-            early_termination_fee: 5000,
-            features: (() => {
-              // If features is already an object, convert it to array of enabled feature names
-              if (typeof plan.features === "object" && plan.features !== null && !Array.isArray(plan.features)) {
-                return Object.entries(plan.features)
-                  .filter(([key, value]) => value === true)
-                  .map(([key]) => key.replace(/([A-Z])/g, " $1").replace(/^./, (str) => str.toUpperCase()))
-                  .concat(["Basic Support", "Standard Installation"])
-              }
-              // If it's already an array, return it
-              if (Array.isArray(plan.features)) {
-                return plan.features
-              }
-              // Default features
-              return ["Basic Support", "Standard Installation"]
-            })(),
-          }))
-          setServicePlans(dbPlans)
-        }
+        loadServicePlans()
       } else {
         toast({
           title: "Error",
-          description: result.error || "Failed to create service plan",
+          description: data.error || "Failed to create service plan",
           variant: "destructive",
         })
       }
@@ -273,18 +112,23 @@ export default function ServicesPage() {
 
   const handleEditPlan = async (formData: FormData) => {
     try {
-      const result = await updateServicePlan(formData)
-      if (result.success) {
+      const result = await fetch(`/api/service-plans/${selectedPlan.id}`, {
+        method: "PUT",
+        body: formData,
+      })
+      const data = await result.json()
+
+      if (data.success) {
         toast({
           title: "Service Plan Updated",
-          description: result.message || "Service plan has been updated successfully.",
+          description: data.message || "Service plan has been updated successfully.",
         })
         setEditPlanOpen(false)
         setSelectedPlan(null)
       } else {
         toast({
           title: "Error",
-          description: result.error || "Failed to update service plan",
+          description: data.error || "Failed to update service plan",
           variant: "destructive",
         })
       }
@@ -320,17 +164,21 @@ export default function ServicesPage() {
   const handleDeletePlan = async (planId: number) => {
     console.log("[v0] Delete plan clicked for plan:", planId)
     try {
-      const result = await deleteServicePlan(planId)
-      if (result.success) {
+      const result = await fetch(`/api/service-plans/${planId}`, {
+        method: "DELETE",
+      })
+      const data = await result.json()
+
+      if (data.success) {
         toast({
           title: "Plan Deleted",
-          description: result.message || "Service plan has been deleted.",
+          description: data.message || "Service plan has been deleted.",
         })
         setServicePlans((prev) => prev.filter((plan) => plan.id !== planId))
       } else {
         toast({
           title: "Error",
-          description: result.error || "Failed to delete service plan",
+          description: data.error || "Failed to delete service plan",
           variant: "destructive",
         })
       }

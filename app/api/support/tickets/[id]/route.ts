@@ -34,6 +34,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const body = await request.json()
     const { status, assigned_to, priority, resolution_notes, time_spent, items_used } = body
 
+    const sanitizedTimeSpent = time_spent && typeof time_spent === "number" ? time_spent : null
+    const sanitizedItemsUsed = items_used && typeof items_used === "string" ? items_used : null
+    const sanitizedResolutionNotes = resolution_notes && typeof resolution_notes === "string" ? resolution_notes : null
+
     // Update ticket
     const [ticket] = await sql`
       UPDATE support_tickets 
@@ -52,14 +56,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Record performance tracking if provided
-    if (assigned_to && (time_spent || items_used || resolution_notes)) {
+    if (assigned_to && (sanitizedTimeSpent || sanitizedItemsUsed || sanitizedResolutionNotes)) {
       await sql`
         INSERT INTO employee_performance_tracking (
           ticket_id, employee_id, action_type, time_spent, items_used, 
           resolution_notes, created_at
         ) VALUES (
           ${params.id}, ${assigned_to}, ${status || "updated"}, 
-          ${time_spent}, ${items_used}, ${resolution_notes}, NOW()
+          ${sanitizedTimeSpent}, ${sanitizedItemsUsed}, ${sanitizedResolutionNotes}, NOW()
         )
       `
     }

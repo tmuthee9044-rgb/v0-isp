@@ -9,10 +9,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const body = await request.json()
     const { status, assigned_to } = body
 
+    const sanitizedAssignedTo = assigned_to !== undefined && assigned_to !== null ? assigned_to : null
+
     const [ticket] = await sql`
       UPDATE support_tickets 
       SET status = ${status || "in_progress"}, 
-          assigned_to = ${assigned_to || assigned_to}, 
+          assigned_to = ${sanitizedAssignedTo}, 
           updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

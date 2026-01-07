@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS service_plans (
 );
 
 -- 3. Customer Services Table
-CREATE TABLE customer_services (
+CREATE TABLE IF NOT EXISTS customer_services (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
     service_plan_id INTEGER REFERENCES service_plans(id) ON DELETE SET NULL,
@@ -261,7 +261,7 @@ CREATE TABLE customer_services (
 );
 
 -- 4. Payments Table
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
     amount DECIMAL(10, 2) NOT NULL,
@@ -275,7 +275,7 @@ CREATE TABLE payments (
 );
 
 -- 5. Invoices Table
-CREATE TABLE invoices (
+CREATE TABLE IF NOT EXISTS invoices (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
     invoice_number VARCHAR(100) UNIQUE NOT NULL,
@@ -289,7 +289,7 @@ CREATE TABLE invoices (
 );
 
 -- 6. Network Devices Table
-CREATE TABLE network_devices (
+CREATE TABLE IF NOT EXISTS network_devices (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100),
@@ -325,7 +325,7 @@ CREATE TABLE network_devices (
 );
 
 -- 7. IP Addresses Table
-CREATE TABLE ip_addresses (
+CREATE TABLE IF NOT EXISTS ip_addresses (
     id SERIAL PRIMARY KEY,
     ip_address VARCHAR(50) UNIQUE NOT NULL,
     subnet_id INTEGER,
@@ -338,7 +338,7 @@ CREATE TABLE ip_addresses (
 );
 
 -- 8. Employees Table
-CREATE TABLE employees (
+CREATE TABLE IF NOT EXISTS employees (
     id SERIAL PRIMARY KEY,
     employee_id VARCHAR(50) UNIQUE NOT NULL,
     first_name VARCHAR(100) NOT NULL,
@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
 );
 
 -- 9. Payroll Table
-CREATE TABLE payroll (
+CREATE TABLE IF NOT EXISTS payroll (
     id SERIAL PRIMARY KEY,
     employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
     pay_period_start DATE NOT NULL,
@@ -423,7 +423,7 @@ CREATE TABLE payroll (
 );
 
 -- 10. Leave Requests Table
-CREATE TABLE leave_requests (
+CREATE TABLE IF NOT EXISTS leave_requests (
     id SERIAL PRIMARY KEY,
     employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
     leave_type VARCHAR(50) NOT NULL,
@@ -439,7 +439,7 @@ CREATE TABLE leave_requests (
 );
 
 -- 11. Activity Logs Table
-CREATE TABLE activity_logs (
+CREATE TABLE IF NOT EXISTS activity_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,
     action VARCHAR(255) NOT NULL,
@@ -454,7 +454,7 @@ CREATE TABLE activity_logs (
 -- Inventory Management Tables
 
 -- Adding suppliers table for inventory management
-CREATE TABLE suppliers (
+CREATE TABLE IF NOT EXISTS suppliers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_name VARCHAR(255) NOT NULL,
     contact_person VARCHAR(255),
@@ -476,7 +476,7 @@ CREATE TABLE suppliers (
 );
 
 -- Adding inventory_items table for tracking stock
-CREATE TABLE inventory_items (
+CREATE TABLE IF NOT EXISTS inventory_items (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -497,7 +497,7 @@ CREATE TABLE inventory_items (
 );
 
 -- Adding purchase_orders table
-CREATE TABLE purchase_orders (
+CREATE TABLE IF NOT EXISTS purchase_orders (
     id SERIAL PRIMARY KEY,
     order_number VARCHAR(100) UNIQUE NOT NULL,
     supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
@@ -517,7 +517,7 @@ CREATE TABLE purchase_orders (
 );
 
 -- Adding purchase_order_items table with received_quantity column
-CREATE TABLE purchase_order_items (
+CREATE TABLE IF NOT EXISTS purchase_order_items (
     id SERIAL PRIMARY KEY,
     purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
     inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
@@ -532,7 +532,7 @@ CREATE TABLE purchase_order_items (
 );
 
 -- Adding inventory_movements table for tracking stock changes
-CREATE TABLE inventory_movements (
+CREATE TABLE IF NOT EXISTS inventory_movements (
     id SERIAL PRIMARY KEY,
     item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
     movement_type VARCHAR(50) NOT NULL,
@@ -552,7 +552,7 @@ CREATE TABLE inventory_movements (
 );
 
 -- Adding inventory_serial_numbers table for serialized items
-CREATE TABLE inventory_serial_numbers (
+CREATE TABLE IF NOT EXISTS inventory_serial_numbers (
     id SERIAL PRIMARY KEY,
     inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,
     serial_number VARCHAR(255) UNIQUE NOT NULL,
@@ -569,7 +569,7 @@ CREATE TABLE inventory_serial_numbers (
 );
 
 -- Adding supplier_invoices table
-CREATE TABLE supplier_invoices (
+CREATE TABLE IF NOT EXISTS supplier_invoices (
     id SERIAL PRIMARY KEY,
     invoice_number VARCHAR(100) UNIQUE NOT NULL,
     supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
@@ -589,7 +589,7 @@ CREATE TABLE supplier_invoices (
 );
 
 -- Adding supplier_invoice_items table
-CREATE TABLE supplier_invoice_items (
+CREATE TABLE IF NOT EXISTS supplier_invoice_items (
     id SERIAL PRIMARY KEY,
     invoice_id INTEGER REFERENCES supplier_invoices(id) ON DELETE CASCADE,
     inventory_item_id INTEGER REFERENCES inventory_items(id) ON DELETE CASCADE,

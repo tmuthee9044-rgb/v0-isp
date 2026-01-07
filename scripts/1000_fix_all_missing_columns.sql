@@ -48,9 +48,10 @@ BEGIN
     END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_level ON admin_logs(level);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
+-- Lines 51-53 removed - these columns don't exist in admin_logs table
+-- CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
+-- CREATE INDEX IF NOT EXISTS idx_admin_logs_level ON admin_logs(level);
+-- CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
 
 -- Fix customers.email UNIQUE constraint for ON CONFLICT to work
 DO $$
@@ -309,7 +310,7 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255);
 
 -- Fix customers table
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
-ALTERTABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_primary VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_secondary VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_office VARCHAR(50);
@@ -639,7 +640,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER ABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
+ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
 
 -- Fix loyalty_redemptions table
 ALTER TABLE loyalty_redemptions ADD COLUMN IF NOT EXISTS points_required INTEGER NOT NULL;
@@ -967,7 +968,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTERTABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
@@ -991,8 +992,6 @@ ALTER COLUMN id SET DATA TYPE UUID
 USING gen_random_uuid();
 ALTER TABLE employees
 ALTER COLUMN id SET DEFAULT gen_random_uuid();
-ALTER TABLE employees
-ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
 --added end by user
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);

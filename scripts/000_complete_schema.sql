@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 -- Core Tables
 
 -- Add locations table with all required columns
-CREATE TABLE locations (
+CREATE TABLE IF NOT EXISTS locations (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     address TEXT,
@@ -93,7 +93,7 @@ CREATE TABLE locations (
 );
 
 -- 1. Customers Table
-CREATE TABLE customers (
+CREATE TABLE IF NOT EXISTS customers (
     id SERIAL PRIMARY KEY,
     account_number VARCHAR(100) UNIQUE,
     name VARCHAR(255) NOT NULL,
@@ -175,7 +175,7 @@ CREATE TABLE customers (
 );
 
 -- 2. Service Plans Table
-CREATE TABLE service_plans (
+CREATE TABLE IF NOT EXISTS service_plans (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await sql`
         UPDATE network_devices SET 
           status = ${newStatus},
-          last_seen = ${connectionResult.success ? "NOW()" : null},
+          last_seen = ${connectionResult.success ? sql`NOW()` : null},
           updated_at = NOW()
         WHERE id = ${routerId}
       `

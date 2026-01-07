@@ -137,8 +137,8 @@ export class RealTimeDashboard {
       outstandingInvoices: 0,
       overdueAmount: 0,
       paymentSuccessRate: 0,
-      networkUptime: 95,
-      bandwidthUtilization: 65,
+      networkUptime: 0,
+      bandwidthUtilization: 0,
       activeConnections: 0,
       networkDevicesOnline: 0,
       networkDevicesTotal: 0,
@@ -147,13 +147,13 @@ export class RealTimeDashboard {
       serviceActivationsToday: 0,
       serviceUpgradeRate: 0,
       openTickets: 0,
-      averageResponseTime: 24,
+      averageResponseTime: 0,
       ticketResolutionRate: 0,
-      customerSatisfactionScore: 4.2,
-      systemHealth: 98.5,
-      databaseConnections: 5,
-      apiResponseTime: 145,
-      errorRate: 0.2,
+      customerSatisfactionScore: 0,
+      systemHealth: 0,
+      databaseConnections: 0,
+      apiResponseTime: 0,
+      errorRate: 0,
     }
   }
 
@@ -299,7 +299,7 @@ export class RealTimeDashboard {
         const sql = await getSqlConnection()
         const queryTimeout = 10000
 
-        const [networkStatsResult, connectionStatsResult] = await Promise.all([
+        const [networkStatsResult, connectionStatsResult, bandwidthResult] = await Promise.all([
           Promise.race([
             sql`
               SELECT 
@@ -325,19 +325,34 @@ export class RealTimeDashboard {
             console.error("[v0] Active connections query failed:", error)
             return [{ active_connections: 0 }]
           }),
+
+          Promise.race([
+            sql`
+              SELECT 
+                COALESCE(AVG((bandwidth_usage::numeric / NULLIF(peak_usage, 0)) * 100), 0) as avg_utilization
+              FROM router_performance_history
+              WHERE timestamp >= NOW() - INTERVAL '1 hour'
+              AND peak_usage > 0
+            `,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), queryTimeout)),
+          ]).catch((error) => {
+            console.error("[v0] Bandwidth utilization query failed:", error)
+            return [{ avg_utilization: 0 }]
+          }),
         ])
 
         const networkStats = networkStatsResult[0]
         const connectionStats = connectionStatsResult[0]
+        const bandwidthStats = bandwidthResult[0]
 
         const totalDevices = Number(networkStats.total_devices) || 1
         const onlineDevices = Number(networkStats.online_devices) || 0
 
-        const networkUptime = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 95
+        const networkUptime = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0
 
         return {
           networkUptime: Math.round(networkUptime * 100) / 100,
-          bandwidthUtilization: 65,
+          bandwidthUtilization: Math.round(Number(bandwidthStats.avg_utilization) || 0),
           activeConnections: Number(connectionStats.active_connections) || 0,
           networkDevicesOnline: onlineDevices,
           networkDevicesTotal: totalDevices,
@@ -345,8 +360,8 @@ export class RealTimeDashboard {
       } catch (error) {
         console.error("[v0] Error fetching network metrics:", error)
         return {
-          networkUptime: 95,
-          bandwidthUtilization: 65,
+          networkUptime: 0,
+          bandwidthUtilization: 0,
           activeConnections: 0,
           networkDevicesOnline: 0,
           networkDevicesTotal: 0,
@@ -405,46 +420,72 @@ export class RealTimeDashboard {
         ])
         tableExists = tableExistsResult[0]?.exists
       } catch (error) {
-        console.log("[v0] Could not check support_tickets table existence, using fallback values")
+        console.log("[v0] Could not check support_tickets table existence, using zero values")
         return {
           openTickets: 0,
-          averageResponseTime: 24,
+          averageResponseTime: 0,
           ticketResolutionRate: 0,
-          customerSatisfactionScore: 4.2,
+          customerSatisfactionScore: 0,
         }
       }
 
       if (!tableExists) {
-        console.log("[v0] support_tickets table does not exist, using fallback values")
+        console.log("[v0] support_tickets table does not exist, using zero values")
         return {
           openTickets: 0,
-          averageResponseTime: 24,
+          averageResponseTime: 0,
           ticketResolutionRate: 0,
-          customerSatisfactionScore: 4.2,
+          customerSatisfactionScore: 0,
         }
       }
 
       let ticketStats
+      let responseTimeStats
+      let satisfactionStats
       try {
-        const ticketStatsResult = await Promise.race([
-          sql`
-            SELECT 
-              COUNT(CASE WHEN status IN ('open', 'in_progress') THEN 1 END) as open_tickets,
-              COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_tickets,
-              COUNT(*) as total_tickets
-            FROM support_tickets
-            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-          `,
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), getQueryTimeout())),
+        const [ticketStatsResult, responseTimeResult, satisfactionResult] = await Promise.all([
+          Promise.race([
+            sql`
+              SELECT 
+                COUNT(CASE WHEN status IN ('open', 'in_progress') THEN 1 END) as open_tickets,
+                COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_tickets,
+                COUNT(*) as total_tickets
+              FROM support_tickets
+              WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+            `,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), getQueryTimeout())),
+          ]),
+          Promise.race([
+            sql`
+              SELECT 
+                COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600), 0) as avg_response_hours
+              FROM support_tickets
+              WHERE status IN ('resolved', 'closed')
+              AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+            `,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), getQueryTimeout())),
+          ]),
+          Promise.race([
+            sql`
+              SELECT 
+                COALESCE(AVG(satisfaction_rating), 0) as avg_satisfaction
+              FROM support_tickets
+              WHERE satisfaction_rating IS NOT NULL
+              AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+            `,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), getQueryTimeout())),
+          ]),
         ])
         ticketStats = ticketStatsResult[0]
+        responseTimeStats = responseTimeResult[0]
+        satisfactionStats = satisfactionResult[0]
       } catch (error) {
-        console.log("[v0] Could not fetch ticket stats, using fallback values")
+        console.log("[v0] Could not fetch ticket stats, using zero values")
         return {
           openTickets: 0,
-          averageResponseTime: 24,
+          averageResponseTime: 0,
           ticketResolutionRate: 0,
-          customerSatisfactionScore: 4.2,
+          customerSatisfactionScore: 0,
         }
       }
 
@@ -455,17 +496,17 @@ export class RealTimeDashboard {
 
       return {
         openTickets: Number(ticketStats.open_tickets),
-        averageResponseTime: 24,
+        averageResponseTime: Math.round(Number(responseTimeStats.avg_response_hours) || 0),
         ticketResolutionRate: Math.round(ticketResolutionRate * 100) / 100,
-        customerSatisfactionScore: 4.2,
+        customerSatisfactionScore: Math.round((Number(satisfactionStats.avg_satisfaction) || 0) * 10) / 10,
       }
     } catch (error) {
-      console.log("[v0] Support metrics unavailable, using fallback values")
+      console.log("[v0] Support metrics unavailable, using zero values")
       return {
         openTickets: 0,
-        averageResponseTime: 24,
+        averageResponseTime: 0,
         ticketResolutionRate: 0,
-        customerSatisfactionScore: 4.2,
+        customerSatisfactionScore: 0,
       }
     }
   }
@@ -474,7 +515,7 @@ export class RealTimeDashboard {
     try {
       const sql = await getSqlConnection()
 
-      let dbStats = { active_connections: 5 }
+      let dbStats = { active_connections: 0 }
       try {
         const dbStatsResult = await Promise.race([
           sql`
@@ -488,22 +529,23 @@ export class RealTimeDashboard {
         dbStats = dbStatsResult?.[0] || dbStats
       } catch (error) {
         console.error("[v0] pg_stat_activity query failed (this is normal if permissions are restricted):", error)
-        // Use fallback value
       }
 
+      const systemHealth = 100 // Will be calculated from actual error rates and uptime
+
       return {
-        systemHealth: 98.5,
-        databaseConnections: Number(dbStats.active_connections) || 5,
-        apiResponseTime: 145,
-        errorRate: 0.2,
+        systemHealth: systemHealth,
+        databaseConnections: Number(dbStats.active_connections) || 0,
+        apiResponseTime: 0, // TODO: Implement API response time tracking
+        errorRate: 0, // TODO: Implement error rate tracking from admin_logs
       }
     } catch (error) {
       console.error("Error fetching operational metrics:", error)
       return {
-        systemHealth: 98.5,
-        databaseConnections: 5,
-        apiResponseTime: 145,
-        errorRate: 0.2,
+        systemHealth: 0,
+        databaseConnections: 0,
+        apiResponseTime: 0,
+        errorRate: 0,
       }
     }
   }

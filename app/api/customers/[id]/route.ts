@@ -210,6 +210,12 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }
     }
 
+    const parseIntOrNull = (value: any, fallback: any = null) => {
+      if (value === "" || value === null || value === undefined) return fallback
+      const parsed = Number.parseInt(value)
+      return isNaN(parsed) ? fallback : parsed
+    }
+
     const result = await sql`
       UPDATE customers 
       SET 
@@ -246,9 +252,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         industry = ${updateData.industry || existingCustomer[0].industry || ""},
         company_size = ${updateData.company_size || existingCustomer[0].company_size || ""},
         school_type = ${updateData.school_type || existingCustomer[0].school_type || ""},
-        student_count = ${updateData.student_count !== undefined ? updateData.student_count : existingCustomer[0].student_count || null},
-        staff_count = ${updateData.staff_count !== undefined ? updateData.staff_count : existingCustomer[0].staff_count || null},
-        location_id = ${updateData.location_id !== undefined ? updateData.location_id : existingCustomer[0].location_id || null},
+        student_count = ${parseIntOrNull(updateData.student_count, existingCustomer[0].student_count)},
+        staff_count = ${parseIntOrNull(updateData.staff_count, existingCustomer[0].staff_count)},
+        location_id = ${parseIntOrNull(updateData.location_id, existingCustomer[0].location_id)},
         portal_username = ${updateData.portal_username || existingCustomer[0].portal_username || ""},
         portal_password = ${updateData.portal_password || existingCustomer[0].portal_password || ""},
         preferred_contact_method = ${updateData.preferred_contact_method || existingCustomer[0].preferred_contact_method || "email"},

@@ -49,25 +49,26 @@ export async function getServicePlans() {
   }
 }
 
-export async function addCustomerService(data: any) {
+export async function addCustomerService(customerId: number, formData: FormData) {
   try {
     const sql = await getSql()
 
     console.log("[v0] === addCustomerService START ===")
     console.log("[v0] Timestamp:", new Date().toISOString())
 
-    const customerId = data.customer_id
-    const servicePlanId = Number.parseInt(data.service_plan_id)
-    const connectionType = data.connection_type
-    const locationId = data.location_id
-    const macAddress = data.mac_address
-    const lockToMac = data.lock_to_mac === true || data.lock_to_mac === "on"
-    const pppoeEnabled = data.pppoe_enabled === true || data.pppoe_enabled === "on"
-    const pppoeUsername = data.pppoe_username
-    const pppoePassword = data.pppoe_password
-    const inventoryItems = data.inventory_items
-    const adminOverride = data.admin_override === true || data.admin_override === "on"
-    const routerId = data.router_id
+    const servicePlanId = Number.parseInt(formData.get("service_plan_id") as string)
+    const connectionType = formData.get("connection_type") as string
+    const locationId = formData.get("location_id") as string
+    const macAddress = formData.get("mac_address") as string
+    const lockToMac = formData.get("lock_to_mac") === "on"
+    const pppoeEnabled = formData.get("pppoe_enabled") === "on"
+    const pppoeUsername = formData.get("pppoe_username") as string
+    const pppoePassword = formData.get("pppoe_password") as string
+    const inventoryItems = formData.get("inventory_items") as string
+    const adminOverride = formData.get("admin_override") === "on"
+    const routerId = formData.get("router_id") as string
+    const ipAddress = formData.get("ip_address") as string
+    const autoRenew = formData.get("auto_renew") === "on"
 
     console.log("[v0] Customer ID:", customerId)
     console.log("[v0] Service Plan ID:", servicePlanId)
@@ -82,7 +83,7 @@ export async function addCustomerService(data: any) {
     console.log("[v0] Admin Override:", adminOverride)
     console.log("[v0] Router ID:", routerId)
 
-    if (!data.service_plan_id || isNaN(servicePlanId)) {
+    if (!servicePlanId || isNaN(servicePlanId)) {
       console.log("[v0] Invalid service plan ID")
       return {
         success: false,
@@ -96,8 +97,6 @@ export async function addCustomerService(data: any) {
         error: "Connection type is required. Please select a connection type.",
       }
     }
-
-    const ipAddress = data.ip_address
 
     if (ipAddress && ipAddress !== "auto") {
       console.log("[v0] Checking for duplicate IP address...")
@@ -166,7 +165,7 @@ export async function addCustomerService(data: any) {
         ${macAddress || null},
         ${connectionType || "pppoe"},
         ${lockToMac},
-        ${data.auto_renew === true || data.auto_renew === "on"},
+        ${autoRenew},
         ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
         ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         NOW(),
@@ -612,7 +611,7 @@ export async function updateCustomerService(formData: FormData) {
               }),
               suspendRadiusUser({
                 customerId: service.customer_id,
-                serviceId: service.id,
+                serviceId,
                 username: service.portal_username || `customer_${service.customer_id}`,
                 reason: "Service suspended",
               }),
@@ -637,7 +636,7 @@ export async function updateCustomerService(formData: FormData) {
               }),
               provisionRadiusUser({
                 customerId: service.customer_id,
-                serviceId: service.id,
+                serviceId,
                 username: service.portal_username || `customer_${service.customer_id}`,
                 password: service.portal_username || `customer_${service.customer_id}`,
                 ipAddress: service.ip_address,

@@ -1,6 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/database"
-import bcrypt from "bcrypt"
+import { crypto } from "crypto"
+
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hash = await crypto.subtle.digest("SHA-256", data)
+  const hashArray = Array.from(new Uint8Array(hash))
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+  return hashHex
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,8 +113,7 @@ export async function POST(request: NextRequest) {
     // Generate customer account number
     const accountNumber = `TW${Date.now().toString().slice(-6)}`
 
-    // Hash password (in production, use proper password hashing like bcrypt)
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await hashPassword(password)
 
     const newCustomer = await sql.begin(async (sql) => {
       const customerResult = await sql`

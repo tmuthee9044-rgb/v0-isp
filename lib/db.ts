@@ -1,11 +1,9 @@
 "use server"
 
-import { Pool } from "pg"
+import { neon } from "@neondatabase/serverless"
 
 // Cached database clients
-let localSqlClient: any = null
-let neonSqlClient: any = null
-let pool: Pool | null = null
+let sqlClient: any = null
 
 /**
  * Determine which connection string to use
@@ -39,72 +37,32 @@ function isLocalEnvironment(): boolean {
 }
 
 /**
- * Create a Neon-compatible wrapper for local PostgreSQL Pool
- */
-function createLocalSqlWrapper(pool: Pool) {
-  const wrapper: any = async (strings: TemplateStringsArray | string, ...values: any[]) => {
-    if (typeof strings === "string") {
-      // Called as sql.unsafe(query)
-      const result = await pool.query(strings)
-      return result.rows
-    } else {
-      // Called as sql`query ${value}`
-      let query = ""
-      for (let i = 0; i < strings.length; i++) {
-        query += strings[i]
-        if (i < values.length) {
-          query += `$${i + 1}`
-        }
-      }
-      const result = await pool.query(query, values)
-      return result.rows
-    }
-  }
-
-  // Add unsafe method for raw queries
-  wrapper.unsafe = async (query: string, params: any[] = []) => {
-    const result = await pool.query(query, params)
-    return result.rows
-  }
-
-  return wrapper
-}
-
-/**
- * Unified SQL client — automatically selects local or Neon DB
+ * Unified SQL client — works in all environments including browser runtime
  */
 export async function getSql(): Promise<any> {
-  if (localSqlClient) {
-    return localSqlClient
-  }
-
-  if (neonSqlClient) {
-    return neonSqlClient
+  if (sqlClient) {
+    return sqlClient
   }
 
   const connectionString = getConnectionString()
 
   try {
-    if (isLocalEnvironment()) {
+    const isLocal = isLocalEnvironment()
+
+    if (isLocal) {
       console.log("🔧 [DB] Using local PostgreSQL connection (Rule 4 - Offline Mode)")
-      pool = new Pool({ connectionString })
-
-      await pool.query("SELECT 1 as health_check")
-      console.log("✅ [DB] Local PostgreSQL connected successfully")
-
-      localSqlClient = createLocalSqlWrapper(pool)
-      return localSqlClient
     } else {
       console.log("☁️ [DB] Using Neon serverless connection (Rule 4 - Online Mode)")
-      const { neon } = await import("@neondatabase/serverless")
-      const neonClient = neon(connectionString)
-
-      await neonClient`SELECT 1 as health_check`
-      console.log("✅ [DB] Neon serverless connected successfully")
-
-      neonSqlClient = neonClient
-      return neonClient
     }
+
+    const sql = neon(connectionString)
+
+    // Test connection
+    await sql`SELECT 1 as health_check`
+    console.log("✅ [DB] Connected successfully")
+
+    sqlClient = sql
+    return sqlClient
   } catch (error: any) {
     console.error("[DB] Connection error:", error.message)
     throw new Error(`Failed to connect to database: ${error.message}`)
@@ -123,7 +81,7 @@ export async function getDatabaseStatus() {
       connected: true,
       database: result[0]?.db,
       version: result[0]?.version,
-      driver: isLocalEnvironment() ? "pg (local)" : "neon (serverless)",
+      driver: "@neondatabase/serverless (compatible with all runtimes)",
     }
   } catch (error: any) {
     return {

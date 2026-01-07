@@ -90,25 +90,9 @@ function AddServiceModal({
 
       if (data.success && data.plans && Array.isArray(data.plans)) {
         if (data.plans.length === 0) {
-          const shouldSeed = confirm(
-            "No service plans found in database. Would you like to create 3 default service plans (Basic, Standard, Premium)?",
-          )
-
-          if (shouldSeed) {
-            const seedResponse = await fetch("/api/seed/service-plans", { method: "POST" })
-            const seedData = await seedResponse.json()
-
-            if (seedData.success) {
-              alert(seedData.message)
-              // Retry fetching plans
-              await fetchServicePlans()
-              return
-            } else {
-              alert("Failed to create default plans. Please create service plans at /services first.")
-            }
-          }
           setServicePlans([])
           setLoadingPlans(false)
+          setValidationError("No service plans available. Please create service plans at /services first.")
           return
         }
 

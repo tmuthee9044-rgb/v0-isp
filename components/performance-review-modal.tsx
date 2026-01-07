@@ -140,7 +140,7 @@ export function PerformanceReviewModal({ open, onOpenChange }: PerformanceReview
                 <SelectContent>
                   {employees.map((employee) => (
                     <SelectItem key={employee.employee_id} value={employee.employee_id}>
-                      {employee.name} - {employee.position}
+                      {employee.first_name} {employee.last_name} - {employee.position}
                     </SelectItem>
                   ))}
                 </SelectContent>

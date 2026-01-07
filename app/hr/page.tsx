@@ -197,12 +197,12 @@ export default function HRPage() {
 
   const payrollSummary = {
     totalEmployees: employees.length,
-    totalGrossPay: employees.reduce((sum, emp) => sum + (emp.salary || 0), 0),
-    totalDeductions: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.25, 0),
-    totalNetPay: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.75, 0),
-    totalPaye: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.15, 0),
-    totalNssf: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.05, 0),
-    totalSha: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.05, 0),
+    totalGrossPay: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0), 0),
+    totalDeductions: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.25, 0),
+    totalNetPay: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.75, 0),
+    totalPaye: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.15, 0),
+    totalNssf: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.05, 0),
+    totalSha: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.05, 0),
   }
 
   const filteredEmployees = employees.filter((employee) => {

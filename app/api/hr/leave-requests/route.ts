@@ -12,7 +12,7 @@ export async function GET() {
         e.last_name,
         e.employee_id
       FROM leave_requests lr
-      LEFT JOIN employees e ON lr.employee_id = e.id
+      LEFT JOIN employees e ON lr.employee_id = CAST(e.id AS INTEGER)
       ORDER BY lr.created_at DESC
       LIMIT 50
     `

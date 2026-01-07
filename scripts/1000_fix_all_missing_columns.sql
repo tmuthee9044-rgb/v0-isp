@@ -243,6 +243,7 @@ ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS branding_accent_color VARC
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_secondary_phone VARCHAR(20);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_support_email VARCHAR(255);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_facebook VARCHAR(255);
+ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS trading_name VARCHAR(255);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_twitter VARCHAR(255);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_linkedin VARCHAR(255);
 ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS contact_city VARCHAR(100);
@@ -1141,6 +1142,7 @@ ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS nhif DECIMAL(10,2) DEFAULT 
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS housing_levy DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pay_period_start DATE;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS updated_at DATE;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pay_period_end DATE;
 
 -- Adding missing employees columns for HR management

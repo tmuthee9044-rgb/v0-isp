@@ -207,10 +207,10 @@ export default function ServicesPage() {
       ? servicePlans.reduce((sum, plan) => sum + calculateTotalPrice(plan) * plan.customers, 0)
       : 0
   const totalCustomers = servicePlans.length > 0 ? servicePlans.reduce((sum, plan) => sum + plan.customers, 0) : 0
-  const mostPopularPlan =
-    servicePlans.length > 0
-      ? servicePlans.reduce((prev, current) => (current.customers > prev.customers ? current : prev), servicePlans[0])
-      : { name: "No Plans", customers: 0 }
+  const mostPopularPlan = servicePlans.reduce(
+    (max, plan) => ((plan.customers || 0) > (max.customers || 0) ? plan : max),
+    servicePlans[0] || { name: "N/A", customers: 0 },
+  )
   const avgRevenuePerPlan = servicePlans.length > 0 ? totalRevenue / servicePlans.length : 0
 
   if (loading) {
@@ -329,7 +329,9 @@ export default function ServicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{mostPopularPlan.name}</div>
-            <p className="text-xs text-muted-foreground">{mostPopularPlan.customers.toLocaleString()} subscribers</p>
+            <p className="text-xs text-muted-foreground">
+              {(mostPopularPlan.customers || 0).toLocaleString()} subscribers
+            </p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-orange-500">

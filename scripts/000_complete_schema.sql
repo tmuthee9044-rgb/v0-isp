@@ -122,6 +122,7 @@ CREATE TABLE customers (
     phone_secondary VARCHAR(50),
     phone_office VARCHAR(50),
     -- Added identification fields
+    id_number VARCHAR(100),
     national_id VARCHAR(100),
     date_of_birth DATE,
     gender VARCHAR(20),
@@ -134,8 +135,11 @@ CREATE TABLE customers (
     physical_gps_coordinates VARCHAR(100),
     billing_address TEXT,
     billing_city VARCHAR(100),
+    -- Added missing billing_county field for rule 11 compliance
+    billing_county VARCHAR(100),
     billing_postal_code VARCHAR(20),
     installation_address TEXT,
+    county VARCHAR(100),
     city VARCHAR(100),
     state VARCHAR(100),
     country VARCHAR(100) DEFAULT 'Kenya',

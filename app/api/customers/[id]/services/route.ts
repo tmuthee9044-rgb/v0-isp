@@ -67,15 +67,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const [servicePlan] = await sql`
-      SELECT price, name, download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}
+      SELECT id, price, name, download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}
     `
 
     if (!servicePlan) {
-      console.error("[v0] Service plan not found:", servicePlanId)
+      // Get count of available plans for better error message
+      const availablePlans = await sql`
+        SELECT id, name FROM service_plans WHERE status = 'active' ORDER BY price ASC
+      `
+
+      console.error(
+        "[v0] Service plan not found. Requested ID:",
+        servicePlanId,
+        "Available plans:",
+        availablePlans.length,
+      )
+
       return NextResponse.json(
         {
           success: false,
-          error: "Service plan not found",
+          error: `Invalid service plan selected. Please select a valid service plan. (Requested: ${servicePlanId}, Available: ${availablePlans.length} plans)`,
+          availablePlans: availablePlans.map((p) => ({ id: p.id, name: p.name })),
         },
         { status: 404 },
       )

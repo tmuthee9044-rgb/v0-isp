@@ -945,7 +945,7 @@ ALTERTABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS payroll_frequency VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT 0.00;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS benefits TEXT;
@@ -1421,3 +1421,55 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employee_id);
 CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
 CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);
+
+-- Adding credit_notes, credit_applications, and refunds tables for finance management
+-- Create credit_notes table with proper SERIAL sequence
+CREATE TABLE IF NOT EXISTS credit_notes (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    credit_note_number VARCHAR(50) UNIQUE NOT NULL,
+    invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+    amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    notes TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    approved_by INTEGER,
+    approved_at TIMESTAMP WITHOUT TIME ZONE
+);
+
+-- Create credit_applications table for tracking credit usage
+CREATE TABLE IF NOT EXISTS credit_applications (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    adjustment_id INTEGER NOT NULL REFERENCES credit_notes(id) ON DELETE CASCADE,
+    amount_applied NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create refunds table for processing refunds
+CREATE TABLE IF NOT EXISTS refunds (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    adjustment_id INTEGER NOT NULL REFERENCES credit_notes(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    refund_method VARCHAR(50),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP WITHOUT TIME ZONE,
+    notes TEXT
+);
+
+-- Create performance indexes for credit notes operations
+CREATE INDEX IF NOT EXISTS idx_credit_notes_customer_id ON credit_notes(customer_id);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_invoice_id ON credit_notes(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_status ON credit_notes(status);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_created_at ON credit_notes(created_at);
+CREATE INDEX IF NOT EXISTS idx_credit_applications_customer_id ON credit_applications(customer_id);
+CREATE INDEX IF NOT EXISTS idx_credit_applications_invoice_id ON credit_applications(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_credit_applications_adjustment_id ON credit_applications(adjustment_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_customer_id ON refunds(customer_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status);

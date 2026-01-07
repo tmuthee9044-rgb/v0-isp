@@ -403,6 +403,19 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
 
+-- Adding missing CSV import template columns
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_login_id VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_username VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_end_date DATE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_date DATE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_payment_date DATE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS connection_quality VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS monthly_fee DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS plan VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
+
 -- Adding all missing customer form fields from /customers/add page
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS street_2 VARCHAR(255);
@@ -457,6 +470,12 @@ CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
 CREATE INDEX IF NOT EXISTS idx_customers_location ON customers (location_id);
 CREATE INDEX IF NOT EXISTS idx_customers_created ON customers (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_customers_name_search ON customers USING gin(to_tsvector('english', COALESCE(first_name, '') || ' ' || COALESCE(last_name, '') || ' ' || COALESCE(business_name, '')));
+
+-- Add unique constraint for customer import on account_number
+CREATE INDEX IF NOT EXISTS idx_customers_account_number ON customers(account_number);
+CREATE INDEX IF NOT EXISTS idx_customers_login ON customers(login);
+CREATE INDEX IF NOT EXISTS idx_customers_portal_username ON customers(portal_username);
+
 
 -- Adding performance index on locations.name for fast ordering in /api/locations
 CREATE INDEX IF NOT EXISTS idx_locations_name_active ON locations(name) WHERE status = 'active';

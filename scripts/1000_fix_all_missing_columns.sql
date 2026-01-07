@@ -494,7 +494,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments JSONB;
 
 -- Fix service_plans table
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS upload_speed INTEGER;
-ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
+ALTERTABLE service_plans ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50);
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(50) DEFAULT 'monthly';
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS setup_fee DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS features JSONB;
@@ -610,7 +610,7 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS configuration JSONB;
 
 -- Fix loyalty_transactions table
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_earned INTEGER DEFAULT 0;
-ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
+ALTERTABLE loyalty_transactions ADD COLUMN IF NOT EXISTS points_spent INTEGER DEFAULT 0;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
 ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS reference_id INTEGER;
@@ -941,7 +941,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
@@ -1362,3 +1362,62 @@ CREATE INDEX IF NOT EXISTS idx_service_plans_id_name ON service_plans(id, name);
 -- Rule 11: Update complete schema file timestamp
 -- This ensures the 000_complete_schema.sql file stays synchronized with all changes
 SELECT 'Schema updated: ' || NOW()::TEXT as update_log;
+
+-- Add missing columns to payroll_records table
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS employee_id VARCHAR(100);
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255);
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS period VARCHAR(20);
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS basic_salary DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS allowances DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS overtime DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS gross_pay DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paye DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS tax DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS nssf DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS nhif DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS sha DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS housing_levy DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS other_deductions DECIMAL(10, 2) DEFAULT 0.00;
+-- Adding the missing total_deductions column
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS total_deductions DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS net_pay DECIMAL(10, 2) DEFAULT 0.00;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending';
+
+-- Create unique constraint for employee_id and period to support ON CONFLICT
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_records_employee_period 
+ON payroll_records(employee_id, period);
+
+-- Fix leave_requests.employee_id type to match employees.id for JOIN compatibility
+DO $$
+BEGIN
+    -- Create leave_requests table if it doesn't exist
+    CREATE TABLE IF NOT EXISTS leave_requests (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL,
+        leave_type VARCHAR(50) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        days_requested INTEGER NOT NULL,
+        reason TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        approved_by INTEGER,
+        approved_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Ensure employee_id is INTEGER for JOIN compatibility with employees.id
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'leave_requests' 
+        AND column_name = 'employee_id' 
+        AND data_type != 'integer'
+    ) THEN
+        ALTER TABLE leave_requests ALTER COLUMN employee_id TYPE INTEGER USING employee_id::integer;
+        RAISE NOTICE 'Converted leave_requests.employee_id to INTEGER for JOIN compatibility';
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);

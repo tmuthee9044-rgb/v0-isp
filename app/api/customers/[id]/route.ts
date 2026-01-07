@@ -217,6 +217,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         last_name = ${updateData.last_name || existingCustomer[0].last_name || ""},
         email = ${updateData.email || existingCustomer[0].email},
         phone = ${updateData.phone_primary || updateData.phone || existingCustomer[0].phone},
+        phone_secondary = ${updateData.phone_secondary || existingCustomer[0].phone_secondary || ""},
+        phone_office = ${updateData.phone_office || existingCustomer[0].phone_office || ""},
         id_number = ${updateData.national_id || updateData.id_number || existingCustomer[0].id_number || null},
         status = ${updateData.status || existingCustomer[0].status},
         address = ${updateData.physical_address || updateData.address || existingCustomer[0].address || ""},
@@ -226,6 +228,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         state = ${updateData.physical_county || updateData.state || existingCustomer[0].state || ""},
         country = ${updateData.country || existingCustomer[0].country || "Kenya"},
         postal_code = ${updateData.physical_postal_code || updateData.postal_code || existingCustomer[0].postal_code || ""},
+        billing_city = ${updateData.billing_city || existingCustomer[0].billing_city || ""},
+        billing_county = ${updateData.billing_county || existingCustomer[0].billing_county || ""},
+        billing_postal_code = ${updateData.billing_postal_code || existingCustomer[0].billing_postal_code || ""},
         gps_coordinates = ${
           updateData.physical_gps_coordinates ||
           updateData.gps_coordinates ||
@@ -234,25 +239,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
             : existingCustomer[0].gps_coordinates || "")
         },
         business_name = ${updateData.name || updateData.business_name || existingCustomer[0].business_name || ""},
-        business_type = ${updateData.business_type || updateData.business_reg_no || existingCustomer[0].business_type || ""},
+        business_type = ${updateData.business_type || existingCustomer[0].business_type || ""},
+        business_reg_no = ${updateData.business_reg_no || existingCustomer[0].business_reg_no || ""},
         tax_number = ${updateData.vat_pin || updateData.tax_id || updateData.tax_number || existingCustomer[0].tax_number || ""},
+        contact_person = ${updateData.contact_person || existingCustomer[0].contact_person || ""},
+        industry = ${updateData.industry || existingCustomer[0].industry || ""},
+        company_size = ${updateData.company_size || existingCustomer[0].company_size || ""},
+        school_type = ${updateData.school_type || existingCustomer[0].school_type || ""},
+        student_count = ${updateData.student_count !== undefined ? updateData.student_count : existingCustomer[0].student_count || null},
+        staff_count = ${updateData.staff_count !== undefined ? updateData.staff_count : existingCustomer[0].staff_count || null},
+        location_id = ${updateData.location_id !== undefined ? updateData.location_id : existingCustomer[0].location_id || null},
         portal_username = ${updateData.portal_username || existingCustomer[0].portal_username || ""},
         portal_password = ${updateData.portal_password || existingCustomer[0].portal_password || ""},
         preferred_contact_method = ${updateData.preferred_contact_method || existingCustomer[0].preferred_contact_method || "email"},
         referral_source = ${updateData.referral_source || existingCustomer[0].referral_source || ""},
-        service_preferences = ${
-          updateData.special_requirements ||
-          updateData.internal_notes ||
-          updateData.sales_rep ||
-          updateData.account_manager
-            ? JSON.stringify({
-                special_requirements: updateData.special_requirements,
-                internal_notes: updateData.internal_notes,
-                sales_rep: updateData.sales_rep,
-                account_manager: updateData.account_manager,
-              })
-            : existingCustomer[0].service_preferences || null
-        },
+        sales_rep = ${updateData.sales_rep || existingCustomer[0].sales_rep || ""},
+        account_manager = ${updateData.account_manager || existingCustomer[0].account_manager || ""},
+        special_requirements = ${updateData.special_requirements || existingCustomer[0].special_requirements || ""},
+        internal_notes = ${updateData.internal_notes || existingCustomer[0].internal_notes || ""},
         customer_type = ${updateData.customer_type || existingCustomer[0].customer_type || "individual"},
         account_number = ${updateData.account_number || existingCustomer[0].account_number || ""},
         assigned_staff_id = ${updateData.assigned_staff_id || existingCustomer[0].assigned_staff_id || null},

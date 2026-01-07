@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/database"
+import bcrypt from "bcrypt"
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
     const accountNumber = `TW${Date.now().toString().slice(-6)}`
 
     // Hash password (in production, use proper password hashing like bcrypt)
-    const hashedPassword = Buffer.from(password).toString("base64") // Simple encoding for demo
+    const hashedPassword = await bcrypt.hash(password, 10)
 
     const newCustomer = await sql.begin(async (sql) => {
       const customerResult = await sql`
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
           id_number,
           address,
           city,
-          state,
+          county,
           postal_code,
           customer_type,
           service_preferences,

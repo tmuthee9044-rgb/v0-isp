@@ -76,6 +76,7 @@
     "pdfkit": "0.17.2",
     "pg": "latest",
     "pg-native": "latest",
+    "postgres": "3.4.8",
     "react": "^18.3.1",
     "react-day-picker": "latest",
     "react-dom": "^18.3.1",

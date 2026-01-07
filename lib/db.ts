@@ -4,6 +4,7 @@ import postgres from "postgres"
 
 // Cached database client
 let sqlClient: any = null
+let sequencesFixed = false
 
 /**
  * Determine which connection string to use - PRIORITIZE LOCAL PostgreSQL per Rule 4
@@ -52,6 +53,64 @@ export const sql = postgres(connectionString, {
 })
 
 /**
+ * Fix all SERIAL sequences to ensure auto-increment works
+ */
+async function fixSequences() {
+  if (sequencesFixed) return
+
+  try {
+    console.log("[DB] Checking and fixing SERIAL sequences...")
+
+    const tables = [
+      "customer_services",
+      "customer_billing_configurations",
+      "invoices",
+      "invoice_items",
+      "payments",
+      "account_balances",
+      "system_logs",
+      "customers",
+      "employees",
+      "routers",
+    ]
+
+    for (const table of tables) {
+      try {
+        await sql`
+          DO $$
+          DECLARE
+            max_id INTEGER;
+          BEGIN
+            -- Get the maximum id from the table
+            EXECUTE format('SELECT COALESCE(MAX(id), 0) + 1 FROM %I', '${table}') INTO max_id;
+            
+            -- Drop existing sequence if it exists
+            EXECUTE format('DROP SEQUENCE IF EXISTS %I CASCADE', '${table}_id_seq');
+            
+            -- Create new sequence starting from max_id
+            EXECUTE format('CREATE SEQUENCE %I START WITH %s', '${table}_id_seq', max_id);
+            
+            -- Set the sequence as default for id column
+            EXECUTE format('ALTER TABLE %I ALTER COLUMN id SET DEFAULT nextval(%L)', '${table}', '${table}_id_seq');
+            
+            -- Set sequence ownership
+            EXECUTE format('ALTER SEQUENCE %I OWNED BY %I.id', '${table}_id_seq', '${table}');
+          END $$;
+        `
+      } catch (err) {
+        // Table might not exist, skip silently
+        continue
+      }
+    }
+
+    sequencesFixed = true
+    console.log("✅ [DB] SERIAL sequences verified and fixed")
+  } catch (error: any) {
+    console.error("⚠️  [DB] Error fixing sequences:", error.message)
+  }
+}
+
+/**
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
  */
 export async function getSql() {
@@ -62,6 +121,8 @@ export async function getSql() {
   // Test connection
   await sql`SELECT 1 as health_check`
   console.log("✅ [DB] PostgreSQL connection verified")
+
+  await fixSequences()
 
   sqlClient = sql
   return sqlClient

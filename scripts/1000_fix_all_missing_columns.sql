@@ -309,7 +309,7 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255);
 
 -- Fix customers table
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS name VARCHAR(255);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
+ALTERTABLE customers ADD COLUMN IF NOT EXISTS alternate_email VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_primary VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_secondary VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_office VARCHAR(50);
@@ -403,6 +403,12 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS installation_notes TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS technical_contact_phone VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_county VARCHAR(100);
+
+-- Adding portal authentication and access columns
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_access BOOLEAN DEFAULT false;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_login_id VARCHAR(100);
 
 -- Adding missing CSV import template columns
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS portal_login_id VARCHAR(255);
@@ -960,7 +966,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Add missing columns to existing employees table if it exists
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nssf_number VARCHAR(50);
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
+ALTERTABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS kra_pin VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS sha_number VARCHAR(50);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100);

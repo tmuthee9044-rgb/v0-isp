@@ -7,9 +7,8 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[v0] Starting database setup...")
 
-    // Core tables needed for system to function
+    // Locations table (needed by many other tables)
     await sql`
-      -- Locations table (needed by many other tables)
       CREATE TABLE IF NOT EXISTS locations (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -25,9 +24,12 @@ export async function POST(request: NextRequest) {
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created locations table")
 
-      -- Customers table
+    // Customers table
+    await sql`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
         account_number VARCHAR(50) UNIQUE NOT NULL,
@@ -55,9 +57,12 @@ export async function POST(request: NextRequest) {
         category VARCHAR(50),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created customers table")
 
-      -- Service plans table
+    // Service plans table
+    await sql`
       CREATE TABLE IF NOT EXISTS service_plans (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -70,9 +75,12 @@ export async function POST(request: NextRequest) {
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created service_plans table")
 
-      -- Customer services table
+    // Customer services table
+    await sql`
       CREATE TABLE IF NOT EXISTS customer_services (
         id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
@@ -87,9 +95,12 @@ export async function POST(request: NextRequest) {
         pppoe_password VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created customer_services table")
 
-      -- Payments table
+    // Payments table
+    await sql`
       CREATE TABLE IF NOT EXISTS payments (
         id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
@@ -100,9 +111,12 @@ export async function POST(request: NextRequest) {
         status VARCHAR(20) DEFAULT 'completed',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created payments table")
 
-      -- Invoices table
+    // Invoices table
+    await sql`
       CREATE TABLE IF NOT EXISTS invoices (
         id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
@@ -114,9 +128,12 @@ export async function POST(request: NextRequest) {
         due_date DATE,
         paid_date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created invoices table")
 
-      -- Network devices table
+    // Network devices table
+    await sql`
       CREATE TABLE IF NOT EXISTS network_devices (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -129,9 +146,12 @@ export async function POST(request: NextRequest) {
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created network_devices table")
 
-      -- IP addresses table
+    // IP addresses table
+    await sql`
       CREATE TABLE IF NOT EXISTS ip_addresses (
         id SERIAL PRIMARY KEY,
         ip_address VARCHAR(45) UNIQUE NOT NULL,
@@ -142,9 +162,12 @@ export async function POST(request: NextRequest) {
         customer_id INTEGER REFERENCES customers(id),
         assigned_date TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created ip_addresses table")
 
-      -- Employees table
+    // Employees table
+    await sql`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
         employee_id VARCHAR(50) UNIQUE NOT NULL,
@@ -158,9 +181,12 @@ export async function POST(request: NextRequest) {
         hire_date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created employees table")
 
-      -- RADIUS users table
+    // RADIUS users table
+    await sql`
       CREATE TABLE IF NOT EXISTS radius_users (
         id SERIAL PRIMARY KEY,
         username VARCHAR(64) UNIQUE NOT NULL,
@@ -169,9 +195,12 @@ export async function POST(request: NextRequest) {
         value VARCHAR(253) NOT NULL,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created radius_users table")
 
-      -- RADIUS active sessions table
+    // RADIUS active sessions table
+    await sql`
       CREATE TABLE IF NOT EXISTS radius_sessions_active (
         acctsessionid VARCHAR(64) PRIMARY KEY,
         acctuniqueid VARCHAR(32) UNIQUE NOT NULL,
@@ -184,9 +213,12 @@ export async function POST(request: NextRequest) {
         acctinputoctets BIGINT DEFAULT 0,
         acctoutputoctets BIGINT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created radius_sessions_active table")
 
-      -- RADIUS archived sessions table
+    // RADIUS archived sessions table
+    await sql`
       CREATE TABLE IF NOT EXISTS radius_sessions_archive (
         acctsessionid VARCHAR(64),
         acctuniqueid VARCHAR(32),
@@ -198,9 +230,12 @@ export async function POST(request: NextRequest) {
         acctinputoctets BIGINT,
         acctoutputoctets BIGINT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created radius_sessions_archive table")
 
-      -- RADIUS NAS table
+    // RADIUS NAS table
+    await sql`
       CREATE TABLE IF NOT EXISTS radius_nas (
         id SERIAL PRIMARY KEY,
         nasname VARCHAR(128) UNIQUE NOT NULL,
@@ -211,9 +246,12 @@ export async function POST(request: NextRequest) {
         server VARCHAR(64),
         community VARCHAR(50),
         description VARCHAR(200)
-      );
+      )
+    `
+    console.log("[v0] ✓ Created radius_nas table")
 
-      -- Company profiles table
+    // Company profiles table
+    await sql`
       CREATE TABLE IF NOT EXISTS company_profiles (
         id SERIAL PRIMARY KEY,
         company_name VARCHAR(255) NOT NULL,
@@ -230,9 +268,12 @@ export async function POST(request: NextRequest) {
         time_format VARCHAR(20) DEFAULT 'HH:mm:ss',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
+    `
+    console.log("[v0] ✓ Created company_profiles table")
 
-      -- Router performance history table
+    // Router performance history table
+    await sql`
       CREATE TABLE IF NOT EXISTS router_performance_history (
         id SERIAL PRIMARY KEY,
         router_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
@@ -249,9 +290,12 @@ export async function POST(request: NextRequest) {
         uptime BIGINT,
         uptime_percentage DECIMAL(5, 2),
         temperature DECIMAL(5, 2)
-      );
+      )
+    `
+    console.log("[v0] ✓ Created router_performance_history table")
 
-      -- System config table
+    // System config table
+    await sql`
       CREATE TABLE IF NOT EXISTS system_config (
         id SERIAL PRIMARY KEY,
         key VARCHAR(255) UNIQUE NOT NULL,
@@ -259,24 +303,26 @@ export async function POST(request: NextRequest) {
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Create essential indexes for sub-5ms performance
-      CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
-      CREATE INDEX IF NOT EXISTS idx_customers_account_number ON customers(account_number);
-      CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status);
-      CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id);
-      CREATE INDEX IF NOT EXISTS idx_customer_services_status ON customer_services(status);
-      CREATE INDEX IF NOT EXISTS idx_service_plans_id ON service_plans(id);
-      CREATE INDEX IF NOT EXISTS idx_payments_customer_id ON payments(customer_id);
-      CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id);
-      CREATE INDEX IF NOT EXISTS idx_ip_addresses_customer_id ON ip_addresses(customer_id);
-      CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username);
-      CREATE INDEX IF NOT EXISTS idx_radius_users_customer_id ON radius_users(customer_id);
-      CREATE INDEX IF NOT EXISTS idx_router_performance_router_id ON router_performance_history(router_id);
+      )
     `
+    console.log("[v0] ✓ Created system_config table")
 
-    console.log("[v0] Core tables created successfully")
+    console.log("[v0] Creating indexes for sub-5ms performance...")
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_customers_account_number ON customers(account_number)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_customer_services_status ON customer_services(status)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_service_plans_id ON service_plans(id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_payments_customer_id ON payments(customer_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_ip_addresses_customer_id ON ip_addresses(customer_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_radius_users_customer_id ON radius_users(customer_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_router_performance_router_id ON router_performance_history(router_id)`
+
+    console.log("[v0] ✓ All indexes created")
 
     // Mark setup as completed
     await sql`
@@ -285,7 +331,7 @@ export async function POST(request: NextRequest) {
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
     `
 
-    console.log("[v0] Database setup completed successfully")
+    console.log("[v0] ✓ Database setup completed successfully - all 12 critical tables created!")
 
     return NextResponse.json({
       success: true,

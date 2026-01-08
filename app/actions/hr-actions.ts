@@ -96,10 +96,7 @@ export async function generatePayroll(
   employeeIds: string[],
 ): Promise<{
   success: boolean
-  data?: {
-    calculations: PayrollCalculation[]
-    summary: PayrollSummary
-  }
+  data?: { calculations: PayrollCalculation[]; summary: PayrollSummary }
   error?: string
 }> {
   try {

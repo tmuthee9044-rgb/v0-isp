@@ -480,11 +480,10 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
   }
 }
 
-export async function updateCustomerService(formData: FormData) {
+export async function updateCustomerService(serviceId: number, formData: FormData) {
   try {
     const sql = await getSql()
 
-    const serviceId = formData.get("service_id") as string
     const servicePlanId = formData.get("service_plan_id") as string
     const autoRenew = formData.get("auto_renew") === "on"
     const ipAddress = formData.get("ip_address") as string

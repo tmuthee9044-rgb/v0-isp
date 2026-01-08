@@ -5,6 +5,7 @@ import postgres from "postgres"
 // Cached database client
 let sqlClient: any = null
 let sequencesFixed = false
+const columnsChecked = false
 
 /**
  * Determine which connection string to use - PRIORITIZE LOCAL PostgreSQL per Rule 4
@@ -129,6 +130,49 @@ async function fixSequences() {
 }
 
 /**
+ * Check and add missing columns to critical tables
+ */
+async function addMissingColumns() {
+  try {
+    console.log("[DB] Checking for missing columns...")
+
+    // Add bandwidth_usage to router_performance_history
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS bandwidth_usage INTEGER,
+      ADD COLUMN IF NOT EXISTS peak_usage INTEGER,
+      ADD COLUMN IF NOT EXISTS connections INTEGER,
+      ADD COLUMN IF NOT EXISTS latency DECIMAL(10,2),
+      ADD COLUMN IF NOT EXISTS packet_loss DECIMAL(5,2),
+      ADD COLUMN IF NOT EXISTS uptime_percentage DECIMAL(5,2)
+    `)
+      .catch(() => {})
+
+    // Add satisfaction_rating to support_tickets
+    await sql
+      .unsafe(`
+      ALTER TABLE support_tickets 
+      ADD COLUMN IF NOT EXISTS satisfaction_rating INTEGER
+    `)
+      .catch(() => {})
+
+    // Add pppoe_enabled to customer_services
+    await sql
+      .unsafe(`
+      ALTER TABLE customer_services 
+      ADD COLUMN IF NOT EXISTS pppoe_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17)
+    `)
+      .catch(() => {})
+
+    console.log("✅ [DB] Missing columns verified and added")
+  } catch (error: any) {
+    console.error("⚠️  [DB] Error adding missing columns:", error.message)
+  }
+}
+
+/**
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
  */
 export async function getSql() {
@@ -140,6 +184,7 @@ export async function getSql() {
   await sql`SELECT 1 as health_check`
   console.log("✅ [DB] PostgreSQL connection verified")
 
+  await addMissingColumns()
   await fixSequences()
 
   sqlClient = sql

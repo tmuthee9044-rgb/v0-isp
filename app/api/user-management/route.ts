@@ -88,11 +88,11 @@ export async function POST(request: NextRequest) {
     if (action === "create_user") {
       const { username, email, role, password } = data
 
-      const encoder = new TextEncoder()
-      const passwordData = encoder.encode(password + username)
-      const hashBuffer = await crypto.subtle.digest("SHA-256", passwordData)
-      const hashArray = Array.from(new Uint8Array(hashBuffer))
-      const passwordHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+      const crypto = await import("crypto")
+      const passwordHash = crypto
+        .createHash("sha256")
+        .update(password + username)
+        .digest("hex")
 
       const result = await sql`
         INSERT INTO users (username, email, role, password_hash, status, created_at)

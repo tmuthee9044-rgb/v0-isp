@@ -54,7 +54,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const servicePlanId = serviceData.service_plan_id || serviceData.plan
     let ipAddress = serviceData.ip_address || serviceData.ipAddress
     const connectionType = serviceData.connection_type || serviceData.connectionType || "fiber"
-    const deviceId = serviceData.device_id || serviceData.deviceId || null
+    const macAddress = serviceData.mac_address || serviceData.device_id || null
+    const deviceId = macAddress // For backwards compatibility with device_id column
 
     const pppoeEnabled = serviceData.pppoe_enabled === "on" || serviceData.pppoe_enabled === true
     const pppoeUsername = serviceData.pppoe_username || null
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${deviceId}, 
         ${connectionType},
         ${serviceData.config_id || null},
-        ${serviceData.mac_address || null},
+        ${macAddress},
         ${serviceData.lock_to_mac === "on" || serviceData.lock_to_mac === true},
         ${pppoeUsername},
         ${pppoePassword},
@@ -372,6 +373,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const pppoeUsername = updateData.pppoe_username || null
     const pppoePassword = updateData.pppoe_password || null
     const pppoeEnabled = updateData.pppoe_enabled === "on" || updateData.pppoe_enabled === true
+    const macAddress = updateData.mac_address || updateData.device_id || null
+    const deviceId = macAddress // For backwards compatibility with device_id column
 
     let result
 

@@ -228,7 +228,10 @@ function AddServiceModal({
       formData.append("admin_override", adminOverride ? "on" : "off")
 
       if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
-      if (macAddress) formData.append("mac_address", macAddress)
+      if (macAddress) {
+        formData.append("mac_address", macAddress)
+        formData.append("device_id", macAddress) // Legacy field
+      }
       formData.append("lock_to_mac", lockToMac ? "on" : "off")
       formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")
       if (pppoeEnabled) {

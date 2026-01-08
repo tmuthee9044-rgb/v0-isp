@@ -64,6 +64,9 @@ async function fixSequences() {
     const tables = [
       "customer_services",
       "customer_billing_configurations",
+      "customer_phone_numbers",
+      "customer_emergency_contacts",
+      "customer_contacts",
       "invoices",
       "invoice_items",
       "payments",
@@ -72,39 +75,54 @@ async function fixSequences() {
       "customers",
       "employees",
       "routers",
+      "service_plans",
+      "support_tickets",
+      "leave_requests",
+      "payroll_records",
+      "performance_reviews",
+      "hotspots",
+      "hotspot_users",
+      "hotspot_vouchers",
+      "credit_notes",
+      "system_users",
+      "roles",
     ]
 
     for (const table of tables) {
       try {
-        await sql`
-          DO $$
-          DECLARE
-            max_id INTEGER;
-          BEGIN
-            -- Get the maximum id from the table
-            EXECUTE format('SELECT COALESCE(MAX(id), 0) + 1 FROM %I', '${table}') INTO max_id;
-            
-            -- Drop existing sequence if it exists
-            EXECUTE format('DROP SEQUENCE IF EXISTS %I CASCADE', '${table}_id_seq');
-            
-            -- Create new sequence starting from max_id
-            EXECUTE format('CREATE SEQUENCE %I START WITH %s', '${table}_id_seq', max_id);
-            
-            -- Set the sequence as default for id column
-            EXECUTE format('ALTER TABLE %I ALTER COLUMN id SET DEFAULT nextval(%L)', '${table}', '${table}_id_seq');
-            
-            -- Set sequence ownership
-            EXECUTE format('ALTER SEQUENCE %I OWNED BY %I.id', '${table}_id_seq', '${table}');
-          END $$;
+        // Check if table exists first
+        const tableExists = await sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = ${table}
+          ) as exists
         `
-      } catch (err) {
-        // Table might not exist, skip silently
+
+        if (!tableExists[0]?.exists) continue
+
+        // Get max id
+        const maxResult = await sql`
+          SELECT COALESCE(MAX(id), 0) as max_id FROM ${sql(table)}
+        `
+        const maxId = (maxResult[0]?.max_id || 0) + 1
+
+        // Drop and recreate sequence
+        await sql.unsafe(`DROP SEQUENCE IF EXISTS ${table}_id_seq CASCADE`)
+        await sql.unsafe(`CREATE SEQUENCE ${table}_id_seq START WITH ${maxId}`)
+        await sql.unsafe(`ALTER TABLE ${table} ALTER COLUMN id SET DEFAULT nextval('${table}_id_seq')`)
+        await sql.unsafe(`ALTER SEQUENCE ${table}_id_seq OWNED BY ${table}.id`)
+
+        console.log(`✅ [DB] Fixed sequence for ${table} (next id: ${maxId})`)
+      } catch (err: any) {
+        // Table might not have id column or other issues, skip
+        console.log(`⚠️  [DB] Skipped ${table}: ${err.message}`)
         continue
       }
     }
 
     sequencesFixed = true
-    console.log("✅ [DB] SERIAL sequences verified and fixed")
+    console.log("✅ [DB] All SERIAL sequences verified and fixed")
   } catch (error: any) {
     console.error("⚠️  [DB] Error fixing sequences:", error.message)
   }

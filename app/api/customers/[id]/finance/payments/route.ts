@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { paymentGateway } from "@/lib/payment-gateway"
 import { provisionRadiusUser } from "@/lib/radius-integration"
+import { provisionPPPoESecret } from "@/lib/pppoe-provisioning"
 
 async function ensureAccountBalance(customerId: number) {
   try {
@@ -146,11 +147,27 @@ async function applyPaymentToInvoices(
   }
 }
 
-async function activateServicesAfterPayment(customerId: number, paymentId: number) {
+async function activateServicesAfterPayment(customerId: number, paymentId: number, paymentAmount: number) {
   try {
     console.log("[v0] Checking for services to activate after payment for customer", customerId)
 
     const sql = await getSql()
+
+    const unpaidInvoices = await sql`
+      SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
+      FROM invoices 
+      WHERE customer_id = ${customerId} 
+      AND status IN ('pending', 'overdue', 'partial')
+      AND (amount - COALESCE(paid_amount, 0)) > 0
+      ORDER BY due_date ASC, created_at ASC
+    `
+
+    let totalInvoiceAmount = 0
+    for (const invoice of unpaidInvoices) {
+      totalInvoiceAmount += Number.parseFloat(invoice.remaining_balance)
+    }
+
+    console.log("[v0] Total invoice amount:", totalInvoiceAmount, "Payment:", paymentAmount)
 
     const pendingServices = await sql`
       SELECT 
@@ -159,11 +176,15 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
         sp.id as service_plan_id,
         sp.speed_download,
         sp.speed_upload,
+        sp.monthly_fee,
+        sp.billing_cycle,
         c.email,
-        c.phone
+        c.phone,
+        nd.customer_auth_method
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       JOIN customers c ON cs.customer_id = c.id
+      LEFT JOIN network_devices nd ON cs.router_id = nd.id
       WHERE cs.customer_id = ${customerId}
       AND cs.status = 'pending'
       AND cs.activation_date IS NULL
@@ -189,32 +210,55 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
         console.log("[v0] Successfully activated service", service.id, service.service_name)
 
-        const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
-        const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
+        let pppoeResult = null
 
-        console.log("[v0] Provisioning RADIUS credentials for service", service.id, "username:", username)
+        if (service.customer_auth_method === "pppoe_secrets" || service.customer_auth_method === "PPPoE Secrets") {
+          console.log("[v0] Provisioning PPPoE secret to MikroTik router")
 
-        const radiusResult = await provisionRadiusUser({
-          username: username,
-          password: password,
-          customerId: customerId,
-          serviceId: service.id,
-          ipAddress: service.ip_address,
-          downloadSpeed: service.speed_download,
-          uploadSpeed: service.speed_upload,
-        })
+          const serviceInvoiceAmount =
+            totalInvoiceAmount > 0 ? totalInvoiceAmount : Number.parseFloat(service.monthly_fee || 0)
 
-        if (radiusResult.success) {
-          console.log("[v0] RADIUS user provisioned successfully for", username)
+          pppoeResult = await provisionPPPoESecret(customerId, service.id, paymentAmount, serviceInvoiceAmount)
+
+          if (!pppoeResult.success) {
+            console.error("[v0] PPPoE provisioning failed:", pppoeResult.error)
+          } else {
+            console.log(
+              "[v0] PPPoE provisioning successful:",
+              pppoeResult.username,
+              "for",
+              pppoeResult.activatedDays,
+              "days",
+            )
+          }
         } else {
-          console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
+          console.log("[v0] Router uses", service.customer_auth_method, "- using RADIUS provisioning")
+
+          const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
+          const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
+
+          const radiusResult = await provisionRadiusUser({
+            username: username,
+            password: password,
+            customerId: customerId,
+            serviceId: service.id,
+            ipAddress: service.ip_address,
+            downloadSpeed: service.speed_download,
+            uploadSpeed: service.speed_upload,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS user provisioned successfully for", username)
+          }
         }
 
         activatedServices.push({
           service_id: service.id,
           service_name: service.service_name,
-          pppoe_username: username,
-          pppoe_password: password,
+          pppoe_username: pppoeResult?.username || null,
+          pppoe_activated_days: pppoeResult?.activatedDays || null,
+          pppoe_expiry_date: pppoeResult?.expiryDate || null,
+          authorization_method: service.customer_auth_method,
         })
 
         const logDetails = JSON.stringify({
@@ -222,7 +266,12 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
           service_id: service.id,
           payment_id: paymentId,
           service_plan_id: service.service_plan_id,
-          pppoe_username: username,
+          authorization_method: service.customer_auth_method,
+          pppoe_username: pppoeResult?.username || null,
+          activated_days: pppoeResult?.activatedDays || null,
+          expiry_date: pppoeResult?.expiryDate || null,
+          payment_amount: paymentAmount,
+          invoice_total: totalInvoiceAmount,
         })
 
         try {
@@ -240,7 +289,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
               'INFO',
               'payment_system',
               'service_activation',
-              ${`Service ${service.service_name} automatically activated after payment`},
+              ${`Service ${service.service_name} activated with payment-based provisioning`},
               ${logDetails}::jsonb,
               NOW(),
               NOW()
@@ -252,13 +301,15 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
         try {
           await ActivityLogger.logCustomerActivity(
-            `Service ${service.service_name} activated after payment with PPPoE credentials`,
+            `Service ${service.service_name} activated${pppoeResult?.activatedDays ? ` for ${pppoeResult.activatedDays} days` : ""}`,
             customerId,
             {
               service_id: service.id,
               payment_id: paymentId,
               service_plan_id: service.service_plan_id,
-              pppoe_username: username,
+              pppoe_username: pppoeResult?.username || null,
+              activated_days: pppoeResult?.activatedDays || null,
+              expiry_date: pppoeResult?.expiryDate || null,
             },
           )
         } catch (activityError) {
@@ -384,7 +435,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
         console.log("[v0] Cash payment completed, applications:", applicationResult.applications.length)
 
-        const activationResult = await activateServicesAfterPayment(customerId, paymentId)
+        const activationResult = await activateServicesAfterPayment(customerId, paymentId, numericAmount)
         console.log("[v0] Activated", activationResult.activated, "services after payment")
 
         await ActivityLogger.logCustomerActivity(
@@ -449,7 +500,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
         console.log("[v0] Applied payment to", applicationResult.applications.length, "invoices")
 
-        const activationResult = await activateServicesAfterPayment(customerId, paymentId)
+        const activationResult = await activateServicesAfterPayment(customerId, paymentId, numericAmount)
         console.log("[v0] Activated", activationResult.activated, "services after payment")
 
         await ActivityLogger.logCustomerActivity(

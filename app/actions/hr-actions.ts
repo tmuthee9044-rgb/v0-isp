@@ -173,10 +173,11 @@ export async function generatePayroll(
           allowances, deductions, gross_pay, tax, nhif, nssf,
           net_pay, status, created_at
         ) VALUES (
-          ${employee.id}, ${`${employee.first_name} ${employee.last_name}`}, 
-          ${period + "-01"}::date, ${period + "-31"}::date, ${basicSalary},
-          ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, ${paye}, ${sha}, ${nssf},
-          ${netPay}, 'pending', NOW()
+          ${employee.id}::text::uuid, ${`${employee.first_name} ${employee.last_name}`}, 
+          ${period + "-01"}::date, ${period + "-31"}::date, ${basicSalary}::numeric,
+          ${allowances}::numeric, ${totalEmployeeDeductions}::numeric, ${grossPay}::numeric, 
+          ${paye}::numeric, ${sha}::numeric, ${nssf}::numeric,
+          ${netPay}::numeric, 'pending', NOW()
         )
         ON CONFLICT (employee_id, pay_period_start) 
         DO UPDATE SET

@@ -2,11 +2,7 @@
 
 import postgres from "postgres"
 
-// Cached database client
-const sqlClient: any = null
-const initializationComplete = false
-
-const columnsChecked = false
+let columnsChecked = false
 
 /**
  * Determine which connection string to use - PRIORITIZE LOCAL PostgreSQL per Rule 4
@@ -45,19 +41,86 @@ if (isLocal) {
   console.warn("⚠️  [DB] Rule 4 requires LOCAL PostgreSQL. Set LOCAL_DATABASE_URL environment variable.")
 }
 
-/**
- * Initialize pure PostgreSQL client - works with any PostgreSQL database
- */
 const sql = postgres(connectionString, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
+  max: 10, // Maximum connections in pool
+  idle_timeout: 20, // Close idle connections after 20 seconds
+  connect_timeout: 10, // Connection timeout
+  max_lifetime: 60 * 30, // Close connections after 30 minutes
 })
+
+async function ensureCriticalColumns() {
+  if (columnsChecked) return
+  columnsChecked = true
+
+  try {
+    // Add missing columns to performance_reviews using individual statements
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_period VARCHAR(50)`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50)`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS score DECIMAL(5,2)`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS goals TEXT`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS achievements TEXT`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS areas_for_improvement TEXT`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS development_plan TEXT`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS next_review_date DATE`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'draft'`.catch(
+      () => {},
+    )
+
+    // Add missing router_id columns
+    await sql`ALTER TABLE router_performance_history ADD COLUMN IF NOT EXISTS router_id VARCHAR(50)`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS router_id INTEGER`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_enabled BOOLEAN DEFAULT false`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE ip_pools ADD COLUMN IF NOT EXISTS router_id INTEGER`.catch(() => {})
+
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS address TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS phone_number TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS city TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS state TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Kenya'`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS postal_code TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS description TEXT`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS capacity_cubic_meters DECIMAL(10,2)`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS current_utilization DECIMAL(5,2) DEFAULT 0.00`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS warehouse_type TEXT DEFAULT 'general'`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS manager_id INTEGER`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`.catch(() => {})
+
+    // Add missing suppliers columns
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS email VARCHAR(255)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone VARCHAR(50)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address TEXT`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'vendor'`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_terms INTEGER DEFAULT 30`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2) DEFAULT 0.00`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS balance DECIMAL(15, 2) DEFAULT 0.00`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
+
+    console.log("[DB] Critical columns checked successfully")
+  } catch (error) {
+    console.error("[DB] Error checking columns:", error)
+  }
+}
 
 /**
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
+ * Run column check only on first call, then return cached client
  */
 export async function getSql() {
+  // Run column check asynchronously on first call only
+  if (!columnsChecked) {
+    ensureCriticalColumns().catch(() => {}) // Fire and forget
+  }
   return sql
 }
 

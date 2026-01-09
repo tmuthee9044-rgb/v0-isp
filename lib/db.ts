@@ -106,6 +106,25 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'`.catch(() => {})
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
 
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'users_id_seq') THEN
+          CREATE SEQUENCE users_id_seq;
+        END IF;
+        
+        -- Set sequence ownership to users.id column
+        ALTER SEQUENCE users_id_seq OWNED BY users.id;
+        
+        -- Set default value for id column to use sequence
+        ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+        
+        -- Sync sequence to current max id value
+        PERFORM setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);
+      END $$;
+    `.catch(() => {})
+
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {
     console.error("[DB] Error checking columns:", error)

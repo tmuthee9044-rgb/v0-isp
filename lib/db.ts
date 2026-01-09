@@ -379,6 +379,120 @@ async function createRadiusTables() {
 }
 
 /**
+ * Fix employee_id type mismatches - convert to UUID if employees.id is UUID
+ */
+async function fixEmployeeIdTypes() {
+  try {
+    console.log("[DB] Checking employee_id type consistency...")
+
+    // Check if employees table exists
+    const employeesExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'employees'
+      ) as exists
+    `
+
+    if (!employeesExists[0]?.exists) {
+      console.log("⚠️  [DB] Employees table doesn't exist, skipping type check")
+      return
+    }
+
+    // Check the data type of employees.id
+    const employeeIdType = await sql`
+      SELECT data_type 
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' 
+      AND table_name = 'employees' 
+      AND column_name = 'id'
+    `
+
+    const isUUID = employeeIdType[0]?.data_type === "uuid"
+    console.log(`[DB] employees.id type: ${employeeIdType[0]?.data_type}`)
+
+    if (isUUID) {
+      console.log("[DB] Detected UUID employees.id, converting foreign keys to UUID...")
+
+      // Tables that reference employees.id
+      const tablesToFix = ["payroll_records", "leave_requests", "performance_reviews", "employee_documents"]
+
+      for (const table of tablesToFix) {
+        try {
+          // Check if table exists
+          const tableExists = await sql`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_schema = 'public' 
+              AND table_name = ${table}
+            ) as exists
+          `
+
+          if (!tableExists[0]?.exists) continue
+
+          // Check if employee_id column exists
+          const columnExists = await sql`
+            SELECT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_schema = 'public' 
+              AND table_name = ${table}
+              AND column_name = 'employee_id'
+            ) as exists
+          `
+
+          if (!columnExists[0]?.exists) continue
+
+          // Check current type
+          const currentType = await sql`
+            SELECT data_type 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = ${table}
+            AND column_name = 'employee_id'
+          `
+
+          if (currentType[0]?.data_type === "uuid") {
+            console.log(`✅ [DB] ${table}.employee_id already UUID`)
+            continue
+          }
+
+          // Drop foreign key constraint if exists
+          await sql
+            .unsafe(`
+            ALTER TABLE ${table} 
+            DROP CONSTRAINT IF EXISTS ${table}_employee_id_fkey
+          `)
+            .catch(() => {})
+
+          // Alter column type to UUID
+          await sql.unsafe(`
+            ALTER TABLE ${table} 
+            ALTER COLUMN employee_id TYPE UUID USING employee_id::uuid
+          `)
+
+          // Re-add foreign key constraint
+          await sql.unsafe(`
+            ALTER TABLE ${table} 
+            ADD CONSTRAINT ${table}_employee_id_fkey 
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+          `)
+
+          console.log(`✅ [DB] Converted ${table}.employee_id to UUID`)
+        } catch (err: any) {
+          console.log(`⚠️  [DB] Could not convert ${table}.employee_id: ${err.message}`)
+        }
+      }
+    } else {
+      console.log("✅ [DB] employees.id is INTEGER, foreign keys should be INTEGER")
+    }
+
+    console.log("✅ [DB] Employee ID type consistency verified")
+  } catch (error: any) {
+    console.error("⚠️  [DB] Error fixing employee_id types:", error.message)
+  }
+}
+
+/**
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
  */
 export async function getSql() {
@@ -393,6 +507,7 @@ export async function getSql() {
   await createRadiusTables()
   await addMissingColumns()
   await fixSequences()
+  await fixEmployeeIdTypes()
 
   sqlClient = sql
   return sqlClient

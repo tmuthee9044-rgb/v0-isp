@@ -73,6 +73,9 @@ interface Router {
   radius_secret?: string
   radius_nas_ip?: string
   customer_auth_method?: string // Added customer_auth_method to Router interface
+  enable_traffic_recording?: boolean // Changed from trafficking_record
+  enable_speed_control?: boolean // Changed from speed_control
+  blocking_page_url?: string // Changed from save_visited_ips
 }
 
 interface Location {
@@ -127,11 +130,11 @@ interface LogEntry {
 }
 
 // Define FormData interface for better type safety
-interface FormData {
+type FormData = {
   name: string
   type: "mikrotik" | "ubiquiti" | "juniper" | "other"
   location_id: string
-  connection_type: "public_ip" | "private_ip" | "vpn"
+  connection_type: string
   hostname: string
   api_port: number
   ssh_port: number
@@ -139,14 +142,14 @@ interface FormData {
   password: string
   mikrotik_user: string
   mikrotik_password: string
-  trafficking_record: string
-  speed_control: string
-  save_visited_ips: boolean
-  customer_auth_method: string // Added customer_auth_method to FormData interface
+  customer_auth_method: string
+  enable_traffic_recording: boolean // Changed from trafficking_record
+  enable_speed_control: boolean // Changed from speed_control
+  blocking_page_url: string // Changed from save_visited_ips
   radius_secret: string
   radius_nas_ip: string
-  gps_latitude: number
-  gps_longitude: number
+  gps_latitude: string
+  gps_longitude: string
 }
 
 export default function RouterEditPage({ params }: { params: { id: string } }) {
@@ -219,25 +222,25 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
         const data = await response.json()
         setRouterData(data)
         setFormData({
-          name: data.name,
-          type: data.type,
+          name: data.name || "",
+          type: data.type || "mikrotik",
           location_id: data.location_id?.toString() || "",
-          connection_type: data.connection_type,
-          hostname: data.hostname,
-          api_port: data.api_port,
-          ssh_port: data.ssh_port,
-          username: data.username,
+          connection_type: data.connection_type || "public_ip",
+          hostname: data.hostname || data.ip_address || "",
+          api_port: data.api_port || 8728,
+          ssh_port: data.ssh_port || 22,
+          username: data.username || "admin",
           password: "",
           mikrotik_user: data.mikrotik_user || "demo",
           mikrotik_password: "",
-          trafficking_record: data.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
-          speed_control: data.speed_control || "PCQ + Addresslist",
-          save_visited_ips: data.save_visited_ips ?? true,
-          customer_auth_method: data.customer_auth_method || "pppoe_radius", // Load customer auth method from database
+          customer_auth_method: data.customer_auth_method || "pppoe_radius",
+          enable_traffic_recording: data.enable_traffic_recording || false, // Changed
+          enable_speed_control: data.enable_speed_control || false, // Changed
+          blocking_page_url: data.blocking_page_url || "", // Changed
           radius_secret: data.radius_secret || "",
           radius_nas_ip: data.radius_nas_ip || "",
-          gps_latitude: data.gps_latitude || -1.2921,
-          gps_longitude: data.gps_longitude || 36.8219,
+          gps_latitude: data.gps_latitude?.toString() || "",
+          gps_longitude: data.gps_longitude?.toString() || "",
         })
       } else {
         // Handle cases where router is not found
@@ -374,8 +377,8 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   }
 
   const handleHistoricalRangeChange = async (value: string) => {
-    setHistoricalRange(value)
-    await fetchHistoricalTraffic(value)
+    setHistoricalRange(value as "24h" | "7d" | "30d")
+    await fetchHistoricalTraffic(value as "24h" | "7d" | "30d")
     await fetchPortTrafficHistory(value)
   }
 
@@ -476,7 +479,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     name: "",
     type: "mikrotik" as const,
     location_id: "",
-    connection_type: "public_ip" as const,
+    connection_type: "public_ip",
     hostname: "",
     api_port: 8728,
     ssh_port: 22,
@@ -484,14 +487,14 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     password: "",
     mikrotik_user: "",
     mikrotik_password: "",
-    trafficking_record: "Traffic Flow (RouterOS V6x,V7.x)",
-    speed_control: "PCQ + Addresslist",
-    save_visited_ips: true,
-    customer_auth_method: "pppoe_radius", // Added default customer authorization method
+    customer_auth_method: "pppoe_radius",
+    enable_traffic_recording: false, // Changed from trafficking_record
+    enable_speed_control: false, // Changed from speed_control
+    blocking_page_url: "", // Changed from save_visited_ips
     radius_secret: "",
     radius_nas_ip: "",
-    gps_latitude: -1.2921,
-    gps_longitude: 36.8219,
+    gps_latitude: "",
+    gps_longitude: "",
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -515,17 +518,14 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           ssh_port: formData.ssh_port,
           username: formData.username,
           password: formData.password,
-          // MikroTik Configuration
           mikrotik_user: formData.mikrotik_user,
           mikrotik_password: formData.mikrotik_password,
           customer_auth_method: formData.customer_auth_method,
-          trafficking_record: formData.trafficking_record,
-          speed_control: formData.speed_control,
-          save_visited_ips: formData.save_visited_ips,
-          // RADIUS Configuration
+          enable_traffic_recording: formData.enable_traffic_recording,
+          enable_speed_control: formData.enable_speed_control,
+          blocking_page_url: formData.blocking_page_url,
           radius_secret: formData.radius_secret,
           radius_nas_ip: formData.radius_nas_ip,
-          // GPS Coordinates
           gps_latitude: formData.gps_latitude,
           gps_longitude: formData.gps_longitude,
           status: routerData?.status || "active",
@@ -1528,130 +1528,108 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
         <TabsContent value="mikrotik" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">MIKROTIK</CardTitle>
+              <CardTitle>MikroTik Configuration</CardTitle>
+              <CardDescription>MikroTik specific settings and features</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="mikrotik-user">User (API)</Label>
-                    <Input
-                      id="mikrotik-user"
-                      value={formData.mikrotik_user}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, mikrotik_user: e.target.value }))}
-                      placeholder="demo"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="mikrotik-password">Password (API)</Label>
-                    <div className="relative">
-                      <Input
-                        id="mikrotik-password"
-                        type={showPassword ? "text" : "password"}
-                        value={formData.mikrotik_password}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, mikrotik_password: e.target.value }))}
-                        placeholder="••••"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-2 top-1/2 -translate-y-1/2"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-auth-method">Customer Authorization Method</Label>
-                    <Select
-                      value={formData.customer_auth_method}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, customer_auth_method: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select authorization method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="dhcp_lease">
-                          <div className="flex flex-col">
-                            <span className="font-medium">DHCP Lease</span>
-                            <span className="text-xs text-muted-foreground">
-                              Customers get IP addresses via DHCP without authentication
-                            </span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="pppoe_radius">
-                          <div className="flex flex-col">
-                            <span className="font-medium">PPPoE with DHCP and RADIUS Authentication</span>
-                            <span className="text-xs text-muted-foreground">
-                              Customers authenticate via PPPoE using RADIUS server (Recommended)
-                            </span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="pppoe_secrets">
-                          <div className="flex flex-col">
-                            <span className="font-medium">PPPoE Secrets</span>
-                            <span className="text-xs text-muted-foreground">
-                              Customers authenticate via PPPoE using local router secrets
-                            </span>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      This setting determines how customers will be authorized to browse the internet
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="trafficking-record">Trafficking record</Label>
-                    <Select
-                      value={formData.trafficking_record}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, trafficking_record: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Traffic Flow (RouterOS V6x,V7.x)">
-                          Traffic Flow (RouterOS V6x,V7.x)
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="speed-control">Speed Control</Label>
-                    <Select
-                      value={formData.speed_control}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, speed_control: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PCQ + Addresslist">PCQ + Addresslist</SelectItem>
-                        <SelectItem value="Simple (Dynamic) Queues">Simple (Dynamic) Queues</SelectItem>
-                        <SelectItem value="DHCP Lease (Dynamic Single Leases)">
-                          DHCP Lease (Dynamic Single Leases)
-                        </SelectItem>
-                        <SelectItem value="None">None</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="save-visited-ips"
-                      checked={formData.save_visited_ips}
-                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, save_visited_ips: checked }))}
-                    />
-                    <Label htmlFor="save-visited-ips">Save Visited IPs</Label>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="api_username">API Username</Label>
+                  <Input
+                    id="api_username"
+                    value={formData.mikrotik_user}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, mikrotik_user: e.target.value }))}
+                    placeholder="admin"
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="api_password">API Password</Label>
+                  <Input
+                    id="api_password"
+                    type="password"
+                    value={formData.mikrotik_password}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, mikrotik_password: e.target.value }))}
+                    placeholder="Enter API password"
+                  />
+                </div>
+              </div>
+
+              {/* Customer Authorization Method dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="customer_auth_method">Customer Authorization Method</Label>
+                <Select
+                  value={formData.customer_auth_method || "pppoe_radius"}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, customer_auth_method: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select authorization method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dhcp_lease">
+                      <div className="flex flex-col">
+                        <span className="font-medium">DHCP Lease</span>
+                        <span className="text-xs text-muted-foreground">
+                          Customers get IP addresses via DHCP without authentication
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="pppoe_radius">
+                      <div className="flex flex-col">
+                        <span className="font-medium">PPPoE with DHCP and RADIUS Authentication</span>
+                        <span className="text-xs text-muted-foreground">
+                          Customers authenticate via PPPoE using RADIUS server (Recommended)
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="pppoe_secrets">
+                      <div className="flex flex-col">
+                        <span className="font-medium">PPPoE Secrets</span>
+                        <span className="text-xs text-muted-foreground">
+                          Customers authenticate via PPPoE using local router secrets
+                        </span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  This setting determines how customers will be authorized to browse the internet
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Enable Traffic Recording</Label>
+                    <p className="text-sm text-muted-foreground">Record traffic data for monitoring</p>
+                  </div>
+                  <Switch
+                    checked={formData.enable_traffic_recording}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({ ...prev, enable_traffic_recording: checked }))
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Enable Speed Control</Label>
+                    <p className="text-sm text-muted-foreground">Enable bandwidth management</p>
+                  </div>
+                  <Switch
+                    checked={formData.enable_speed_control}
+                    onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, enable_speed_control: checked }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="blocking_page_url">Blocking Page URL</Label>
+                <Input
+                  id="blocking_page_url"
+                  value={formData.blocking_page_url}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, blocking_page_url: e.target.value }))}
+                  placeholder="http://example.com/blocked"
+                />
               </div>
             </CardContent>
           </Card>

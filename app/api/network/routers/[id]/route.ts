@@ -80,9 +80,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       password,
       mikrotik_user,
       mikrotik_password,
-      trafficking_record,
-      speed_control,
-      save_visited_ips,
+      enable_traffic_recording,
+      enable_speed_control,
+      blocking_page_url,
       customer_auth_method,
       radius_secret,
       radius_nas_ip,
@@ -149,6 +149,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         nas_ip_address = ${radius_nas_ip || null},
         latitude = ${gps_latitude ?? null},
         longitude = ${gps_longitude ?? null},
+        enable_traffic_recording = ${enable_traffic_recording ?? false},
+        enable_speed_control = ${enable_speed_control ?? false},
+        blocking_page_url = ${blocking_page_url || null},
         configuration = ${JSON.stringify(configuration)},
         updated_at = NOW()
       WHERE id = ${routerId}
@@ -218,10 +221,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
           const configResult = await mikrotik.applyRouterConfiguration({
             customer_auth_method: customer_auth_method || configuration.customer_auth_method,
-            trafficking_record: trafficking_record || configuration.trafficking_record,
-            speed_control: speed_control || configuration.speed_control,
+            trafficking_record: enable_traffic_recording ?? false,
+            speed_control: enable_speed_control ?? false,
             radius_server: radius_nas_ip || configuration.nas_ip_address,
             radius_secret: radius_secret || configuration.radius_secret,
+            blocking_page_url: blocking_page_url || null,
           })
 
           console.log("[v0] MikroTik configuration update result:", configResult)

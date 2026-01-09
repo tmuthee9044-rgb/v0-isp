@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 function getDatabaseUrl() {
   const url =
@@ -18,9 +18,8 @@ function getDatabaseUrl() {
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const locationId = params.id
+    const sql = neon(getDatabaseUrl())
 
     console.log(`[v0] Fetching routers for location ${locationId}`)
 

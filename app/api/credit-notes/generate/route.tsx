@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { generateCreditNoteHTML } from "@/lib/html-templates"
 
-export async function POST(request: NextRequest) {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { customerId, reason, items, originalInvoiceNumber } = body

@@ -1,10 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import type { NextRequest } from "next/server"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  // Initialize SQL client for dual database support
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const customerId = Number.parseInt(params.id)
 

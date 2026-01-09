@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const routerId = searchParams.get("router_id")
 
@@ -15,15 +16,11 @@ export async function GET(request: NextRequest) {
           r.name as router_name,
           r.ip_address as router_ip,
           l.name as location_name,
-          COUNT(DISTINCT CASE 
-            WHEN cs.ip_address IS NOT NULL AND cs.status IN ('active', 'pending', 'suspended') 
-            THEN ip.id 
-          END) as used_ips
+          COUNT(CASE WHEN ip.status = 'assigned' THEN 1 END) as used_ips
         FROM ip_subnets s
         LEFT JOIN network_devices r ON s.router_id = r.id
         LEFT JOIN locations l ON r.location = l.name
         LEFT JOIN ip_addresses ip ON ip.subnet_id = s.id
-        LEFT JOIN customer_services cs ON CAST(ip.ip_address AS TEXT) = CAST(cs.ip_address AS TEXT) AND cs.status IN ('active', 'pending', 'suspended')
         WHERE s.router_id = ${Number.parseInt(routerId)} 
           AND (r.type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR r.type ILIKE '%router%')
         GROUP BY s.id, r.name, r.ip_address, l.name
@@ -36,15 +33,11 @@ export async function GET(request: NextRequest) {
           r.name as router_name,
           r.ip_address as router_ip,
           l.name as location_name,
-          COUNT(DISTINCT CASE 
-            WHEN cs.ip_address IS NOT NULL AND cs.status IN ('active', 'pending', 'suspended') 
-            THEN ip.id 
-          END) as used_ips
+          COUNT(CASE WHEN ip.status = 'assigned' THEN 1 END) as used_ips
         FROM ip_subnets s
         LEFT JOIN network_devices r ON s.router_id = r.id
         LEFT JOIN locations l ON r.location = l.name
         LEFT JOIN ip_addresses ip ON ip.subnet_id = s.id
-        LEFT JOIN customer_services cs ON CAST(ip.ip_address AS TEXT) = CAST(cs.ip_address AS TEXT) AND cs.status IN ('active', 'pending', 'suspended')
         WHERE (r.type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR r.type ILIKE '%router%')
         GROUP BY s.id, r.name, r.ip_address, l.name
         ORDER BY l.name, s.created_at DESC
@@ -124,7 +117,6 @@ export async function POST(request: NextRequest) {
     const prefix = Number.parseInt(prefixStr)
 
     // Verify router exists
-    const sql = await getSql()
     const router = await sql`
       SELECT id FROM network_devices 
       WHERE id = ${router_id} 
@@ -161,7 +153,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO ip_subnets (
-        router_id, cidr, name, description, type, version, total_ips, used_ips
+        router_id, cidr, name, description, type, version, total_ips, used_ips, available_ips
       ) VALUES (
         ${router_id}, 
         ${cidr}, 
@@ -170,7 +162,8 @@ export async function POST(request: NextRequest) {
         ${type || "private"},
         ${ipVersion},
         ${totalIPs},
-        0
+        0,
+        ${totalIPs}
       )
       RETURNING *
     `
@@ -212,9 +205,9 @@ export async function POST(request: NextRequest) {
 
           for (const ip of batch) {
             await sql`
-              INSERT INTO ip_addresses (ip_address, subnet_id, status, created_at)
-              VALUES (${ip}, ${createdSubnet.id}, 'available', NOW())
-              ON CONFLICT (ip_address) DO NOTHING
+              INSERT INTO ip_addresses (ip_address, subnet_id, status, version, created_at)
+              VALUES (${ip}, ${createdSubnet.id}, 'available', ${ipVersion}, NOW())
+              ON CONFLICT (ip_address, subnet_id) DO NOTHING
             `
             insertedCount++
           }
@@ -231,6 +224,7 @@ export async function POST(request: NextRequest) {
           UPDATE ip_subnets 
           SET 
             total_ips = ${insertedCount},
+            available_ips = ${insertedCount},
             used_ips = 0
           WHERE id = ${createdSubnet.id}
         `

@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const searchParams = request.nextUrl.searchParams
     const asOfDateParam = searchParams.get("asOfDate")
     const asOfDate = asOfDateParam
@@ -91,11 +91,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Debits must equal credits" }, { status: 400 })
     }
 
-    const sql = await getSql()
-
     // Create journal entry
     const entryNumber = `MAN-${Date.now()}`
-    const journalEntry = await sql`
+    const [journalEntry] = await sql`
       INSERT INTO journal_entries (
         entry_number,
         entry_date,
@@ -130,7 +128,7 @@ export async function POST(request: NextRequest) {
           credit_amount,
           description
         ) VALUES (
-          ${journalEntry[0].id},
+          ${journalEntry.id},
           ${entry.account_id},
           ${i + 1},
           ${entry.debit || 0},
@@ -142,7 +140,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { entry_id: journalEntry[0].id, entry_number: entryNumber },
+      data: { entry_id: journalEntry.id, entry_number: entryNumber },
     })
   } catch (error) {
     console.error("Error creating journal entry:", error)

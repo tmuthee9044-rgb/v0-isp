@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 function getDatabaseConnection() {
   const dbUrl =
@@ -22,23 +22,21 @@ function getDatabaseConnection() {
     throw new Error("No database connection string found")
   }
 
-  return getSql()
+  return neon(dbUrl)
 }
 
 export async function GET() {
   try {
-    const sql = await getSql()
+    const sql = getDatabaseConnection()
 
     console.log("[v0] Fetching employees from database...")
 
     const employees = await sql`
       SELECT 
         id, employee_id, first_name, last_name, 
-        email, phone, position, department, 
-        hire_date, salary, status, created_at
+        email, phone, position, department, hire_date, salary, status, created_at
       FROM employees 
       ORDER BY created_at DESC
-      LIMIT 500
     `
 
     console.log("[v0] Successfully fetched", employees.length, "employees")
@@ -46,7 +44,6 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       employees: employees,
-      count: employees.length,
     })
   } catch (error) {
     console.error("[v0] Error fetching employees:", error)
@@ -63,7 +60,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = await getSql()
+    const sql = getDatabaseConnection()
 
     const contentType = request.headers.get("content-type")
     let data: any
@@ -80,96 +77,32 @@ export async function POST(request: NextRequest) {
       lastName,
       email,
       phone,
-      nationalId,
-      dateOfBirth,
-      gender,
-      maritalStatus,
-      address,
-      emergencyContact,
-      emergencyPhone,
-      employeeId,
       position,
       department,
-      reportingManager,
-      employmentType,
-      contractType,
-      startDate,
-      probationPeriod,
-      workLocation,
       basicSalary,
-      allowances,
-      benefits,
-      payrollFrequency,
-      bankName,
-      bankAccount,
-      kraPin,
-      nssfNumber,
-      shaNumber,
-      portalUsername,
-      portalPassword,
-      qualifications,
-      experience,
-      skills,
-      notes,
-      photoUrl,
+      employeeId,
+      startDate,
       createUserAccount,
       userRole,
     } = data
 
-    const existingEmployee = await sql`
-      SELECT id, employee_id, first_name, last_name 
-      FROM employees 
-      WHERE email = ${email}
-    `
-
-    if (existingEmployee.length > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: `An employee with email ${email} already exists (${existingEmployee[0].first_name} ${existingEmployee[0].last_name} - ${existingEmployee[0].employee_id})`,
-          error: "DUPLICATE_EMAIL",
-        },
-        { status: 409 }, // 409 Conflict status code
-      )
-    }
-
+    // Generate employee ID if not provided
     const finalEmployeeId = employeeId || `EMP${Date.now().toString().slice(-6)}`
 
     const result = await sql`
       INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone, national_id,
-        date_of_birth, gender, marital_status, address, emergency_contact,
-        emergency_phone, position, department, reporting_manager, employment_type,
-        contract_type, hire_date, probation_period, work_location, salary,
-        allowances, benefits, payroll_frequency, bank_name, bank_account,
-        kra_pin, nssf_number, sha_number, portal_username, portal_password,
-        qualifications, experience, skills, notes, photo_url, status, created_at
+        employee_id, first_name, last_name, email, phone, position,
+        department, salary, hire_date, status, created_at
       ) VALUES (
-        ${finalEmployeeId}, ${firstName}, ${lastName}, ${email}, ${phone}, ${nationalId},
-        ${dateOfBirth ? new Date(dateOfBirth).toISOString() : null}, ${gender}, 
-        ${maritalStatus}, ${address}, ${emergencyContact}, ${emergencyPhone},
-        ${position}, ${department}, ${reportingManager}, ${employmentType},
-        ${contractType}, ${startDate ? new Date(startDate).toISOString() : new Date().toISOString()},
-        ${probationPeriod ? Number.parseInt(probationPeriod) : null}, ${workLocation},
-        ${basicSalary ? Number.parseFloat(basicSalary) : 0}, 
-        ${allowances ? Number.parseFloat(allowances) : 0}, ${benefits},
-        ${payrollFrequency || "monthly"}, ${bankName}, ${bankAccount},
-        ${kraPin}, ${nssfNumber}, ${shaNumber}, ${portalUsername},
-        ${portalPassword}, ${qualifications}, ${experience}, ${skills},
-        ${notes}, ${photoUrl}, 'active', NOW()
+        ${finalEmployeeId}, ${firstName}, ${lastName}, ${email}, ${phone}, ${position},
+        ${department}, ${Number.parseFloat(basicSalary) || 0}, 
+        ${startDate ? new Date(startDate).toISOString() : new Date().toISOString()},
+        'active', NOW()
       )
       RETURNING *
     `
 
-    await sql`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (
-        0, 'create', 'employee', ${result[0].id}, 
-        ${JSON.stringify({ employee_id: finalEmployeeId, name: `${firstName} ${lastName}`, position, department })},
-        NOW()
-      )
-    `
-
+    // Create user account if requested
     if (createUserAccount === "true" || createUserAccount === true) {
       try {
         const existingUser = await sql`
@@ -190,6 +123,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (userError) {
         console.error("Error creating user account:", userError)
+        // Continue even if user creation fails - don't fail the entire employee creation
       }
     }
 

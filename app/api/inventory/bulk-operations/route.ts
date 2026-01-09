@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
@@ -8,8 +10,6 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     const { operation_type, items, performed_by = 1 } = data
-
-    const sql = await getSql()
 
     const result = await sql.begin(async (sql) => {
       const results = []

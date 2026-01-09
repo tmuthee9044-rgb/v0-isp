@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { generateStatementHTML } from "@/lib/html-templates"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const customerId = Number.parseInt(params.id)
 

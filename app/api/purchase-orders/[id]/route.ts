@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 // Get single purchase order
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const id = params.id
 
     const purchaseOrder = await sql`
@@ -95,8 +95,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 // Update purchase order status
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const id = params.id
     const data = await request.json()
     const { status, notes } = data

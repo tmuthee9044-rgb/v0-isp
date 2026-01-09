@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 export async function DELETE(request: NextRequest) {
-  const sql = await getSql()
-
   try {
     const body = await request.json()
     const { ids, olderThan, level } = body

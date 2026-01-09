@@ -1,9 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
 
-export async function GET() {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function GET() {
   try {
     console.log("[v0] Starting comprehensive database integration test...")
 

@@ -26,8 +26,8 @@ interface Vehicle {
   location: string
   mileage: number
   fuel_consumption: number
-  insurance_expiry: string | Date
-  license_expiry: string | Date
+  insurance_expiry: string
+  license_expiry: string
   last_service: string
   next_service: string
   monthly_cost: number
@@ -78,7 +78,7 @@ export function VehicleDetailsModal({ open, onOpenChange, vehicle, onUpdate }: V
     }
   }
 
-  const isOverdue = (date: string | Date) => {
+  const isOverdue = (date: string) => {
     return new Date(date) < new Date()
   }
 
@@ -449,13 +449,7 @@ export function VehicleDetailsModal({ open, onOpenChange, vehicle, onUpdate }: V
                           id="insurance_expiry"
                           name="insurance_expiry"
                           type="date"
-                          defaultValue={
-                            vehicle.insurance_expiry
-                              ? typeof vehicle.insurance_expiry === "string"
-                                ? vehicle.insurance_expiry.split("T")[0]
-                                : new Date(vehicle.insurance_expiry).toISOString().split("T")[0]
-                              : ""
-                          }
+                          defaultValue={vehicle.insurance_expiry?.split("T")[0]}
                         />
                       ) : (
                         <div className="flex items-center space-x-2">
@@ -478,13 +472,7 @@ export function VehicleDetailsModal({ open, onOpenChange, vehicle, onUpdate }: V
                           id="license_expiry"
                           name="license_expiry"
                           type="date"
-                          defaultValue={
-                            vehicle.license_expiry
-                              ? typeof vehicle.license_expiry === "string"
-                                ? vehicle.license_expiry.split("T")[0]
-                                : new Date(vehicle.license_expiry).toISOString().split("T")[0]
-                              : ""
-                          }
+                          defaultValue={vehicle.license_expiry?.split("T")[0]}
                         />
                       ) : (
                         <div className="flex items-center space-x-2">

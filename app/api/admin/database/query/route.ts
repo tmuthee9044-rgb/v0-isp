@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
   try {
-    const sql = await getSql()
-
     const { query } = await request.json()
 
     if (!query || typeof query !== "string") {
@@ -52,6 +50,7 @@ export async function POST(request: Request) {
       }
     }
 
+    const sql = neon(process.env.DATABASE_URL!)
     const startTime = Date.now()
 
     // Execute the query

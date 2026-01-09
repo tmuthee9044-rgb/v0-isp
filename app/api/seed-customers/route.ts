@@ -1,11 +1,12 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST() {
   try {
-    const sql = await getSql()
     const existingCustomers = await sql`SELECT COUNT(*) as count FROM customers`
 
-    if (existingCustomers[0].count === 0) {
+    if (existingCustomers[0].count === "0") {
       await sql`
         INSERT INTO customers (
           name, email, phone, address, status, customer_type, plan, 
@@ -44,7 +45,6 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const sql = await getSql()
     const customers = await sql`SELECT * FROM customers ORDER BY id`
     return Response.json({ customers })
   } catch (error) {

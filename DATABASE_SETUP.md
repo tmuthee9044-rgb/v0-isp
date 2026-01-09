@@ -6,10 +6,10 @@ This guide explains how to set up and switch between offline PostgreSQL and Neon
 
 The `install.sh` script automatically sets up offline PostgreSQL:
 
-```bash
+\`\`\`bash
 chmod +x install.sh
 ./install.sh
-```
+\`\`\`
 
 This will:
 1. Install PostgreSQL on your system
@@ -39,33 +39,33 @@ The system automatically detects which database to use based on the `DATABASE_UR
 
 1. Get your Neon connection string from https://neon.tech
 2. Update `.env.local`:
-   ```bash
+   \`\`\`bash
    DATABASE_URL=postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/dbname?sslmode=require
-   ```
+   \`\`\`
 3. Run database sync to create tables in Neon:
-   ```bash
+   \`\`\`bash
    npm run dev
    # Then go to http://localhost:3000/settings
    # Click "Database" tab → "Sync Database Schema"
-   ```
+   \`\`\`
 
 ### From Neon to Offline PostgreSQL
 
 1. Ensure PostgreSQL is installed and running:
-   ```bash
+   \`\`\`bash
    sudo systemctl status postgresql  # Linux
    brew services list | grep postgresql  # macOS
-   ```
+   \`\`\`
 
 2. Update `.env.local`:
-   ```bash
+   \`\`\`bash
    DATABASE_URL=postgresql://isp_admin:your_password@localhost:5432/isp_system
-   ```
+   \`\`\`
 
 3. Run database migrations:
-   ```bash
+   \`\`\`bash
    ./install.sh --fix-db
-   ```
+   \`\`\`
 
 ## Manual Database Setup
 
@@ -73,7 +73,7 @@ If you need to manually set up the database:
 
 ### PostgreSQL (Offline)
 
-```bash
+\`\`\`bash
 # Create database and user
 sudo -u postgres psql
 
@@ -84,7 +84,7 @@ GRANT ALL PRIVILEGES ON DATABASE isp_system TO isp_admin;
 
 # Run migrations
 sudo -u postgres psql -d isp_system -f scripts/001_initial_schema.sql
-```
+\`\`\`
 
 ### Neon (Cloud)
 
@@ -97,20 +97,20 @@ sudo -u postgres psql -d isp_system -f scripts/001_initial_schema.sql
 
 ### Command Line
 
-```bash
+\`\`\`bash
 # Test PostgreSQL connection
 psql -U isp_admin -d isp_system -h localhost -c "SELECT version();"
 
 # Check tables
 psql -U isp_admin -d isp_system -h localhost -c "\dt"
-```
+\`\`\`
 
 ### Application
 
 1. Start the development server:
-   ```bash
+   \`\`\`bash
    npm run dev
-   ```
+   \`\`\`
 
 2. Go to http://localhost:3000/settings
 
@@ -126,36 +126,36 @@ psql -U isp_admin -d isp_system -h localhost -c "\dt"
 
 ### PostgreSQL Not Running
 
-```bash
+\`\`\`bash
 # Linux
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
 
 # macOS
 brew services start postgresql@15
-```
+\`\`\`
 
 ### Connection Refused
 
 Check if PostgreSQL is listening:
-```bash
+\`\`\`bash
 sudo netstat -plnt | grep 5432
-```
+\`\`\`
 
 ### Permission Denied
 
 Fix database permissions:
-```bash
+\`\`\`bash
 sudo -u postgres psql -d isp_system -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO isp_admin;"
 sudo -u postgres psql -d isp_system -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO isp_admin;"
-```
+\`\`\`
 
 ### Tables Not Created
 
 Run migrations manually:
-```bash
+\`\`\`bash
 ./install.sh --fix-db
-```
+\`\`\`
 
 Or use the Settings page "Sync Database Schema" button.
 

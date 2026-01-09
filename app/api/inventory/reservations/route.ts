@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 // Get stock reservations
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "all"
     const reservationType = searchParams.get("type")
@@ -97,8 +97,6 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
 
-    const sql = await getSql()
-
     const result = await sql.begin(async (sql) => {
       // Check available stock
       const availableStock = await sql`
@@ -168,8 +166,6 @@ export async function PUT(request: NextRequest) {
   try {
     const data = await request.json()
     const { reservation_id, status, notes } = data
-
-    const sql = await getSql()
 
     const result = await sql.begin(async (sql) => {
       // Get current reservation

@@ -1,27 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import sql from "sql-template-strings"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
-    const db = await getSql()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
 
     let pools
     if (status) {
-      pools = await db.query(sql`
+      pools = await sql`
         SELECT id, ip_address, gateway, status, allocated_at, customer_id
         FROM ip_pools
         WHERE status = ${status} AND (customer_id IS NULL OR customer_id = 0)
         ORDER BY ip_address
-      `)
+      `
     } else {
-      pools = await db.query(sql`
+      pools = await sql`
         SELECT id, ip_address, gateway, status, allocated_at, customer_id
         FROM ip_pools
         ORDER BY ip_address
-      `)
+      `
     }
 
     return NextResponse.json({
@@ -37,15 +37,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { ip_address, customer_id, action } = await request.json()
-    const db = await getSql()
 
     if (action === "assign") {
-      const result = await db.query(sql`
+      const result = await sql`
         UPDATE ip_pools 
         SET status = 'assigned', customer_id = ${customer_id}, allocated_at = NOW()
         WHERE ip_address = ${ip_address} AND status = 'available'
         RETURNING *
-      `)
+      `
 
       if (result.length === 0) {
         return NextResponse.json({ success: false, error: "IP address not available" }, { status: 400 })
@@ -53,11 +52,11 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ success: true, message: "IP address assigned successfully" })
     } else if (action === "release") {
-      await db.query(sql`
+      await sql`
         UPDATE ip_pools 
         SET status = 'available', customer_id = NULL, allocated_at = NULL
         WHERE ip_address = ${ip_address}
-      `)
+      `
 
       return NextResponse.json({ success: true, message: "IP address released successfully" })
     }

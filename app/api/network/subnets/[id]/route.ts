@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const subnetId = Number.parseInt(params.id)
 
@@ -34,8 +34,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const subnetId = Number.parseInt(params.id)
     const body = await request.json()
@@ -96,8 +94,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const subnetId = Number.parseInt(params.id)
 

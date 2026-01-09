@@ -2,13 +2,13 @@
 /**
  * Database Connection Test Script
  *
- * Tests the database connection and verifies the dual database system is working correctly
+ * Tests the database connection and verifies the neon-wrapper is working correctly
  * for both offline PostgreSQL and Neon serverless databases.
  *
  * Usage: npx tsx scripts/test-connection.ts
  */
 
-import { getSql } from "../lib/db"
+import { sql } from "@neondatabase/serverless"
 
 interface TestResult {
   name: string
@@ -29,7 +29,6 @@ function logTest(name: string, status: "pass" | "fail", message: string, duratio
 async function testBasicConnection() {
   const startTime = Date.now()
   try {
-    const sql = await getSql()
     const result = await sql`SELECT NOW() as current_time, version() as pg_version`
     const row = result.rows?.[0] || result[0]
     const duration = Date.now() - startTime
@@ -63,7 +62,6 @@ async function testDatabaseDetection() {
 async function testTableAccess() {
   const startTime = Date.now()
   try {
-    const sql = await getSql()
     const result = await sql`
       SELECT table_name 
       FROM information_schema.tables 
@@ -98,8 +96,6 @@ async function testTableAccess() {
 async function testCRUDOperations() {
   const startTime = Date.now()
   try {
-    const sql = await getSql()
-
     // Test INSERT
     const insertResult = await sql`
       INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, ip_address)
@@ -136,7 +132,6 @@ async function testCRUDOperations() {
 async function testParameterizedQueries() {
   const startTime = Date.now()
   try {
-    const sql = await getSql()
     const testValue = "test@example.com"
     const result = await sql`
       SELECT ${testValue} as email, 
@@ -164,8 +159,6 @@ async function testParameterizedQueries() {
 async function testTransactions() {
   const startTime = Date.now()
   try {
-    const sql = await getSql()
-
     // Start transaction
     await sql`BEGIN`
 

@@ -1,10 +1,10 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
-    const sql = await getSql()
-
     const customers = await sql`
       SELECT 
         c.id,
@@ -25,7 +25,7 @@ export async function GET() {
       FROM customers c
       LEFT JOIN locations l ON c.location_id = l.id
       LEFT JOIN customer_services cs ON c.id = cs.customer_id AND cs.status = 'active'
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN service_plans sp ON cs.tariff_id = sp.id
       ORDER BY c.created_at DESC
     `
 

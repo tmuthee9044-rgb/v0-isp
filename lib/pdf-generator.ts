@@ -1,6 +1,6 @@
 import jsPDF from "jspdf"
 import "jspdf-autotable"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 interface CompanySettings {
   company_name?: string
@@ -343,7 +343,7 @@ export class PDFGenerator {
       const companySettings = await getCompanySettings()
       const generator = new PDFGenerator(companySettings)
 
-      const sql = await getSql()
+      const sql = neon(process.env.DATABASE_URL!)
 
       const customerResult = await sql`
         SELECT name, email, phone, address 
@@ -400,7 +400,7 @@ export class PDFGenerator {
       const companySettings = await getCompanySettings()
       const generator = new PDFGenerator(companySettings)
 
-      const sql = await getSql()
+      const sql = neon(process.env.DATABASE_URL!)
       const invoiceResult = await sql`
         SELECT 
           i.*,
@@ -453,7 +453,7 @@ export class PDFGenerator {
       const companySettings = await getCompanySettings()
       const generator = new PDFGenerator(companySettings)
 
-      const sql = await getSql()
+      const sql = neon(process.env.DATABASE_URL!)
       const paymentResult = await sql`
         SELECT 
           p.*,
@@ -489,7 +489,7 @@ export class PDFGenerator {
       const companySettings = await getCompanySettings()
       const generator = new PDFGenerator(companySettings)
 
-      const sql = await getSql()
+      const sql = neon(process.env.DATABASE_URL!)
       const creditNoteResult = await sql`
         SELECT 
           cn.*,
@@ -525,7 +525,7 @@ export class PDFGenerator {
 
 export async function getCompanySettings(): Promise<CompanySettings> {
   try {
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL!)
     const result = await sql`
       SELECT 
         company_name,

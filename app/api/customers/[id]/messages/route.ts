@@ -1,21 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
   try {
     const customerId = Number.parseInt(params.id)
 
     const messages = await sql`
       SELECT 
         m.*,
-        COALESCE(
-          NULLIF(CONCAT(c.first_name, ' ', c.last_name), ' '),
-          c.name
-        ) as recipient_name
+        COALESCE(u.username, 'System') as sender_name
       FROM messages m
-      LEFT JOIN customers c ON m.customer_id = c.id
-      WHERE m.customer_id = ${customerId}
+      LEFT JOIN users u ON m.sender_id = u.id
+      WHERE m.recipient_id = ${customerId} 
+        AND m.recipient_type = 'customer'
       ORDER BY m.created_at DESC
     `
 
@@ -30,51 +29,30 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
   try {
     const customerId = Number.parseInt(params.id)
-    const { messageType, subject, content, template_id } = await request.json()
+    const { type, subject, content, template_id } = await request.json()
 
-    const [customer] = await sql`
-      SELECT 
-        email, 
-        phone, 
-        COALESCE(
-          NULLIF(CONCAT(first_name, ' ', last_name), ' '),
-          name
-        ) as full_name
-      FROM customers 
-      WHERE id = ${customerId}
-      LIMIT 1
-    `
-
-    if (!customer) {
-      return NextResponse.json({ success: false, error: "Customer not found" }, { status: 404 })
-    }
-
-    const recipient = messageType === "email" ? customer.email : customer.phone
-
-    if (!recipient) {
-      return NextResponse.json({ success: false, error: `Customer has no ${messageType} on file` }, { status: 400 })
-    }
-
+    // Create message record
     const [message] = await sql`
       INSERT INTO messages (
-        type,
-        recipient,
+        recipient_id,
+        recipient_type,
+        sender_id,
+        message_type,
         subject,
         content,
         template_id,
-        customer_id,
         status,
         created_at
       ) VALUES (
-        ${messageType || "sms"},
-        ${recipient},
+        ${customerId},
+        'customer',
+        1, -- Default admin user, should be from session
+        ${type},
         ${subject || null},
         ${content},
         ${template_id || null},
-        ${customerId},
         'sent',
         NOW()
       )

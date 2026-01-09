@@ -1,4 +1,6 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export interface Router {
   id: number
@@ -137,8 +139,6 @@ async function testJuniperConnection(router: Partial<Router>): Promise<boolean> 
 
 // Sync job utilities
 export async function createSyncJob(routerId: number, jobType: SyncJob["job_type"], payload?: any): Promise<number> {
-  const sql = await getSql()
-
   const result = await sql`
     INSERT INTO sync_jobs (router_id, job_type, payload)
     VALUES (${routerId}, ${jobType}, ${JSON.stringify(payload || {})})
@@ -153,8 +153,6 @@ export async function updateSyncJobStatus(
   status: SyncJob["status"],
   errorMessage?: string,
 ): Promise<void> {
-  const sql = await getSql()
-
   const updateData: any = { status }
 
   if (status === "running") {
@@ -183,8 +181,6 @@ export async function logNetworkEvent(
   ipAddress?: string,
   details?: any,
 ): Promise<void> {
-  const sql = await getSql()
-
   await sql`
     INSERT INTO network_events (event_type, router_id, customer_id, service_id, ip_address, details)
     VALUES (${eventType}, ${routerId}, ${customerId}, ${serviceId}, ${ipAddress}, ${JSON.stringify(details || {})})

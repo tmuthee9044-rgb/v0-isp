@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import jsPDF from "jspdf"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 async function getCompanySettings() {
   try {
-    const sql = await getSql()
-
     const settings = await sql`
       SELECT key, value 
       FROM system_config 
@@ -30,8 +30,6 @@ async function getCompanySettings() {
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const paymentId = Number.parseInt(params.id)
 
     const companySettings = await getCompanySettings()

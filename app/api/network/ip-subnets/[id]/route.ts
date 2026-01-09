@@ -1,13 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const subnetId = Number.parseInt(params.id)
-
-    console.log("[v0] Fetching subnet with ID:", subnetId)
-
-    const sql = await getSql()
 
     const subnet = await sql`
       SELECT 
@@ -15,21 +13,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         r.name as router_name,
         r.ip_address as router_ip,
         l.name as location_name,
-        l.city as location_city,
-        l.address as location_address,
-        COUNT(ip.id)::int as total_ips_generated,
-        COUNT(CASE WHEN ip.status = 'assigned' THEN 1 END)::int as assigned_ips,
-        COUNT(CASE WHEN ip.status = 'available' THEN 1 END)::int as available_ips,
-        COUNT(CASE WHEN ip.status = 'reserved' THEN 1 END)::int as reserved_ips
+        COUNT(ip.id) as total_ips_generated,
+        COUNT(CASE WHEN ip.status = 'assigned' THEN 1 END) as assigned_ips,
+        COUNT(CASE WHEN ip.status = 'available' THEN 1 END) as available_ips,
+        COUNT(CASE WHEN ip.status = 'reserved' THEN 1 END) as reserved_ips
       FROM ip_subnets s
       LEFT JOIN network_devices r ON s.router_id = r.id
-      LEFT JOIN locations l ON r.location_id = l.id
+      LEFT JOIN locations l ON r.location = l.name
       LEFT JOIN ip_addresses ip ON s.id = ip.subnet_id
       WHERE s.id = ${subnetId}
-      GROUP BY s.id, r.name, r.ip_address, l.name, l.city, l.address
+      GROUP BY s.id, r.name, r.ip_address, l.name
     `
-
-    console.log("[v0] Subnet query result:", subnet)
 
     if (subnet.length === 0) {
       return NextResponse.json({ message: "Subnet not found" }, { status: 404 })
@@ -38,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json(subnet[0])
   } catch (error) {
     console.error("[v0] Error fetching subnet:", error)
-    return NextResponse.json({ message: "Failed to fetch subnet", error: String(error) }, { status: 500 })
+    return NextResponse.json({ message: "Failed to fetch subnet" }, { status: 500 })
   }
 }
 
@@ -47,17 +41,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const subnetId = Number.parseInt(params.id)
     const body = await request.json()
 
-    const { name, description, type, allocation_mode } = body
-
-    const sql = await getSql()
+    const { name, description, type, gateway, vlan_id } = body
 
     const result = await sql`
       UPDATE ip_subnets SET
         name = COALESCE(${name}, name),
         description = COALESCE(${description}, description),
         type = COALESCE(${type}, type),
-        allocation_mode = COALESCE(${allocation_mode}, allocation_mode),
-        updated_at = NOW()
+        gateway = COALESCE(${gateway}, gateway),
+        vlan_id = COALESCE(${vlan_id}, vlan_id)
       WHERE id = ${subnetId}
       RETURNING *
     `
@@ -76,8 +68,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const subnetId = Number.parseInt(params.id)
-
-    const sql = await getSql()
 
     // Check if subnet has assigned IP addresses
     const assignedIPs = await sql`

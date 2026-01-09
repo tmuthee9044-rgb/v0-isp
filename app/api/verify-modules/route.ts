@@ -1,11 +1,11 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { DatabaseUtils } from "@/lib/db-utils"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
     console.log("[v0] Starting comprehensive module verification...")
-
-    const sql = await getSql()
 
     const verificationResults = {
       timestamp: new Date().toISOString(),

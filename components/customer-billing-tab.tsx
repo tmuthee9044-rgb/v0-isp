@@ -15,7 +15,6 @@ import PaymentModal from "@/components/payment-modal"
 import { CreateInvoiceModal } from "@/components/create-invoice-modal"
 import CreditNoteModal from "@/components/credit-note-modal"
 import { toast } from "sonner"
-import { jsPDF } from "jspdf"
 import {
   CreditCard,
   FileText,
@@ -33,14 +32,6 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 
 interface FinanceDocument {
   id: string
@@ -115,10 +106,6 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
     total_outstanding: 0,
     last_payment_date: null as string | null,
   })
-
-  const [showDateRangePicker, setShowDateRangePicker] = useState(false)
-  const [statementStartDate, setStatementStartDate] = useState("")
-  const [statementEndDate, setStatementEndDate] = useState("")
 
   useEffect(() => {
     loadBillingData()
@@ -291,149 +278,49 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
   const handleGenerateStatement = async () => {
     try {
       setGeneratingStatement(true)
-      console.log("[v0] Generating statement for customer:", customerId)
-      console.log("[v0] Date range:", { start: statementStartDate, end: statementEndDate })
+      toast.info("Generating statement...")
 
       const response = await fetch(`/api/customers/${customerId}/statement`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate: statementStartDate || undefined,
-          endDate: statementEndDate || undefined,
-        }),
       })
 
-      console.log("[v0] Statement API response status:", response.status)
-
-      const contentType = response.headers.get("content-type")
-
+      // Check if response is successful
       if (!response.ok) {
-        if (contentType?.includes("application/json")) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || errorData.details || "Failed to generate statement")
-        } else {
-          const errorText = await response.text()
-          throw new Error(errorText || "Failed to generate statement")
-        }
+        const errorData = await response.json()
+        toast.error(errorData.error || "Failed to generate statement")
+        return
       }
 
-      const data = await response.json()
-
-      if (!data.success || !data.statement) {
-        throw new Error("Invalid statement data received")
+      // Check content type to ensure we have PDF
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/pdf")) {
+        toast.error("Invalid response format - expected PDF")
+        return
       }
 
-      const doc = new jsPDF()
-      const statement = data.statement
+      const blob = await response.blob()
 
-      // Header
-      doc.setFontSize(18)
-      doc.setFont("helvetica", "bold")
-      doc.text(statement.companyInfo?.name || "ISP Management", 105, 20, { align: "center" })
-
-      doc.setFontSize(12)
-      doc.setFont("helvetica", "normal")
-      doc.text("Statement of Account", 105, 28, { align: "center" })
-
-      // Customer Info
-      doc.setFontSize(10)
-      doc.setFont("helvetica", "bold")
-      doc.text("Bill To:", 20, 45)
-      doc.setFont("helvetica", "normal")
-      doc.text(statement.customerName || "Unknown Customer", 20, 52)
-      doc.text(`Email: ${statement.email || "N/A"}`, 20, 59)
-      doc.text(`Phone: ${statement.phone || "N/A"}`, 20, 66)
-      doc.text(`Address: ${statement.address || "N/A"}, ${statement.city || ""}`, 20, 73)
-
-      // Statement Info
-      doc.setFont("helvetica", "bold")
-      doc.text(`Statement #: ${statement.statementNumber}`, 20, 85)
-      doc.text(
-        `Period: ${new Date(statement.startDate).toLocaleDateString()} to ${new Date(statement.endDate).toLocaleDateString()}`,
-        20,
-        92,
-      )
-      doc.text(`Generated: ${new Date(statement.generatedDate).toLocaleDateString()}`, 20, 99)
-
-      // Table Header
-      let yPos = 115
-      doc.setFontSize(9)
-      doc.setFont("helvetica", "bold")
-      doc.text("Date", 20, yPos)
-      doc.text("Description", 50, yPos)
-      doc.text("Reference", 110, yPos)
-      doc.text("Debit", 150, yPos, { align: "right" })
-      doc.text("Credit", 180, yPos, { align: "right" })
-
-      doc.line(20, yPos + 2, 190, yPos + 2)
-      yPos += 8
-
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(8)
-
-      if (statement.transactions && statement.transactions.length > 0) {
-        for (const transaction of statement.transactions) {
-          if (yPos > 270) {
-            doc.addPage()
-            yPos = 20
-          }
-
-          const amount = Number(transaction.amount) || 0
-          const debit = transaction.type === "invoice" ? amount.toFixed(2) : "-"
-          const credit = transaction.type === "payment" ? amount.toFixed(2) : "-"
-
-          doc.text(new Date(transaction.date).toLocaleDateString(), 20, yPos)
-          doc.text((transaction.description || "N/A").substring(0, 25), 50, yPos)
-          doc.text(transaction.reference || "N/A", 110, yPos)
-          doc.text(debit, 150, yPos, { align: "right" })
-          doc.text(credit, 180, yPos, { align: "right" })
-
-          yPos += 6
-        }
-      } else {
-        doc.text("No transactions found for this period", 20, yPos)
-        yPos += 6
+      // Verify blob is valid PDF
+      if (blob.type !== "application/pdf") {
+        toast.error("Failed to generate valid PDF")
+        return
       }
 
-      // Summary
-      yPos += 5
-      doc.line(20, yPos, 190, yPos)
-      yPos += 8
-
-      doc.setFont("helvetica", "bold")
-      doc.setFontSize(10)
-      doc.text(`Opening Balance: KES ${(statement.openingBalance || 0).toFixed(2)}`, 120, yPos)
-      doc.text(`Total Debits: KES ${(statement.totalDebits || 0).toFixed(2)}`, 120, yPos + 7)
-      doc.text(`Total Credits: KES ${(statement.totalCredits || 0).toFixed(2)}`, 120, yPos + 14)
-      doc.setFontSize(11)
-      doc.text(`Closing Balance: KES ${(statement.closingBalance || 0).toFixed(2)}`, 120, yPos + 21)
-
-      // Footer
-      doc.setFontSize(9)
-      doc.setFont("helvetica", "normal")
-      doc.text("This statement is generated automatically. Thank you for your business!", 105, 280, {
-        align: "center",
-      })
-
-      doc.save(`statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf`)
-
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
       toast.success("Statement generated successfully")
-      setShowDateRangePicker(false)
-    } catch (error: any) {
-      console.error("[v0] Error generating statement:", error.message)
-      toast.error(error.message || "Failed to generate statement")
+    } catch (error) {
+      console.error("[v0] Error generating statement:", error)
+      toast.error("Failed to generate statement")
     } finally {
       setGeneratingStatement(false)
     }
-  }
-
-  const handleOpenStatementDialog = () => {
-    // Set default dates - last 30 days
-    const end = new Date()
-    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
-    setStatementEndDate(end.toISOString().split("T")[0])
-    setStatementStartDate(start.toISOString().split("T")[0])
-    setShowDateRangePicker(true)
   }
 
   const getStatusColor = (status: string) => {
@@ -449,6 +336,7 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
     }
   }
 
+  // Updated to handle new status types and return Badge components
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid":
@@ -467,6 +355,7 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
     }
   }
 
+  // Updated to match new finance document types
   const getTypeBadge = (type: string) => {
     switch (type) {
       case "invoice":
@@ -634,9 +523,9 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
                     <FileText className="h-4 w-4 mr-2" />
                     Add Invoice
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleOpenStatementDialog} disabled={generatingStatement}>
+                  <DropdownMenuItem onClick={handleGenerateStatement} disabled={generatingStatement}>
                     <Download className="h-4 w-4 mr-2" />
-                    Generate Statement
+                    {generatingStatement ? "Generating..." : "Generate Statement"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1078,45 +967,6 @@ export function CustomerBillingTab({ customerId }: CustomerBillingTabProps) {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <Dialog open={showDateRangePicker} onOpenChange={setShowDateRangePicker}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate Statement</DialogTitle>
-            <DialogDescription>Select the date range for the customer statement</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="start-date">Start Date</Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={statementStartDate}
-                onChange={(e) => setStatementStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end-date">End Date</Label>
-              <Input
-                id="end-date"
-                type="date"
-                value={statementEndDate}
-                onChange={(e) => setStatementEndDate(e.target.value)}
-                min={statementStartDate}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDateRangePicker(false)} disabled={generatingStatement}>
-              Cancel
-            </Button>
-            <Button onClick={handleGenerateStatement} disabled={generatingStatement}>
-              <Download className="h-4 w-4 mr-2" />
-              {generatingStatement ? "Generating..." : "Generate Statement"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {customerData && (
         <>

@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
 
+const sql = neon(process.env.DATABASE_URL!)
+
 async function getCompanySettings() {
   try {
-    const sql = await getSql()
     const settings = await sql`
       SELECT key, value 
       FROM system_config 
@@ -30,7 +31,6 @@ async function getCompanySettings() {
 
 export async function GET(request: NextRequest, { params }: { params: { id: string; invoiceId: string } }) {
   try {
-    const sql = await getSql()
     const customerId = Number.parseInt(params.id)
     const invoiceId = Number.parseInt(params.invoiceId)
 
@@ -56,13 +56,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
               'description', ii.description,
               'quantity', ii.quantity,
               'unit_price', ii.unit_price,
-              'total_amount', ii.total_price
+              'total_amount', ii.total_amount,
+              'service_plan_name', sp.name
             )
           ) FILTER (WHERE ii.id IS NOT NULL), 
           '[]'::json
         ) as items
       FROM invoices i
       LEFT JOIN invoice_items ii ON i.id = ii.invoice_id
+      LEFT JOIN service_plans sp ON ii.service_plan_id = sp.id
       WHERE i.id = ${invoiceId} AND i.customer_id = ${customerId}
       GROUP BY i.id
     `
@@ -158,7 +160,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     // Invoice Items Table
     const items = Array.isArray(invoice.items) ? invoice.items : []
     const tableData = items.map((item: any) => [
-      item.description || "Service",
+      item.description || item.service_plan_name || "Service",
       item.quantity?.toString() || "1",
       `KES ${Number(item.unit_price || 0).toLocaleString()}`,
       `KES ${Number(item.total_amount || 0).toLocaleString()}`,

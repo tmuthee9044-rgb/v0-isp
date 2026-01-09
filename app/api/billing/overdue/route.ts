@@ -1,11 +1,25 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export async function GET() {
   try {
     console.log("[v0] Starting overdue invoices query...")
 
-    const sql = await getSql()
+    const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL
+    console.log("[v0] Database URL available:", !!databaseUrl)
+
+    if (!databaseUrl) {
+      console.error("[v0] No database URL found in environment variables")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Database configuration error - no connection string found",
+        },
+        { status: 500 },
+      )
+    }
+
+    const sql = neon(databaseUrl)
     console.log("[v0] Database connection created successfully")
 
     console.log("[v0] Executing overdue invoices query...")

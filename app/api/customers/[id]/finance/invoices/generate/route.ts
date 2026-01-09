@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const customerId = Number.parseInt(params.id)
     const body = await request.json().catch(() => ({}))
@@ -230,9 +230,8 @@ function getBillingCycleDays(cycle: string): number {
 }
 
 async function queueInvoiceNotification(invoiceId: number, customerId: number, billingConfig: any) {
-  const sql = await getSql()
-
   try {
+    // This would integrate with your notification system
     console.log(`Queuing invoice notification for invoice ${invoiceId}, customer ${customerId}`)
 
     // Example: Add to notification queue

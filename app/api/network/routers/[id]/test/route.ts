@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { testRouterConnection, logNetworkEvent } from "@/lib/network-utils"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const routerId = Number.parseInt(params.id)
 

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import * as XLSX from "xlsx"
 import { createObjectCsvWriter } from "csv-writer"
 import jsPDF from "jspdf"
@@ -8,10 +8,10 @@ import { tmpdir } from "os"
 import { join } from "path"
 import { readFileSync, unlinkSync } from "fs"
 
+const sql = neon(process.env.DATABASE_URL!)
+
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type") || "csv" // csv, excel, pdf

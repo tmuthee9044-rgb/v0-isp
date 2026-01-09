@@ -326,9 +326,7 @@ export function PayrollModal({ open, onOpenChange }: PayrollModalProps) {
                           <TableCell>
                             <div>
                               <div className="font-medium">
-                                {isCalculated
-                                  ? calculation?.employeeName
-                                  : `${employee?.first_name} ${employee?.last_name}`}
+                                {isCalculated ? calculation?.employeeName : employee?.name}
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 {isCalculated ? calculation?.employeeId : employee?.employee_id}

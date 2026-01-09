@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { validateAndNormalizeCIDR, validateIPAddress } from "@/lib/cidr-utils"
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await request.json()
     const { name, network, cidr, gateway, dns_servers, description, status } = body
@@ -82,8 +82,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const subnetId = Number.parseInt(params.id)
 

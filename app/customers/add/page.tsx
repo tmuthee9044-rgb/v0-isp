@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useTransition } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,7 +34,6 @@ interface CustomerFormData {
   date_of_birth?: string
   gender?: string
   national_id?: string
-  account_number?: string // Added account_number field for manual entry - used for MPESA payments and portal login
 
   // Business Information (for companies/schools)
   contact_person?: string
@@ -95,7 +94,6 @@ export default function AddCustomerPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
-  const [isPending, startTransition] = useTransition()
   const [formData, setFormData] = useState<CustomerFormData>({
     customer_type: "individual",
     first_name: "",
@@ -112,53 +110,48 @@ export default function AddCustomerPage() {
     auto_renewal: true,
     paperless_billing: false,
     sms_notifications: true,
-    account_number: "",
   })
 
   useEffect(() => {
-    const controller = new AbortController()
-
-    startTransition(() => {
-      fetch("/api/locations", { signal: controller.signal })
-        .then((res) => {
-          if (res.ok) return res.json()
-          throw new Error("Failed to fetch")
-        })
-        .then((data) => {
-          if (data.locations) setLocations(data.locations)
-        })
-        .catch((err) => {
-          if (err.name !== "AbortError") {
-            console.error("[v0] Failed to load locations:", err)
-          }
-        })
-    })
-
-    return () => controller.abort()
+    const fetchLocations = async () => {
+      try {
+        console.log("[v0] Fetching locations...")
+        const response = await fetch("/api/locations")
+        if (response.ok) {
+          const data = await response.json()
+          console.log("[v0] Locations fetched:", data.locations)
+          setLocations(data.locations || [])
+        }
+      } catch (error) {
+        console.error("[v0] Failed to fetch locations:", error)
+      }
+    }
+    fetchLocations()
   }, [])
 
   const handleInputChange = (field: keyof CustomerFormData, value: any) => {
-    setFormData((prev) => {
-      const updated = { ...prev, [field]: value }
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
 
-      if (field === "first_name" || field === "last_name") {
-        if (prev.customer_type === "individual") {
-          const firstName = field === "first_name" ? value : prev.first_name
-          const lastName = field === "last_name" ? value : prev.last_name
-          updated.name = `${firstName} ${lastName}`.trim()
-        }
+    if (field === "first_name" || field === "last_name") {
+      if (formData.customer_type === "individual") {
+        const firstName = field === "first_name" ? value : formData.first_name
+        const lastName = field === "last_name" ? value : formData.last_name
+        setFormData((prev) => ({
+          ...prev,
+          name: `${firstName} ${lastName}`.trim(),
+        }))
       }
+    }
 
-      if (field === "phone_primary") {
-        updated.phone = value
-      }
-
-      if (field === "account_number") {
-        updated.account_number = value.toUpperCase()
-      }
-
-      return updated
-    })
+    if (field === "phone_primary") {
+      setFormData((prev) => ({
+        ...prev,
+        phone: value,
+      }))
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -328,27 +321,6 @@ export default function AddCustomerPage() {
                       onChange={(e) => handleInputChange("alternate_email", e.target.value)}
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="account_number" className="flex items-center gap-2">
-                    Account Number *
-                    <span className="text-xs text-muted-foreground font-normal">
-                      (Used for MPESA payments and customer portal login)
-                    </span>
-                  </Label>
-                  <Input
-                    id="account_number"
-                    value={formData.account_number || ""}
-                    onChange={(e) => handleInputChange("account_number", e.target.value.toUpperCase())}
-                    placeholder="e.g., ACC-2024-001 or custom format"
-                    required
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter a unique account number that the customer will use for making MPESA payments and logging into
-                    their portal
-                  </p>
                 </div>
 
                 {formData.customer_type === "individual" && (

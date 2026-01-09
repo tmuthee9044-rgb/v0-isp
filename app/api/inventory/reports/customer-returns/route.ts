@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
         FROM customers c
         LEFT JOIN customer_equipment ce ON ce.customer_id = c.id
         LEFT JOIN equipment_returns er ON er.customer_id = c.id 
-          AND er.return_date BETWEEN ${startDate} AND ${endDate}
+          AND er.return_date BETWEEN ${startDate}::date AND ${endDate}::date
         GROUP BY c.id, c.first_name, c.last_name, c.email, c.phone, c.customer_type, c.status
         HAVING COUNT(DISTINCT ce.id) > 0
         ORDER BY return_rate DESC NULLS LAST, total_returns DESC

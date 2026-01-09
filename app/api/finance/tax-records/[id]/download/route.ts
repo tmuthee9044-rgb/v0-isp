@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
-const generateTaxReturnHTML = (taxRecord: any, company: any): string => {
+const sql = neon(process.env.DATABASE_URL!)
+
+function generateTaxReturnHTML(taxRecord: any, company: any): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -136,8 +138,6 @@ const generateTaxReturnHTML = (taxRecord: any, company: any): string => {
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const { id } = params
 
     // Fetch tax record

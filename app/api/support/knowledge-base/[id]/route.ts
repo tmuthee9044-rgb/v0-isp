@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const [article] = await sql`
       SELECT 
         kb.*,
@@ -30,7 +30,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const body = await request.json()
     const { title, content, category, tags } = body
 
@@ -55,7 +54,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const [article] = await sql`
       DELETE FROM knowledge_base 
       WHERE id = ${params.id}

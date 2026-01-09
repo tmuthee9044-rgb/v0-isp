@@ -10,17 +10,14 @@ CREATE TABLE IF NOT EXISTS company_profiles (
     company_size VARCHAR(50),
     founded_year INTEGER,
     logo TEXT,
-    favicon TEXT,
     primary_color VARCHAR(7) DEFAULT '#3b82f6',
     secondary_color VARCHAR(7) DEFAULT '#64748b',
-    accent_color VARCHAR(7) DEFAULT '#16a34a', -- Added accent_color column
     slogan VARCHAR(255),
     
     -- Contact Information
     physical_address TEXT NOT NULL,
     postal_address TEXT,
     city VARCHAR(100) NOT NULL,
-    state VARCHAR(100), -- Added state/county column
     country VARCHAR(100) NOT NULL DEFAULT 'Kenya',
     postal_code VARCHAR(20),
     timezone VARCHAR(50) NOT NULL DEFAULT 'Africa/Nairobi',
@@ -30,12 +27,6 @@ CREATE TABLE IF NOT EXISTS company_profiles (
     support_email VARCHAR(255),
     website VARCHAR(255),
     fax VARCHAR(20),
-    
-    -- Social Media -- Added social media columns
-    social_facebook VARCHAR(255),
-    social_twitter VARCHAR(255),
-    social_linkedin VARCHAR(255),
-    social_instagram VARCHAR(255),
     
     -- Localization
     language VARCHAR(10) NOT NULL DEFAULT 'en',
@@ -47,12 +38,6 @@ CREATE TABLE IF NOT EXISTS company_profiles (
     currency_position VARCHAR(10) NOT NULL DEFAULT 'before',
     fiscal_year_start VARCHAR(20) NOT NULL DEFAULT 'january',
     week_start VARCHAR(10) NOT NULL DEFAULT 'monday',
-    number_format VARCHAR(20) NOT NULL DEFAULT 'comma', -- Added number_format column
-    company_prefix VARCHAR(10), -- Added company_prefix column
-    
-    -- Tax Settings -- Added tax configuration columns
-    tax_system VARCHAR(50) DEFAULT 'vat',
-    tax_rate DECIMAL(5,2) DEFAULT 16.00,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

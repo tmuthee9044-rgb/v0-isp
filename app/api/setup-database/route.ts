@@ -1,9 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
 
-export async function POST() {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function POST() {
   try {
     const results = []
 

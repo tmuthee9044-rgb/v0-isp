@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const accountId = Number.parseInt(params.id)
     const body = await request.json()
     const { account_name, description } = body
@@ -33,7 +34,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const accountId = Number.parseInt(params.id)
 
     console.log("[v0] Deleting account:", accountId)

@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 // Get warehouse transfers
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "all"
     const warehouseId = searchParams.get("warehouse_id")
@@ -117,8 +117,6 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
-
-    const sql = await getSql()
 
     const result = await sql.begin(async (sql) => {
       // Generate transfer number

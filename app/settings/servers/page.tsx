@@ -10,116 +10,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Activity, AlertCircle, CheckCircle, Clock, Router, Server, Shield, XCircle, Eye, EyeOff } from "lucide-react"
+import { Server, Shield, Network, Activity, CheckCircle, AlertCircle, Wifi, Router, Database } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-// Define a more specific type for serverConfig if possible, otherwise use 'any'
-interface ServerConfig {
-  radius?: {
-    enabled?: boolean
-    host?: string
-    authPort?: string
-    acctPort?: string
-    timeout?: string
-    sharedSecret?: string
-    protocols?: {
-      pppoe?: boolean
-      ipoe?: boolean
-      hotspot?: boolean
-      wireless?: boolean
-    }
-    authMethods?: {
-      pap?: boolean
-      chap?: boolean
-      mschap?: boolean
-      mschapv2?: boolean
-    }
-    vendors?: {
-      mikrotik?: boolean
-      ubiquiti?: boolean
-      cisco?: boolean
-      juniper?: boolean
-      cambium?: boolean
-      huawei?: boolean
-    }
-    bandwidth?: {
-      enableRateLimit?: boolean
-      rateLimitAttr?: string
-      burstMode?: string
-    }
-    accounting?: {
-      enabled?: boolean
-      interimInterval?: string
-      sessionTimeout?: string
-      trackMacAddress?: boolean
-    }
-    failover?: {
-      enabled?: boolean
-      backupHost?: string
-      timeout?: string
-    }
-    scheduledReboot?: {
-      enabled?: boolean
-      interval?: string
-      time?: string
-      autoReconnectRouters?: boolean
-      lastReboot?: string
-      nextReboot?: string
-    }
-  }
-  openvpn?: {
-    enabled?: boolean
-    serverIp?: string
-    port?: string
-    protocol?: string
-    cipher?: string
-    network?: string
-    primaryDns?: string
-    secondaryDns?: string
-    tlsAuth?: boolean
-    clientToClient?: boolean
-    duplicateCn?: boolean
-    compression?: boolean
-  }
-  network?: {
-    gateway?: string
-    subnetMask?: string
-    managementVlan?: string
-    customerVlan?: string
-    snmpCommunity?: string
-    ntpServer?: string
-    features?: {
-      firewall?: boolean
-      ddosProtection?: boolean
-      portScan?: boolean
-      intrusionDetection?: boolean
-    }
-    uploadLimit?: string
-    downloadLimit?: string
-    burstRatio?: string
-    monitoring?: {
-      snmpMonitoring?: boolean
-      bandwidthMonitoring?: boolean
-      uptimeMonitoring?: boolean
-      alertNotifications?: boolean
-    }
-    monitoringInterval?: string
-    alertThreshold?: string
-  }
-}
 
 export default function ServerConfigurationPage() {
   const { toast } = useToast()
   const [isPending, setIsPending] = useState(false)
-  const [testResults, setTestResults] = useState<any>(null)
-  const [isTesting, setIsTesting] = useState(false)
-
-  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null) // Initialize with null, and provide a type
+  const [activeNetworkTab, setActiveNetworkTab] = useState("configuration")
+  const [serverConfig, setServerConfig] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [showSecret, setShowSecret] = useState(false) // State for toggling password visibility
-
-  const [radiusTestResults, setRadiusTestResults] = useState<any>(null)
-  const [isTestingRouters, setIsTestingRouters] = useState(false)
 
   useEffect(() => {
     fetchServerConfig()
@@ -128,15 +27,7 @@ export default function ServerConfigurationPage() {
   const fetchServerConfig = async () => {
     try {
       const response = await fetch("/api/server-settings")
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
       const data = await response.json()
-
-      console.log("[v0] Fetched server config from API")
-      console.log("[v0] RADIUS host:", data?.radius?.host)
-      console.log("[v0] RADIUS secret present:", !!data?.radius?.sharedSecret)
-
       setServerConfig(data)
     } catch (error) {
       console.error("Error fetching server config:", error)
@@ -166,13 +57,12 @@ export default function ServerConfigurationPage() {
         })
         await fetchServerConfig()
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Failed to save settings")
+        throw new Error("Failed to save settings")
       }
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: `Failed to save server settings: ${error.message}`,
+        description: "Failed to save server settings",
         variant: "destructive",
       })
     } finally {
@@ -211,73 +101,6 @@ export default function ServerConfigurationPage() {
     }
   }
 
-  const handleTestRadiusRouters = async () => {
-    if (!serverConfig?.radius?.host || !serverConfig?.radius?.authPort || !serverConfig?.radius?.sharedSecret) {
-      toast({
-        title: "Configuration Required",
-        description: "Please configure RADIUS server settings first",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsTestingRouters(true)
-    setRadiusTestResults(null)
-
-    console.log("[v0] Starting RADIUS router test...")
-
-    try {
-      const response = await fetch("/api/server-settings/test-radius-routers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          radiusHost: serverConfig.radius.host,
-          radiusPort: serverConfig.radius.authPort,
-          radiusSecret: serverConfig.radius.sharedSecret,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
-      console.log("[v0] RADIUS router test result:", result)
-
-      if (result.success) {
-        setRadiusTestResults(result)
-
-        if (result.totalRouters === 0) {
-          toast({
-            title: "No Routers Found",
-            description: "Add routers in /network/routers first before testing RADIUS connectivity",
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Test Complete",
-            description: result.message,
-          })
-        }
-      } else {
-        toast({
-          title: "Test Failed",
-          description: result.message || result.error || "Failed to test router connectivity",
-          variant: "destructive",
-        })
-      }
-    } catch (error: any) {
-      console.error("[v0] Error testing routers:", error)
-      toast({
-        title: "Error",
-        description: `Failed to run RADIUS router test: ${error.message}`,
-        variant: "destructive",
-      })
-    } finally {
-      setIsTestingRouters(false)
-    }
-  }
-
   if (isLoading) {
     return <div className="flex-1 p-8">Loading server configuration...</div>
   }
@@ -310,9 +133,9 @@ export default function ServerConfigurationPage() {
             <Server className="h-4 w-4" />
             <span>OpenVPN</span>
           </TabsTrigger>
-          <TabsTrigger value="testing" className="flex items-center space-x-2">
-            <Activity className="h-4 w-4" />
-            <span>Testing</span>
+          <TabsTrigger value="network" className="flex items-center space-x-2">
+            <Network className="h-4 w-4" />
+            <span>Network</span>
           </TabsTrigger>
         </TabsList>
 
@@ -321,37 +144,24 @@ export default function ServerConfigurationPage() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Shield className="h-5 w-5" />
-                <span>FreeRADIUS Server Configuration</span>
+                <span>RADIUS Server Configuration</span>
               </CardTitle>
-              <CardDescription>
-                AAA (Authentication, Authorization, Accounting) server for managing user access control
-              </CardDescription>
+              <CardDescription>Configure RADIUS authentication and accounting settings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">FreeRADIUS Features</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• PPPoE, IPoE (DHCP), Hotspot, and Wireless authentication</li>
-                  <li>• Vendor-Specific Attributes (VSA) for MikroTik, Ubiquiti, Cisco, and more</li>
-                  <li>• Real-time speed control with bandwidth management</li>
-                  <li>• Usage tracking and accounting for billing integration</li>
-                  <li>• Failover support with backup RADIUS servers</li>
-                </ul>
-              </div>
-
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label className="text-base">Enable FreeRADIUS Server</Label>
+                  <Label className="text-base">Enable RADIUS Server</Label>
                   <div className="text-sm text-muted-foreground">
                     Enable RADIUS authentication for network access control
                   </div>
                 </div>
                 <Switch
-                  checked={serverConfig?.radius?.enabled ?? false}
+                  checked={serverConfig?.radius?.enabled || false}
                   onCheckedChange={(checked) =>
-                    setServerConfig((prev: any) => ({
+                    setServerConfig((prev) => ({
                       ...prev,
-                      radius: { ...prev?.radius, enabled: checked },
+                      radius: { ...prev.radius, enabled: checked },
                     }))
                   }
                 />
@@ -359,910 +169,150 @@ export default function ServerConfigurationPage() {
 
               <Separator />
 
-              <div>
-                <h4 className="font-semibold mb-3">Server Connection</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="radius-host">RADIUS Server Host *</Label>
-                    <Input
-                      id="radius-host"
-                      placeholder="192.168.1.100 or radius.company.com"
-                      value={serverConfig?.radius?.host || ""}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: { ...prev?.radius, host: e.target.value },
-                        }))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This IP was auto-detected during installation. Physical routers must be able to reach this IP.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-port">Authentication Port</Label>
-                    <Input
-                      id="auth-port"
-                      placeholder="1812"
-                      type="number"
-                      value={serverConfig?.radius?.authPort || "1812"}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: { ...prev?.radius, authPort: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="acct-port">Accounting Port</Label>
-                    <Input
-                      id="acct-port"
-                      placeholder="1813"
-                      type="number"
-                      value={serverConfig?.radius?.acctPort || "1813"}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: { ...prev?.radius, acctPort: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="timeout">Timeout (seconds)</Label>
-                    <Input
-                      id="timeout"
-                      placeholder="30"
-                      type="number"
-                      value={serverConfig?.radius?.timeout || "30"}
-                      onChange={(e) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: { ...prev?.radius, timeout: e.target.value },
-                        }))
-                      }
-                    />
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="radius-host">RADIUS Server Host *</Label>
+                  <Input
+                    id="radius-host"
+                    placeholder="Enter RADIUS server IP"
+                    value={serverConfig?.radius?.host || ""}
+                    onChange={(e) =>
+                      setServerConfig((prev) => ({
+                        ...prev,
+                        radius: { ...prev.radius, host: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-port">Authentication Port</Label>
+                  <Input
+                    id="auth-port"
+                    placeholder="1812"
+                    value={serverConfig?.radius?.authPort || "1812"}
+                    onChange={(e) =>
+                      setServerConfig((prev) => ({
+                        ...prev,
+                        radius: { ...prev.radius, authPort: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="acct-port">Accounting Port</Label>
+                  <Input
+                    id="acct-port"
+                    placeholder="1813"
+                    value={serverConfig?.radius?.acctPort || "1813"}
+                    onChange={(e) =>
+                      setServerConfig((prev) => ({
+                        ...prev,
+                        radius: { ...prev.radius, acctPort: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timeout">Timeout (seconds)</Label>
+                  <Input
+                    id="timeout"
+                    placeholder="30"
+                    value={serverConfig?.radius?.timeout || "30"}
+                    onChange={(e) =>
+                      setServerConfig((prev) => ({
+                        ...prev,
+                        radius: { ...prev.radius, timeout: e.target.value },
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="shared-secret">Shared Secret *</Label>
-                <div className="relative">
-                  <Input
-                    id="shared-secret"
-                    type={showSecret ? "text" : "password"}
-                    placeholder="Enter strong RADIUS shared secret"
-                    value={serverConfig?.radius?.sharedSecret || ""}
-                    onChange={(e) =>
-                      setServerConfig((prev: any) => ({
-                        ...prev,
-                        radius: { ...prev?.radius, sharedSecret: e.target.value },
-                      }))
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full"
-                    onClick={() => setShowSecret(!showSecret)}
-                  >
-                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  This was auto-generated during installation. Must match the secret configured on your network devices.
-                </p>
+                <Input
+                  id="shared-secret"
+                  type="password"
+                  placeholder="Enter RADIUS shared secret"
+                  value={serverConfig?.radius?.sharedSecret || ""}
+                  onChange={(e) =>
+                    setServerConfig((prev) => ({
+                      ...prev,
+                      radius: { ...prev.radius, sharedSecret: e.target.value },
+                    }))
+                  }
+                />
               </div>
 
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Protocol Support</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="pppoe-protocol"
-                      checked={serverConfig?.radius?.protocols?.pppoe ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            protocols: { ...prev?.radius?.protocols, pppoe: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="pppoe-protocol" className="text-sm">
-                      PPPoE
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="ipoe-protocol"
-                      checked={serverConfig?.radius?.protocols?.ipoe ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            protocols: { ...prev?.radius?.protocols, ipoe: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="ipoe-protocol" className="text-sm">
-                      IPoE (DHCP)
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="hotspot-protocol"
-                      checked={serverConfig?.radius?.protocols?.hotspot ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            protocols: { ...prev?.radius?.protocols, hotspot: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="hotspot-protocol" className="text-sm">
-                      Hotspot
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="wireless-protocol"
-                      checked={serverConfig?.radius?.protocols?.wireless ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            protocols: { ...prev?.radius?.protocols, wireless: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="wireless-protocol" className="text-sm">
-                      Wireless
-                    </Label>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Authentication Methods</h4>
+              <div className="space-y-4">
+                <Label className="text-base">Authentication Methods</Label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="pap"
-                      checked={serverConfig?.radius?.authMethods?.pap ?? true}
+                      checked={serverConfig?.radius?.authMethods?.pap || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
                           radius: {
-                            ...prev?.radius,
-                            authMethods: { ...prev?.radius?.authMethods, pap: checked },
+                            ...prev.radius,
+                            authMethods: { ...prev.radius.authMethods, pap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="pap" className="text-sm">
-                      PAP
-                    </Label>
+                    <Label htmlFor="pap">PAP</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="chap"
-                      checked={serverConfig?.radius?.authMethods?.chap ?? true}
+                      checked={serverConfig?.radius?.authMethods?.chap || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
                           radius: {
-                            ...prev?.radius,
-                            authMethods: { ...prev?.radius?.authMethods, chap: checked },
+                            ...prev.radius,
+                            authMethods: { ...prev.radius.authMethods, chap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="chap" className="text-sm">
-                      CHAP
-                    </Label>
+                    <Label htmlFor="chap">CHAP</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="mschap"
-                      checked={serverConfig?.radius?.authMethods?.mschap ?? true}
+                      checked={serverConfig?.radius?.authMethods?.mschap || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
                           radius: {
-                            ...prev?.radius,
-                            authMethods: { ...prev?.radius?.authMethods, mschap: checked },
+                            ...prev.radius,
+                            authMethods: { ...prev.radius.authMethods, mschap: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="mschap" className="text-sm">
-                      MS-CHAP
-                    </Label>
+                    <Label htmlFor="mschap">MS-CHAP</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="mschapv2"
-                      checked={serverConfig?.radius?.authMethods?.mschapv2 ?? true}
+                      checked={serverConfig?.radius?.authMethods?.mschapv2 || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
                           radius: {
-                            ...prev?.radius,
-                            authMethods: { ...prev?.radius?.authMethods, mschapv2: checked },
+                            ...prev.radius,
+                            authMethods: { ...prev.radius.authMethods, mschapv2: checked },
                           },
                         }))
                       }
                     />
-                    <Label htmlFor="mschapv2" className="text-sm">
-                      MS-CHAPv2
-                    </Label>
+                    <Label htmlFor="mschapv2">MS-CHAPv2</Label>
                   </div>
                 </div>
               </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Vendor Support (VSA)</h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Enable Vendor-Specific Attributes for your networking equipment
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="mikrotik-vsa"
-                      checked={serverConfig?.radius?.vendors?.mikrotik ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, mikrotik: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="mikrotik-vsa" className="text-sm">
-                      MikroTik
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="ubiquiti-vsa"
-                      checked={serverConfig?.radius?.vendors?.ubiquiti ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, ubiquiti: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="ubiquiti-vsa" className="text-sm">
-                      Ubiquiti
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="cisco-vsa"
-                      checked={serverConfig?.radius?.vendors?.cisco ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, cisco: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="cisco-vsa" className="text-sm">
-                      Cisco
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="juniper-vsa"
-                      checked={serverConfig?.radius?.vendors?.juniper ?? false}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, juniper: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="juniper-vsa" className="text-sm">
-                      Juniper
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="cambium-vsa"
-                      checked={serverConfig?.radius?.vendors?.cambium ?? false}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, cambium: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="cambium-vsa" className="text-sm">
-                      Cambium
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="huawei-vsa"
-                      checked={serverConfig?.radius?.vendors?.huawei ?? false}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            vendors: { ...prev?.radius?.vendors, huawei: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="huawei-vsa" className="text-sm">
-                      Huawei
-                    </Label>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Bandwidth Management</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="enable-rate-limit"
-                      checked={serverConfig?.radius?.bandwidth?.enableRateLimit ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            bandwidth: { ...prev?.radius?.bandwidth, enableRateLimit: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="enable-rate-limit">Enable Dynamic Rate Limiting</Label>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="rate-limit-attr">Rate Limit Attribute</Label>
-                      <Select
-                        value={serverConfig?.radius?.bandwidth?.rateLimitAttr || "mikrotik"}
-                        onValueChange={(value) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            radius: {
-                              ...prev?.radius,
-                              bandwidth: { ...prev?.radius?.bandwidth, rateLimitAttr: value },
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="mikrotik">Mikrotik-Rate-Limit</SelectItem>
-                          <SelectItem value="wispr">WISPr-Bandwidth</SelectItem>
-                          <SelectItem value="filter">Filter-Id</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="burst-mode">Burst Mode</Label>
-                      <Select
-                        value={serverConfig?.radius?.bandwidth?.burstMode || "auto"}
-                        onValueChange={(value) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            radius: {
-                              ...prev?.radius,
-                              bandwidth: { ...prev?.radius?.bandwidth, burstMode: value },
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="auto">Auto (Default)</SelectItem>
-                          <SelectItem value="enabled">Enabled</SelectItem>
-                          <SelectItem value="disabled">Disabled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Accounting & Usage Tracking</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="enable-accounting"
-                      checked={serverConfig?.radius?.accounting?.enabled ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            accounting: { ...prev?.radius?.accounting, enabled: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="enable-accounting">Enable Session Accounting</Label>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="interim-interval">Interim Update Interval (seconds)</Label>
-                      <Input
-                        id="interim-interval"
-                        type="number"
-                        placeholder="300"
-                        value={serverConfig?.radius?.accounting?.interimInterval || "300"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            radius: {
-                              ...prev?.radius,
-                              accounting: { ...prev?.radius?.accounting, interimInterval: e.target.value },
-                            },
-                          }))
-                        }
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        How often routers send usage updates (default: 5 minutes)
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="session-timeout">Session Timeout (hours)</Label>
-                      <Input
-                        id="session-timeout"
-                        type="number"
-                        placeholder="24"
-                        value={serverConfig?.radius?.accounting?.sessionTimeout || "24"}
-                        onChange={(e) =>
-                          setServerConfig((prev: any) => ({
-                            ...prev,
-                            radius: {
-                              ...prev?.radius,
-                              accounting: { ...prev?.radius?.accounting, sessionTimeout: e.target.value },
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="track-mac-address"
-                      checked={serverConfig?.radius?.accounting?.trackMacAddress ?? true}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            accounting: { ...prev?.radius?.accounting, trackMacAddress: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="track-mac-address">Track MAC Addresses</Label>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="font-semibold mb-3">Failover & Redundancy</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="enable-failover"
-                      checked={serverConfig?.radius?.failover?.enabled ?? false}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            failover: { ...prev?.radius?.failover, enabled: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="enable-failover">Enable Backup RADIUS Server</Label>
-                  </div>
-                  {serverConfig?.radius?.failover?.enabled && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="backup-host">Backup Server Host</Label>
-                        <Input
-                          id="backup-host"
-                          placeholder="backup-radius.company.com"
-                          value={serverConfig?.radius?.failover?.backupHost || ""}
-                          onChange={(e) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              radius: {
-                                ...prev?.radius,
-                                failover: { ...prev?.radius?.failover, backupHost: e.target.value },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="failover-timeout">Failover Timeout (seconds)</Label>
-                        <Input
-                          id="failover-timeout"
-                          type="number"
-                          placeholder="5"
-                          value={serverConfig?.radius?.failover?.timeout || "5"}
-                          onChange={(e) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              radius: {
-                                ...prev?.radius,
-                                failover: { ...prev?.radius?.failover, timeout: e.target.value },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Scheduled Reboot section */}
-              <div className="border-t pt-6">
-                <h4 className="font-semibold mb-3">Scheduled Reboot</h4>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Automatically reboot the FreeRADIUS server at regular intervals to maintain optimal performance. After
-                  reboot, the system will automatically reconnect to all configured routers.
-                </p>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="enable-reboot-schedule"
-                      checked={serverConfig?.radius?.scheduledReboot?.enabled ?? false}
-                      onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
-                          ...prev,
-                          radius: {
-                            ...prev?.radius,
-                            scheduledReboot: { ...prev?.radius?.scheduledReboot, enabled: checked },
-                          },
-                        }))
-                      }
-                    />
-                    <Label htmlFor="enable-reboot-schedule">Enable Scheduled Reboot</Label>
-                  </div>
-                  {serverConfig?.radius?.scheduledReboot?.enabled && (
-                    <div className="space-y-4 pl-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="reboot-interval">Reboot Interval</Label>
-                        <select
-                          id="reboot-interval"
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                          value={serverConfig?.radius?.scheduledReboot?.interval || "7d"}
-                          onChange={(e) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              radius: {
-                                ...prev?.radius,
-                                scheduledReboot: { ...prev?.radius?.scheduledReboot, interval: e.target.value },
-                              },
-                            }))
-                          }
-                        >
-                          <option value="24h">Every 24 Hours</option>
-                          <option value="7d">Every 7 Days (Weekly)</option>
-                          <option value="14d">Every 14 Days (Bi-weekly)</option>
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reboot-time">Preferred Reboot Time (HH:MM)</Label>
-                        <Input
-                          id="reboot-time"
-                          type="time"
-                          value={serverConfig?.radius?.scheduledReboot?.time || "03:00"}
-                          onChange={(e) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              radius: {
-                                ...prev?.radius,
-                                scheduledReboot: { ...prev?.radius?.scheduledReboot, time: e.target.value },
-                              },
-                            }))
-                          }
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Schedule reboots during off-peak hours to minimize service disruption
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="auto-reconnect-routers"
-                          checked={serverConfig?.radius?.scheduledReboot?.autoReconnectRouters ?? true}
-                          onCheckedChange={(checked) =>
-                            setServerConfig((prev: any) => ({
-                              ...prev,
-                              radius: {
-                                ...prev?.radius,
-                                scheduledReboot: { ...prev?.radius?.scheduledReboot, autoReconnectRouters: checked },
-                              },
-                            }))
-                          }
-                        />
-                        <Label htmlFor="auto-reconnect-routers">Automatically reconnect to routers after reboot</Label>
-                      </div>
-                      {serverConfig?.radius?.scheduledReboot?.lastReboot && (
-                        <div className="p-3 bg-muted rounded-md">
-                          <p className="text-sm">
-                            <span className="font-medium">Last Reboot:</span>{" "}
-                            {new Date(serverConfig.radius.scheduledReboot.lastReboot).toLocaleString()}
-                          </p>
-                          {serverConfig?.radius?.scheduledReboot?.nextReboot && (
-                            <p className="text-sm mt-1">
-                              <span className="font-medium">Next Scheduled Reboot:</span>{" "}
-                              {new Date(serverConfig.radius.scheduledReboot.nextReboot).toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="border-t pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h4 className="font-semibold text-base">Router Connectivity Testing</h4>
-                    <p className="text-sm text-muted-foreground">Test RADIUS connectivity to all physical routers</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={handleTestRadiusRouters}
-                    disabled={isTestingRouters}
-                    className="flex items-center space-x-2 bg-transparent"
-                  >
-                    {isTestingRouters ? (
-                      <>
-                        <Clock className="h-4 w-4 animate-spin" />
-                        <span>Testing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Server className="h-4 w-4" />
-                        <span>Test All Routers</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {radiusTestResults && (
-                  <div className="space-y-4 mt-4">
-                    <div className="rounded-lg bg-muted p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h5 className="font-semibold">Test Results</h5>
-                        <span className="text-sm text-muted-foreground">
-                          {radiusTestResults.totalRouters || radiusTestResults.results?.length || 0} router(s) tested
-                        </span>
-                      </div>
-
-                      {(!radiusTestResults.results || radiusTestResults.results.length === 0) && (
-                        <div className="text-center py-8">
-                          <Server className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <p className="text-sm text-muted-foreground mb-2">No active routers found</p>
-                          <p className="text-xs text-muted-foreground">
-                            Add routers in{" "}
-                            <a href="/network/routers" className="text-primary hover:underline">
-                              /network/routers
-                            </a>{" "}
-                            first
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="space-y-4">
-                        {radiusTestResults.results?.map((router: any) => (
-                          <div key={router.routerId} className="border rounded-lg p-4 bg-background">
-                            <div className="flex items-start justify-between mb-3">
-                              <div>
-                                <h6 className="font-semibold">{router.routerName}</h6>
-                                <p className="text-sm text-muted-foreground">IP: {router.routerIp}</p>
-                                {router.nasIp && (
-                                  <p className="text-sm text-muted-foreground">NAS IP: {router.nasIp}</p>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                {router.overallStatus === "Connected" ? (
-                                  <CheckCircle className="h-5 w-5 text-green-600" />
-                                ) : (
-                                  <XCircle className="h-5 w-5 text-red-600" />
-                                )}
-                                <span
-                                  className={`text-sm font-semibold ${
-                                    router.overallStatus === "Connected" ? "text-green-600" : "text-red-600"
-                                  }`}
-                                >
-                                  {router.overallStatus}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                              {/* Network Connectivity */}
-                              <div className="flex items-start space-x-2">
-                                {router.tests.ping?.success ? (
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                                )}
-                                <div>
-                                  <p className="font-medium">Network Connectivity</p>
-                                  <p className="text-muted-foreground">
-                                    {router.tests.ping?.status}
-                                    {router.tests.ping?.packetLoss !== undefined &&
-                                      ` - ${router.tests.ping.packetLoss}% loss`}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* NAS Registration */}
-                              <div className="flex items-start space-x-2">
-                                {router.tests.nasRegistration?.success ? (
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                                )}
-                                <div>
-                                  <p className="font-medium">NAS Registration</p>
-                                  <p className="text-muted-foreground">
-                                    {router.tests.nasRegistration?.registered
-                                      ? `Registered as ${router.tests.nasRegistration.nasName}`
-                                      : "Not registered in RADIUS"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Secret Match */}
-                              <div className="flex items-start space-x-2">
-                                {router.tests.secretMatch?.success ? (
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                                )}
-                                <div>
-                                  <p className="font-medium">RADIUS Secret</p>
-                                  <p className="text-muted-foreground">{router.tests.secretMatch?.message}</p>
-                                </div>
-                              </div>
-
-                              {/* RADIUS Authentication */}
-                              <div className="flex items-start space-x-2">
-                                {router.tests.radiusAuth?.success ? (
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
-                                )}
-                                <div>
-                                  <p className="font-medium">RADIUS Server</p>
-                                  <p className="text-muted-foreground">
-                                    {router.tests.radiusAuth?.status}
-                                    {router.tests.radiusAuth?.responseTime &&
-                                      ` (${router.tests.radiusAuth.responseTime}ms)`}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Active Sessions */}
-                              <div className="flex items-start space-x-2">
-                                <Activity className="h-4 w-4 text-blue-600 mt-0.5" />
-                                <div>
-                                  <p className="font-medium">Active Sessions</p>
-                                  <p className="text-muted-foreground">
-                                    {router.tests.activeSessions?.count || 0} session(s)
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Recent Accounting */}
-                              <div className="flex items-start space-x-2">
-                                <Activity className="h-4 w-4 text-blue-600 mt-0.5" />
-                                <div>
-                                  <p className="font-medium">Recent Accounting</p>
-                                  <p className="text-muted-foreground">
-                                    {router.tests.recentAccounting?.count || 0} record(s) in last hour
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Troubleshooting Tips */}
-                            {router.overallStatus !== "Connected" && (
-                              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <div className="flex items-start space-x-2">
-                                  <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                                  <div className="text-sm space-y-1">
-                                    <p className="font-semibold text-yellow-900">Troubleshooting Steps:</p>
-                                    <ul className="list-disc list-inside text-yellow-800 space-y-1">
-                                      {!router.tests.ping?.success && (
-                                        <li>Check network connectivity - Router is unreachable</li>
-                                      )}
-                                      {!router.tests.nasRegistration?.success && (
-                                        <li>
-                                          Add router to RADIUS NAS clients in /network/routers/edit/{router.routerId}
-                                        </li>
-                                      )}
-                                      {!router.tests.secretMatch?.success && (
-                                        <li>Update RADIUS shared secret to match on both router and RADIUS server</li>
-                                      )}
-                                      {!router.tests.radiusAuth?.success && (
-                                        <li>Check FreeRADIUS service status: systemctl status freeradius</li>
-                                      )}
-                                      {router.tests.activeSessions?.count === 0 &&
-                                        router.tests.recentAccounting?.count === 0 && (
-                                          <li>No traffic detected - Check router RADIUS configuration</li>
-                                        )}
-                                    </ul>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
 
               <div className="flex space-x-2">
                 <Button
@@ -1270,49 +320,12 @@ export default function ServerConfigurationPage() {
                   onClick={() => handleTestConnection("RADIUS", serverConfig?.radius)}
                   className="flex items-center space-x-2"
                 >
-                  <Activity className="h-4 w-4" />
+                  <CheckCircle className="h-4 w-4" />
                   <span>Test Connection</span>
                 </Button>
                 <Button onClick={() => handleSave("radius", serverConfig?.radius)} disabled={isPending}>
-                  {isPending ? "Saving..." : "Save FreeRADIUS Config"}
+                  Save RADIUS Config
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Router className="h-5 w-5" />
-                <span>MikroTik RADIUS Integration</span>
-              </CardTitle>
-              <CardDescription>Configure MikroTik routers to use this RADIUS server for authentication</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-                <h4 className="font-semibold text-amber-900 mb-2">Router Configuration Steps</h4>
-                <ol className="text-sm text-amber-800 space-y-2 list-decimal list-inside">
-                  <li>
-                    Add this RADIUS server to your MikroTik under{" "}
-                    <code className="bg-amber-100 px-1 rounded">/radius</code>
-                  </li>
-                  <li>Configure PPPoE server to use RADIUS authentication</li>
-                  <li>Enable accounting for usage tracking</li>
-                  <li>Set up Vendor-Specific Attributes (VSA) for rate limiting</li>
-                </ol>
-              </div>
-
-              <div className="space-y-2">
-                <Label>RADIUS Configuration Command</Label>
-                <div className="relative">
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded text-xs overflow-x-auto">
-                    {`/radius add service=ppp address=${serverConfig?.radius?.host || "RADIUS_IP"} \\
-  secret="${serverConfig?.radius?.sharedSecret || "SECRET"}" \\
-  timeout=${serverConfig?.radius?.timeout || "30"}s
-
-/ppp aaa set use-radius=yes accounting=yes`}
-                  </pre>
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -1334,11 +347,11 @@ export default function ServerConfigurationPage() {
                   <div className="text-sm text-muted-foreground">Enable VPN server for remote access</div>
                 </div>
                 <Switch
-                  checked={serverConfig?.openvpn?.enabled ?? false}
+                  checked={serverConfig?.openvpn?.enabled || false}
                   onCheckedChange={(checked) =>
-                    setServerConfig((prev: any) => ({
+                    setServerConfig((prev) => ({
                       ...prev,
-                      openvpn: { ...prev?.openvpn, enabled: checked },
+                      openvpn: { ...prev.openvpn, enabled: checked },
                     }))
                   }
                 />
@@ -1354,9 +367,9 @@ export default function ServerConfigurationPage() {
                     placeholder="Enter VPN server IP"
                     value={serverConfig?.openvpn?.serverIp || ""}
                     onChange={(e) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, serverIp: e.target.value },
+                        openvpn: { ...prev.openvpn, serverIp: e.target.value },
                       }))
                     }
                   />
@@ -1368,9 +381,9 @@ export default function ServerConfigurationPage() {
                     placeholder="1194"
                     value={serverConfig?.openvpn?.port || "1194"}
                     onChange={(e) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, port: e.target.value },
+                        openvpn: { ...prev.openvpn, port: e.target.value },
                       }))
                     }
                   />
@@ -1378,11 +391,11 @@ export default function ServerConfigurationPage() {
                 <div className="space-y-2">
                   <Label htmlFor="vpn-protocol">Protocol</Label>
                   <Select
-                    value={serverConfig?.openvpn?.protocol || "udp"}
+                    defaultValue={serverConfig?.openvpn?.protocol || "udp"}
                     onValueChange={(value) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, protocol: value },
+                        openvpn: { ...prev.openvpn, protocol: value },
                       }))
                     }
                   >
@@ -1398,11 +411,11 @@ export default function ServerConfigurationPage() {
                 <div className="space-y-2">
                   <Label htmlFor="vpn-cipher">Cipher</Label>
                   <Select
-                    value={serverConfig?.openvpn?.cipher || "aes-256-cbc"}
+                    defaultValue={serverConfig?.openvpn?.cipher || "aes-256-cbc"}
                     onValueChange={(value) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, cipher: value },
+                        openvpn: { ...prev.openvpn, cipher: value },
                       }))
                     }
                   >
@@ -1425,9 +438,9 @@ export default function ServerConfigurationPage() {
                   placeholder="10.8.0.0/24"
                   value={serverConfig?.openvpn?.network || "10.8.0.0/24"}
                   onChange={(e) =>
-                    setServerConfig((prev: any) => ({
+                    setServerConfig((prev) => ({
                       ...prev,
-                      openvpn: { ...prev?.openvpn, network: e.target.value },
+                      openvpn: { ...prev.openvpn, network: e.target.value },
                     }))
                   }
                 />
@@ -1441,9 +454,9 @@ export default function ServerConfigurationPage() {
                     placeholder="8.8.8.8"
                     value={serverConfig?.openvpn?.primaryDns || "8.8.8.8"}
                     onChange={(e) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, primaryDns: e.target.value },
+                        openvpn: { ...prev.openvpn, primaryDns: e.target.value },
                       }))
                     }
                   />
@@ -1455,9 +468,9 @@ export default function ServerConfigurationPage() {
                     placeholder="8.8.4.4"
                     value={serverConfig?.openvpn?.secondaryDns || "8.8.4.4"}
                     onChange={(e) =>
-                      setServerConfig((prev: any) => ({
+                      setServerConfig((prev) => ({
                         ...prev,
-                        openvpn: { ...prev?.openvpn, secondaryDns: e.target.value },
+                        openvpn: { ...prev.openvpn, secondaryDns: e.target.value },
                       }))
                     }
                   />
@@ -1470,11 +483,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="tls-auth"
-                      checked={serverConfig?.openvpn?.tlsAuth ?? false}
+                      checked={serverConfig?.openvpn?.tlsAuth || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
-                          openvpn: { ...prev?.openvpn, tlsAuth: checked },
+                          openvpn: { ...prev.openvpn, tlsAuth: checked },
                         }))
                       }
                     />
@@ -1483,11 +496,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="client-to-client"
-                      checked={serverConfig?.openvpn?.clientToClient ?? false}
+                      checked={serverConfig?.openvpn?.clientToClient || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
-                          openvpn: { ...prev?.openvpn, clientToClient: checked },
+                          openvpn: { ...prev.openvpn, clientToClient: checked },
                         }))
                       }
                     />
@@ -1496,11 +509,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="duplicate-cn"
-                      checked={serverConfig?.openvpn?.duplicateCn ?? false}
+                      checked={serverConfig?.openvpn?.duplicateCn || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
-                          openvpn: { ...prev?.openvpn, duplicateCn: checked },
+                          openvpn: { ...prev.openvpn, duplicateCn: checked },
                         }))
                       }
                     />
@@ -1509,11 +522,11 @@ export default function ServerConfigurationPage() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="compression"
-                      checked={serverConfig?.openvpn?.compression ?? false}
+                      checked={serverConfig?.openvpn?.compression || false}
                       onCheckedChange={(checked) =>
-                        setServerConfig((prev: any) => ({
+                        setServerConfig((prev) => ({
                           ...prev,
-                          openvpn: { ...prev?.openvpn, compression: checked },
+                          openvpn: { ...prev.openvpn, compression: checked },
                         }))
                       }
                     />
@@ -1539,34 +552,386 @@ export default function ServerConfigurationPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="testing" className="space-y-4">
+        <TabsContent value="network" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Activity className="h-5 w-5" />
-                <span>Testing Tools</span>
+                <Network className="h-5 w-5" />
+                <span>Network Management</span>
               </CardTitle>
-              <CardDescription>Tools for testing network connectivity and service responsiveness.</CardDescription>
+              <CardDescription>Configure network infrastructure and monitoring settings</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Placeholder for testing tools */}
-              <div className="flex flex-col items-center justify-center h-48">
-                <Activity className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg text-muted-foreground">Testing tools not yet implemented.</p>
-                <p className="text-sm text-muted-foreground">
-                  This section will include tools for pinging, traceroute, and service checks.
-                </p>
-              </div>
+            <CardContent>
+              <Tabs value={activeNetworkTab} onValueChange={setActiveNetworkTab}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="configuration" className="flex items-center space-x-2">
+                    <Router className="h-4 w-4" />
+                    <span>Network Configuration</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="monitoring" className="flex items-center space-x-2">
+                    <Activity className="h-4 w-4" />
+                    <span>Monitoring</span>
+                  </TabsTrigger>
+                </TabsList>
 
-              <Separator />
+                <TabsContent value="configuration" className="space-y-6 mt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gateway">Default Gateway</Label>
+                      <Input
+                        id="gateway"
+                        placeholder="Enter gateway IP"
+                        value={serverConfig?.network?.gateway || ""}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, gateway: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subnet-mask">Subnet Mask</Label>
+                      <Input
+                        id="subnet-mask"
+                        placeholder="255.255.255.0"
+                        value={serverConfig?.network?.subnetMask || "255.255.255.0"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, subnetMask: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="management-vlan">Management VLAN</Label>
+                      <Input
+                        id="management-vlan"
+                        placeholder="Enter VLAN ID"
+                        value={serverConfig?.network?.managementVlan || ""}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, managementVlan: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="customer-vlan">Customer VLAN Range</Label>
+                      <Input
+                        id="customer-vlan"
+                        placeholder="200-299"
+                        value={serverConfig?.network?.customerVlan || ""}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, customerVlan: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex space-x-2">
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <Activity className="h-4 w-4" />
-                  <span>Run General Test</span>
-                </Button>
-                <Button disabled>Save Test Results</Button>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="snmp-community">SNMP Community</Label>
+                    <Input
+                      id="snmp-community"
+                      placeholder="public"
+                      value={serverConfig?.network?.snmpCommunity || "public"}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          network: { ...prev.network, snmpCommunity: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ntp-server">NTP Server</Label>
+                    <Input
+                      id="ntp-server"
+                      placeholder="pool.ntp.org"
+                      value={serverConfig?.network?.ntpServer || "pool.ntp.org"}
+                      onChange={(e) =>
+                        setServerConfig((prev) => ({
+                          ...prev,
+                          network: { ...prev.network, ntpServer: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label className="text-base">Network Features</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="firewall"
+                          checked={serverConfig?.network?.features?.firewall || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                features: { ...prev.network.features, firewall: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="firewall">Firewall</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="ddos-protection"
+                          checked={serverConfig?.network?.features?.ddosProtection || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                features: { ...prev.network.features, ddosProtection: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="ddos-protection">DDoS Protection</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="port-scan"
+                          checked={serverConfig?.network?.features?.portScan || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                features: { ...prev.network.features, portScan: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="port-scan">Port Scan Detection</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="intrusion-detection"
+                          checked={serverConfig?.network?.features?.intrusionDetection || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                features: { ...prev.network.features, intrusionDetection: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="intrusion-detection">Intrusion Detection</Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="upload-limit">Default Upload Limit (Mbps)</Label>
+                      <Input
+                        id="upload-limit"
+                        placeholder="10"
+                        value={serverConfig?.network?.uploadLimit || "10"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, uploadLimit: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="download-limit">Default Download Limit (Mbps)</Label>
+                      <Input
+                        id="download-limit"
+                        placeholder="50"
+                        value={serverConfig?.network?.downloadLimit || "50"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, downloadLimit: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="burst-ratio">Burst Ratio</Label>
+                      <Input
+                        id="burst-ratio"
+                        placeholder="1.5"
+                        value={serverConfig?.network?.burstRatio || "1.5"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, burstRatio: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="monitoring" className="space-y-6 mt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Network Status</CardTitle>
+                        <Wifi className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center space-x-2">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <span className="text-sm">Online</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">All systems operational</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Active Connections</CardTitle>
+                        <Database className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">1,234</div>
+                        <p className="text-xs text-muted-foreground">+12% from last hour</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Bandwidth Usage</CardTitle>
+                        <Activity className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">67%</div>
+                        <p className="text-xs text-muted-foreground">of total capacity</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Alerts</CardTitle>
+                        <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">3</div>
+                        <p className="text-xs text-muted-foreground">2 warnings, 1 critical</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label className="text-base">Monitoring Settings</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="snmp-monitoring"
+                          checked={serverConfig?.network?.monitoring?.snmpMonitoring || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                monitoring: { ...prev.network.monitoring, snmpMonitoring: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="snmp-monitoring">SNMP Monitoring</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="bandwidth-monitoring"
+                          checked={serverConfig?.network?.monitoring?.bandwidthMonitoring || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                monitoring: { ...prev.network.monitoring, bandwidthMonitoring: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="bandwidth-monitoring">Bandwidth Monitoring</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="uptime-monitoring"
+                          checked={serverConfig?.network?.monitoring?.uptimeMonitoring || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                monitoring: { ...prev.network.monitoring, uptimeMonitoring: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="uptime-monitoring">Uptime Monitoring</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="alert-notifications"
+                          checked={serverConfig?.network?.monitoring?.alertNotifications || false}
+                          onCheckedChange={(checked) =>
+                            setServerConfig((prev) => ({
+                              ...prev,
+                              network: {
+                                ...prev.network,
+                                monitoring: { ...prev.network.monitoring, alertNotifications: checked },
+                              },
+                            }))
+                          }
+                        />
+                        <Label htmlFor="alert-notifications">Alert Notifications</Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="monitoring-interval">Monitoring Interval (minutes)</Label>
+                      <Input
+                        id="monitoring-interval"
+                        placeholder="5"
+                        value={serverConfig?.network?.monitoringInterval || "5"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, monitoringInterval: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="alert-threshold">Alert Threshold (%)</Label>
+                      <Input
+                        id="alert-threshold"
+                        placeholder="80"
+                        value={serverConfig?.network?.alertThreshold || "80"}
+                        onChange={(e) =>
+                          setServerConfig((prev) => ({
+                            ...prev,
+                            network: { ...prev.network, alertThreshold: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </TabsContent>

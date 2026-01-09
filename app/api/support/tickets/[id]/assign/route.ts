@@ -1,20 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const { id } = params
     const body = await request.json()
     const { status, assigned_to } = body
 
-    const sanitizedAssignedTo = assigned_to !== undefined && assigned_to !== null ? assigned_to : null
-
     const [ticket] = await sql`
       UPDATE support_tickets 
       SET status = ${status || "in_progress"}, 
-          assigned_to = ${sanitizedAssignedTo}, 
+          assigned_to = ${assigned_to || assigned_to}, 
           updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

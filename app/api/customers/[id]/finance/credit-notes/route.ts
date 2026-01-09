@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     console.log("[v0] Fetching credit notes for customer:", customerId)
 
@@ -38,8 +38,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     const {
       credit_type,
@@ -127,8 +125,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 async function processRefund(customerId: number, amount: number, method: string, creditNoteId: number) {
   try {
-    const sql = await getSql()
-
     console.log("[v0] Creating refund record...")
     // Create refund record
     await sql`
@@ -147,8 +143,6 @@ async function processRefund(customerId: number, amount: number, method: string,
 
 async function applyCreditToInvoices(customerId: number, creditAmount: number, creditNoteId: number) {
   try {
-    const sql = await getSql()
-
     console.log("[v0] Fetching open invoices for customer:", customerId)
 
     const openInvoices = await sql`

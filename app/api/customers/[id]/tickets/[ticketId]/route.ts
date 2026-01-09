@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string; ticketId: string } }) {
-  const sql = await getSql()
   try {
     const ticketId = Number.parseInt(params.ticketId)
     const { status, assigned_to, priority } = await request.json()

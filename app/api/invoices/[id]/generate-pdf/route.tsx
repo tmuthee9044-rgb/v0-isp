@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { generateInvoiceHTML } from "@/lib/html-templates"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const invoiceId = Number.parseInt(params.id)
 
     // Get invoice with customer details

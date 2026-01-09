@@ -4,9 +4,9 @@
 
 **This single command downloads, installs, and configures EVERYTHING:**
 
-```bash
+\`\`\`bash
 wget https://github.com/tmuthee9044-rgb/v0-isp/archive/refs/heads/main.zip -O isp.zip && unzip isp.zip && mv v0-isp-main isp-system && cd isp-system && chmod +x install.sh && ./install.sh
-```
+\`\`\`
 
 ### What This Does Automatically:
 
@@ -23,9 +23,9 @@ wget https://github.com/tmuthee9044-rgb/v0-isp/archive/refs/heads/main.zip -O is
 
 **Installation takes 5-10 minutes. Then run:**
 
-```bash
+\`\`\`bash
 npm run dev
-```
+\`\`\`
 
 **Open http://localhost:3000 in your browser!**
 
@@ -36,36 +36,36 @@ npm run dev
 **The installer automatically handles ALL database operations:**
 
 ### PostgreSQL Installation
-```bash
+\`\`\`bash
 ✓ Installs PostgreSQL 15+
 ✓ Starts PostgreSQL service
 ✓ Enables auto-start on boot
-```
+\`\`\`
 
 ### Database Creation
-```bash
+\`\`\`bash
 ✓ Creates database: isp_system
 ✓ Creates user: isp_admin
 ✓ Generates secure random password
 ✓ Grants all necessary permissions
-```
+\`\`\`
 
 ### Table Creation
-```bash
+\`\`\`bash
 ✓ Runs 150+ SQL migration scripts
 ✓ Creates 50+ tables (customers, payments, invoices, etc.)
 ✓ Sets up relationships and foreign keys
 ✓ Creates indexes for performance
 ✓ Inserts sample data for testing
-```
+\`\`\`
 
 ### Connection Configuration
-```bash
+\`\`\`bash
 ✓ Generates .env.local with database URLs
 ✓ Saves credentials to database-credentials.txt
 ✓ Configures all environment variables
 ✓ Tests database connection
-```
+\`\`\`
 
 **You don't need to configure ANYTHING manually!**
 
@@ -77,29 +77,29 @@ If the one-command installation doesn't work, follow these steps:
 
 ### Step 1: Download the Project
 
-```bash
+\`\`\`bash
 wget https://github.com/tmuthee9044-rgb/v0-isp/archive/refs/heads/main.zip -O isp.zip
-```
+\`\`\`
 
 ### Step 2: Extract Files
 
-```bash
+\`\`\`bash
 unzip isp.zip
 mv v0-isp-main isp-system
 cd isp-system
-```
+\`\`\`
 
 ### Step 3: Make Install Script Executable
 
-```bash
+\`\`\`bash
 chmod +x install.sh
-```
+\`\`\`
 
 ### Step 4: Run Installation
 
-```bash
+\`\`\`bash
 ./install.sh
-```
+\`\`\`
 
 **Watch the installer:**
 - [1/7] Installing PostgreSQL...
@@ -112,9 +112,9 @@ chmod +x install.sh
 
 ### Step 5: Start the System
 
-```bash
+\`\`\`bash
 npm run dev
-```
+\`\`\`
 
 ### Step 6: Access the System
 
@@ -126,7 +126,7 @@ Open your browser: **http://localhost:3000**
 
 **After installation, check if everything is working:**
 
-```bash
+\`\`\`bash
 # Navigate to project folder
 cd isp-system
 
@@ -135,7 +135,7 @@ chmod +x check-system.sh
 
 # Run system health check
 ./check-system.sh
-```
+\`\`\`
 
 **This verifies:**
 - ✓ PostgreSQL installed and running
@@ -157,19 +157,19 @@ chmod +x check-system.sh
 After installation, your database credentials are saved in:
 
 **`database-credentials.txt`:**
-```
+\`\`\`
 Database Name: isp_system
 Database User: isp_admin
 Database Password: [auto-generated 16-char password]
 Connection String: postgresql://isp_admin:password@localhost:5432/isp_system
-```
+\`\`\`
 
 **`.env.local`:**
-```env
+\`\`\`env
 DATABASE_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 POSTGRES_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 # ... and all other required connection strings
-```
+\`\`\`
 
 ⚠️ **Keep these files secure! Delete `database-credentials.txt` after noting credentials.**
 
@@ -179,47 +179,47 @@ POSTGRES_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 
 ### Check PostgreSQL is Running
 
-```bash
+\`\`\`bash
 sudo systemctl status postgresql
 sudo systemctl start postgresql  # If not running
-```
+\`\`\`
 
 ### Check Database Exists
 
-```bash
+\`\`\`bash
 sudo -u postgres psql -l | grep isp_system
-```
+\`\`\`
 
 ### Check Tables Were Created
 
-```bash
+\`\`\`bash
 sudo -u postgres psql -d isp_system -c "\dt"
-```
+\`\`\`
 
 ### Count Tables (Should be 50+)
 
-```bash
+\`\`\`bash
 sudo -u postgres psql -d isp_system -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"
-```
+\`\`\`
 
 ### Test Database Connection
 
-```bash
+\`\`\`bash
 # Using credentials from database-credentials.txt
 psql -U isp_admin -d isp_system -h localhost
 
 # Or as postgres user
 sudo -u postgres psql -d isp_system
-```
+\`\`\`
 
 ### Re-run Database Migrations
 
-```bash
+\`\`\`bash
 cd isp-system
 for script in scripts/*.sql; do
   sudo -u postgres psql -d isp_system -f "$script"
 done
-```
+\`\`\`
 
 ---
 
@@ -228,60 +228,60 @@ done
 ### Problem: "wget: command not found"
 
 **Install wget:**
-```bash
+\`\`\`bash
 sudo apt update && sudo apt install -y wget unzip
-```
+\`\`\`
 
 ### Problem: "sudo: cannot execute binary file"
 
 **Fix sudo as root:**
-```bash
+\`\`\`bash
 su -
 apt update && apt install --reinstall sudo
 chmod +x /usr/bin/sudo
 usermod -aG sudo $(whoami)
 exit
 # Log out and log back in
-```
+\`\`\`
 
 ### Problem: "Database connection failed"
 
 **Check PostgreSQL:**
-```bash
+\`\`\`bash
 sudo systemctl status postgresql
 sudo systemctl start postgresql
-```
+\`\`\`
 
 **Check .env.local exists:**
-```bash
+\`\`\`bash
 cat .env.local | grep DATABASE_URL
-```
+\`\`\`
 
 ### Problem: "No tables found"
 
 **Run migrations manually:**
-```bash
+\`\`\`bash
 cd isp-system
 for script in scripts/*.sql; do
   sudo -u postgres psql -d isp_system -f "$script"
 done
-```
+\`\`\`
 
 ### Problem: "Node.js version too old"
 
 **The installer automatically installs Node.js 20+. If it fails:**
-```bash
+\`\`\`bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 node --version  # Should show v20.x.x
-```
+\`\`\`
 
 ### Problem: "Port 3000 already in use"
 
 **Use different port:**
-```bash
+\`\`\`bash
 PORT=3001 npm run dev
-```
+\`\`\`
 
 ---
 
@@ -307,7 +307,7 @@ PORT=3001 npm run dev
 
 ### Start the System
 
-```bash
+\`\`\`bash
 # Development mode (with hot reload)
 cd isp-system
 npm run dev
@@ -315,7 +315,7 @@ npm run dev
 # Production mode (optimized)
 npm run build
 npm start
-```
+\`\`\`
 
 ### Access the System
 
@@ -325,7 +325,7 @@ npm start
 
 ### Database Access
 
-```bash
+\`\`\`bash
 # Connect to database
 psql -U isp_admin -d isp_system -h localhost
 
@@ -337,7 +337,7 @@ psql -U isp_admin -d isp_system -h localhost
 
 # Query data
 SELECT * FROM customers;
-```
+\`\`\`
 
 ---
 
@@ -381,10 +381,10 @@ Once installed, you have:
 ✅ **Ready to Run** with `npm run dev`
 
 **Start the system:**
-```bash
+\`\`\`bash
 cd isp-system
 npm run dev
-```
+\`\`\`
 
 **Open http://localhost:3000 and start managing your ISP!**
 
@@ -396,13 +396,13 @@ npm run dev
 
 If you get errors like "relation does not exist" or "column does not exist", run this command while your app is running:
 
-```bash
+\`\`\`bash
 # Start the app first
 npm run dev
 
 # In another terminal, run the database fix
 curl -X POST http://localhost:3000/api/fix-database-schema
-```
+\`\`\`
 
 **Or visit in your browser:** http://localhost:3000/api/fix-database-schema
 
@@ -414,22 +414,22 @@ This will automatically:
 - Verify all fixes were applied successfully
 
 **Check database status:**
-```bash
+\`\`\`bash
 curl http://localhost:3000/api/fix-database-schema
-```
+\`\`\`
 
 ### Run System Health Check
 
-```bash
+\`\`\`bash
 cd isp-system
 ./check-system.sh
-```
+\`\`\`
 
 ### Check Installation Logs
 The installer shows detailed logs. Look for error messages.
 
 ### Verify Database
-```bash
+\`\`\`bash
 # Check PostgreSQL
 sudo systemctl status postgresql
 
@@ -438,7 +438,7 @@ sudo -u postgres psql -l | grep isp_system
 
 # Check tables
 sudo -u postgres psql -d isp_system -c "\dt"
-```
+\`\`\`
 
 ### Manual Database Setup
 If automatic setup fails, see `INSTALL.md` for manual database setup instructions.

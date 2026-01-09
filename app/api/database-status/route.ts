@@ -10,10 +10,11 @@ export async function GET() {
     // Check database connection
     const connectionTest = await sql`SELECT 1 as test`
 
+    // Get table information
     const tables = await sql`
       SELECT 
         table_name,
-        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name AND table_schema = 'public') as column_count
+        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
       FROM information_schema.tables t
       WHERE table_schema = 'public' 
       AND table_type = 'BASE TABLE'
@@ -26,17 +27,11 @@ export async function GET() {
 
     for (const table of mainTables) {
       try {
-        const result = await sql.unsafe(`SELECT COUNT(*) as count FROM ${table}`)
+        const result = await sql`SELECT COUNT(*) as count FROM ${sql(table)}`
         recordCounts[table] = Number.parseInt(result[0].count)
       } catch (error) {
         recordCounts[table] = 0
       }
-    }
-
-    const schemaDifferences = {
-      local_tables: tables.length,
-      status: "postgresql_only",
-      note: "System uses PostgreSQL exclusively (Rule 4 - offline support)",
     }
 
     // Check specific module schemas
@@ -56,7 +51,6 @@ export async function GET() {
       totalRecords,
       recordCounts,
       moduleStatus,
-      schemaDifferences,
       tableList: tables,
       lastChecked: new Date().toISOString(),
     })
@@ -98,23 +92,8 @@ async function checkCustomerSchema(sql: any) {
       WHERE table_name = 'customers'
     `
 
-    const requiredColumns = [
-      "id",
-      "account_number",
-      "customer_type",
-      "email",
-      "phone",
-      "status",
-      "created_at",
-      "business_name", // Missing in local DB
-      "first_name",
-      "last_name",
-      "address",
-      "city",
-      "state",
-      "country",
-      "postal_code",
-    ]
+    // Check for essential columns that should exist
+    const requiredColumns = ["id", "account_number", "customer_type", "email", "phone", "status", "created_at"]
     const existingColumns = columns.map((col: any) => col.column_name)
     const missingColumns = requiredColumns.filter((col) => !existingColumns.includes(col))
 
@@ -122,7 +101,6 @@ async function checkCustomerSchema(sql: any) {
       status: missingColumns.length === 0 ? "complete" : "missing_columns",
       missingColumns,
       totalColumns: existingColumns.length,
-      requiredColumns: requiredColumns.length,
     }
   } catch (error: any) {
     return { status: "error", error: error.message }

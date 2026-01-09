@@ -1,89 +1,111 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const routerId = Number.parseInt(params.id)
 
     if (isNaN(routerId)) {
       return NextResponse.json({ error: "Invalid router ID" }, { status: 400 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const isSnapshot = searchParams.get("snapshot") === "true"
-    const range = searchParams.get("range") || "24h"
-
-    const routers = await sql`
+    // Fetch router details
+    const [router] = await sql`
       SELECT * FROM network_devices WHERE id = ${routerId}
     `
 
-    if (!routers || routers.length === 0) {
+    if (!router) {
       return NextResponse.json({ error: "Router not found" }, { status: 404 })
     }
 
-    const latestSnapshot = await sql`
-      SELECT *
-      FROM router_performance_history
-      WHERE router_id = ${routerId}
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `
+    const mockInterfaces = [
+      {
+        name: "ether1",
+        type: "ether",
+        running: true,
+        disabled: false,
+        rxBytes: 1024 * 1024 * 1024 * 45, // 45 GB
+        txBytes: 1024 * 1024 * 1024 * 32, // 32 GB
+        rxPackets: 45000000,
+        txPackets: 32000000,
+        rxErrors: 0,
+        txErrors: 0,
+        rxDrops: 12,
+        txDrops: 8,
+      },
+      {
+        name: "ether2",
+        type: "ether",
+        running: true,
+        disabled: false,
+        rxBytes: 1024 * 1024 * 1024 * 28,
+        txBytes: 1024 * 1024 * 1024 * 19,
+        rxPackets: 28000000,
+        txPackets: 19000000,
+        rxErrors: 0,
+        txErrors: 0,
+        rxDrops: 5,
+        txDrops: 3,
+      },
+      {
+        name: "ether3",
+        type: "ether",
+        running: true,
+        disabled: false,
+        rxBytes: 1024 * 1024 * 1024 * 15,
+        txBytes: 1024 * 1024 * 1024 * 12,
+        rxPackets: 15000000,
+        txPackets: 12000000,
+        rxErrors: 0,
+        txErrors: 0,
+        rxDrops: 2,
+        txDrops: 1,
+      },
+      {
+        name: "wlan1",
+        type: "wlan",
+        running: true,
+        disabled: false,
+        rxBytes: 1024 * 1024 * 1024 * 8,
+        txBytes: 1024 * 1024 * 1024 * 6,
+        rxPackets: 8000000,
+        txPackets: 6000000,
+        rxErrors: 15,
+        txErrors: 10,
+        rxDrops: 45,
+        txDrops: 32,
+      },
+    ]
 
-    let hoursBack = 24
-    if (range === "7d") hoursBack = 24 * 7
-    if (range === "30d") hoursBack = 24 * 30
+    // Generate traffic history for each interface (last 24 hours)
+    const trafficHistory = mockInterfaces.map((iface) => {
+      const history = []
+      const now = new Date()
 
-    const historicalSnapshots = await sql`
-      SELECT *
-      FROM router_performance_history
-      WHERE router_id = ${routerId}
-        AND timestamp > NOW() - INTERVAL '${sql.unsafe(hoursBack.toString())} hours'
-      ORDER BY timestamp DESC
-    `
+      for (let i = 23; i >= 0; i--) {
+        const time = new Date(now.getTime() - i * 60 * 60 * 1000)
+        history.push({
+          time: time.toISOString(),
+          rxMbps: Math.random() * 100 + 20, // 20-120 Mbps
+          txMbps: Math.random() * 80 + 10, // 10-90 Mbps
+        })
+      }
 
-    const trafficHistory = historicalSnapshots.map((snapshot: any) => ({
-      interface: "all",
-      history: [
-        {
-          time: snapshot.timestamp,
-          rxMbps: snapshot.bandwidth_in || 0,
-          txMbps: snapshot.bandwidth_out || 0,
-        },
-      ],
-    }))
-
-    const interfaces =
-      latestSnapshot.length > 0
-        ? [
-            {
-              name: "Router Total",
-              type: "aggregate",
-              running: true,
-              disabled: false,
-              rxBytes: 0,
-              txBytes: 0,
-              rxPackets: 0,
-              txPackets: 0,
-              rxErrors: 0,
-              txErrors: 0,
-              rxDrops: 0,
-              txDrops: 0,
-            },
-          ]
-        : []
-
-    console.log("[v0] Returning database snapshot data:", historicalSnapshots.length, "data points from database")
+      return {
+        interface: iface.name,
+        history,
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      interfaces,
+      interfaces: mockInterfaces,
       trafficHistory,
-      isSnapshot: true,
-      lastUpdated: latestSnapshot[0]?.timestamp || null,
     })
   } catch (error: any) {
-    console.error("Error fetching interface snapshots:", error)
-    return NextResponse.json({ error: error.message || "Failed to fetch interface data" }, { status: 500 })
+    console.error("Error fetching interfaces:", error)
+    return NextResponse.json({ error: error.message || "Failed to fetch interfaces" }, { status: 500 })
   }
 }

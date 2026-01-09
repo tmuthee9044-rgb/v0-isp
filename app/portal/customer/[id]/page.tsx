@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { CustomerPortalClient } from "./customer-portal-client"
 
 export const dynamic = "force-dynamic"
@@ -7,8 +7,7 @@ export const dynamic = "force-dynamic"
 async function getCustomer(id: string) {
   try {
     console.log("[v0] Fetching customer with ID:", id)
-    const sql = await getSql()
-
+    const sql = neon(process.env.DATABASE_URL!)
     const result = await sql`
       SELECT 
         id, name, email, phone, address, city, county, postal_code,
@@ -39,12 +38,11 @@ async function getCustomer(id: string) {
 async function getCustomerServices(customerId: string) {
   try {
     console.log("[v0] Fetching services for customer:", customerId)
-    const sql = await getSql()
-
+    const sql = neon(process.env.DATABASE_URL!)
     const result = await sql`
       SELECT cs.*, sp.name as plan_name, sp.price, sp.speed_download, sp.speed_upload
       FROM customer_services cs
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN service_plans sp ON cs.plan_id = sp.id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC
     `
@@ -59,8 +57,7 @@ async function getCustomerServices(customerId: string) {
 async function getCustomerPayments(customerId: string) {
   try {
     console.log("[v0] Fetching payments for customer:", customerId)
-    const sql = await getSql()
-
+    const sql = neon(process.env.DATABASE_URL!)
     const result = await sql`
       SELECT * FROM payments 
       WHERE customer_id = ${customerId}

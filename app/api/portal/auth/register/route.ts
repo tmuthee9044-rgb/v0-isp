@@ -1,19 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hash = await crypto.subtle.digest("SHA-256", data)
-  const hashArray = Array.from(new Uint8Array(hash))
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-  return hashHex
-}
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const body = await request.json()
 
     const {
@@ -112,7 +103,8 @@ export async function POST(request: NextRequest) {
     // Generate customer account number
     const accountNumber = `TW${Date.now().toString().slice(-6)}`
 
-    const hashedPassword = await hashPassword(password)
+    // Hash password (in production, use proper password hashing like bcrypt)
+    const hashedPassword = Buffer.from(password).toString("base64") // Simple encoding for demo
 
     const newCustomer = await sql.begin(async (sql) => {
       const customerResult = await sql`
@@ -125,7 +117,7 @@ export async function POST(request: NextRequest) {
           id_number,
           address,
           city,
-          county,
+          state,
           postal_code,
           customer_type,
           service_preferences,

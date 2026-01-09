@@ -1,11 +1,11 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { type NextRequest, NextResponse } from "next/server"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const warehouseId = Number.parseInt(params.id)
 
@@ -95,8 +95,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const warehouseId = Number.parseInt(params.id)
 
@@ -199,8 +197,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql()
-
   try {
     const warehouseId = Number.parseInt(params.id)
 

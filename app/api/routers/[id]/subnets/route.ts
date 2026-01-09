@@ -1,47 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
-function generateAvailableIPs(baseIP: string, cidr: number, allocatedIPs: string[]): string[] {
-  const availableIPs: string[] = []
-  const ipParts = baseIP.split(".").map(Number)
+function getDatabaseUrl() {
+  const url =
+    process.env.DATABASE_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL
 
-  // Calculate network size
-  const hostBits = 32 - cidr
-  const networkSize = Math.pow(2, hostBits)
-
-  // Generate IPs (skip network and broadcast addresses)
-  for (let i = 1; i < networkSize - 1; i++) {
-    const ip = [...ipParts]
-    let carry = i
-
-    // Add the host portion
-    for (let j = 3; j >= 0 && carry > 0; j--) {
-      ip[j] += carry % 256
-      carry = Math.floor(carry / 256)
-      if (ip[j] > 255) {
-        ip[j] = ip[j] % 256
-        carry += 1
-      }
-    }
-
-    const ipAddress = ip.join(".")
-
-    // Skip if already allocated
-    if (!allocatedIPs.includes(ipAddress)) {
-      availableIPs.push(ipAddress)
-    }
-
-    // Limit to prevent memory issues
-    if (availableIPs.length >= 100) break
+  if (!url) {
+    console.error("[v0] No database connection string found for router subnets API")
+    throw new Error("Database connection not configured")
   }
 
-  return availableIPs
+  return url
 }
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const routerId = params.id
+    const sql = neon(getDatabaseUrl())
 
     console.log(`[v0] Fetching subnets for router ${routerId}`)
 
@@ -120,4 +98,41 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       { status: 500 },
     )
   }
+}
+
+function generateAvailableIPs(baseIP: string, cidr: number, allocatedIPs: string[]): string[] {
+  const availableIPs: string[] = []
+  const ipParts = baseIP.split(".").map(Number)
+
+  // Calculate network size
+  const hostBits = 32 - cidr
+  const networkSize = Math.pow(2, hostBits)
+
+  // Generate IPs (skip network and broadcast addresses)
+  for (let i = 1; i < networkSize - 1; i++) {
+    const ip = [...ipParts]
+    let carry = i
+
+    // Add the host portion
+    for (let j = 3; j >= 0 && carry > 0; j--) {
+      ip[j] += carry % 256
+      carry = Math.floor(carry / 256)
+      if (ip[j] > 255) {
+        ip[j] = ip[j] % 256
+        carry += 1
+      }
+    }
+
+    const ipAddress = ip.join(".")
+
+    // Skip if already allocated
+    if (!allocatedIPs.includes(ipAddress)) {
+      availableIPs.push(ipAddress)
+    }
+
+    // Limit to prevent memory issues
+    if (availableIPs.length >= 100) break
+  }
+
+  return availableIPs
 }

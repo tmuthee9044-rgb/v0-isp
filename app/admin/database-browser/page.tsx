@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Database, Play, RefreshCw, TableIcon, Search, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
-import { MigrationRunnerButton } from "@/components/migration-runner-button"
 
 interface TableInfo {
   table_name: string
@@ -145,13 +144,10 @@ export default function DatabaseBrowserPage() {
           </h1>
           <p className="text-muted-foreground">Browse tables, view data, and execute SQL queries</p>
         </div>
-        <div className="flex items-center gap-2">
-          <MigrationRunnerButton />
-          <Button onClick={fetchTables} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
+        <Button onClick={fetchTables} variant="outline">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       <Tabs defaultValue="tables" className="space-y-4">

@@ -1,8 +1,8 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 export async function POST() {
   try {
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL!)
 
     console.log("[v0] Starting Neon database migration...")
 

@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
-const generateIPv6Addresses = (networkAddr: string, prefix: number, excludeGateway: boolean): string[] => {
+const sql = neon(process.env.DATABASE_URL!)
+
+function generateIPv6Addresses(networkAddr: string, prefix: number, excludeGateway: boolean): string[] {
   // For IPv6, we'll generate a reasonable subset for common prefix lengths
   // Full /64 would be 18 quintillion addresses, so we limit generation
 
@@ -33,7 +35,7 @@ const generateIPv6Addresses = (networkAddr: string, prefix: number, excludeGatew
   }
 }
 
-const expandIPv6 = (addr: string): string => {
+function expandIPv6(addr: string): string {
   // Expand compressed IPv6 address to full form
   const parts = addr.split(":")
   const expanded: string[] = []
@@ -52,7 +54,7 @@ const expandIPv6 = (addr: string): string => {
   return expanded.slice(0, 8).join(":")
 }
 
-const incrementIPv6 = (addr: string, increment: number): string => {
+function incrementIPv6(addr: string, increment: number): string {
   const parts = addr.split(":").map((p) => Number.parseInt(p, 16))
   let carry = increment
 
@@ -66,7 +68,6 @@ const incrementIPv6 = (addr: string, increment: number): string => {
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const sql = await getSql() // Declare sql variable here
   try {
     const subnetId = Number.parseInt(params.id)
     const body = await request.json().catch(() => ({}))

@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const { items, user_id, serial_numbers } = await request.json()
     const purchaseOrderId = Number.parseInt(params.id)
 
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const [updatedPOItem] = await sql`
         UPDATE purchase_order_items 
         SET 
-          received_quantity = ${quantity_received},
+          quantity_received = ${quantity_received},
           updated_at = NOW()
         WHERE id = ${purchase_order_item_id}
         RETURNING *

@@ -21,10 +21,7 @@ interface Router {
   api_port: number
   ssh_port: number
   username: string
-  status: "active" | "inactive"
-  display_status: "connected" | "disconnected"
-  connection_status?: string
-  last_connection_test?: string
+  status: "connected" | "disconnected"
   created_at: string
   updated_at: string
 }
@@ -128,88 +125,38 @@ export default function RoutersPage() {
         const result = await response.json()
         if (result.success) {
           toast.success("Connection successful!")
-          setRouters((prev) =>
-            prev.map((r) => (r.id === router.id ? { ...r, display_status: "connected", status: "active" } : r)),
-          )
+          // Update router status
+          setRouters((prev) => prev.map((r) => (r.id === router.id ? { ...r, status: "connected" } : r)))
         } else {
           toast.error(`Connection failed: ${result.message}`)
-          setRouters((prev) =>
-            prev.map((r) => (r.id === router.id ? { ...r, display_status: "disconnected", status: "inactive" } : r)),
-          )
         }
       }
     } catch (error) {
       console.error("Error testing connection:", error)
       toast.error("Failed to test connection")
-      setRouters((prev) =>
-        prev.map((r) => (r.id === router.id ? { ...r, display_status: "disconnected", status: "inactive" } : r)),
-      )
     } finally {
       setTestingConnection(null)
     }
   }
 
   const deleteRouter = async (id: number) => {
-    const router = routers.find((r) => r.id === id)
-    if (!router) return
+    if (!confirm("Are you sure you want to delete this router?")) return
 
-    console.log("[v0] Delete router requested:", { id, name: router.name })
-
-    // First check for dependencies
     try {
-      const response = await fetch(`/api/network/routers/${id}/dependencies`)
+      const response = await fetch(`/api/network/routers/${id}`, {
+        method: "DELETE",
+      })
+
       if (response.ok) {
-        const dependencies = await response.json()
-
-        console.log("[v0] Dependencies check result:", dependencies)
-
-        if (dependencies.hasDependencies) {
-          const message = `This router has the following dependencies:\n\n${dependencies.subnetCount > 0 ? `• ${dependencies.subnetCount} subnet(s)\n` : ""}${dependencies.serviceCount > 0 ? `• ${dependencies.serviceCount} active service(s)\n` : ""}\nDo you want to delete the router and all its dependencies? This action cannot be undone.`
-
-          if (!confirm(message)) return
-
-          // Delete with cascade
-          const deleteResponse = await fetch(`/api/network/routers/${id}?cascade=true`, {
-            method: "DELETE",
-          })
-
-          const data = await deleteResponse.json()
-
-          console.log("[v0] Cascade delete response:", data)
-
-          if (deleteResponse.ok) {
-            toast.success(data.message || "Router and dependencies deleted successfully")
-            setRouters((prev) => prev.filter((r) => r.id !== id))
-          } else {
-            toast.error(data.message || "Failed to delete router")
-          }
-        } else {
-          // No dependencies, simple delete
-          if (!confirm(`Are you sure you want to delete ${router.name}? This action cannot be undone.`)) return
-
-          const deleteResponse = await fetch(`/api/network/routers/${id}`, {
-            method: "DELETE",
-          })
-
-          const data = await deleteResponse.json()
-
-          console.log("[v0] Simple delete response:", data)
-
-          if (deleteResponse.ok) {
-            toast.success("Router deleted successfully")
-            setRouters((prev) => prev.filter((r) => r.id !== id))
-          } else {
-            toast.error(data.message || "Failed to delete router")
-          }
-        }
+        toast.success("Router deleted successfully")
+        fetchRouters()
       } else {
-        const errorData = await response.json()
-        console.error("[v0] Dependencies check failed:", errorData)
-        toast.error(errorData.message || "Failed to check router dependencies")
+        const error = await response.json()
+        toast.error(error.message || "Failed to delete router")
       }
     } catch (error) {
-      console.error("[v0] Error deleting router:", error)
-      toast.error("Failed to delete router. Please check the console for details.")
+      console.error("Error deleting router:", error)
+      toast.error("Failed to delete router")
     }
   }
 
@@ -228,6 +175,7 @@ export default function RoutersPage() {
   }
 
   const handleAddRouter = () => {
+    // Navigate to add router page or open modal
     window.location.href = "/network/routers/add"
   }
 
@@ -235,17 +183,15 @@ export default function RoutersPage() {
     window.location.href = `/network/routers/edit/${router.id}`
   }
 
-  const getStatusBadge = (status: "connected" | "disconnected") => {
+  const getStatusBadge = (status: string) => {
     return status === "connected" ? (
-      <Badge variant="default" className="bg-green-100 text-green-800 flex items-center gap-1.5">
-        <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
-        <Wifi className="w-3 h-3" />
+      <Badge variant="default" className="bg-green-100 text-green-800">
+        <Wifi className="w-3 h-3 mr-1" />
         Connected
       </Badge>
     ) : (
-      <Badge variant="secondary" className="bg-red-100 text-red-800 flex items-center gap-1.5">
-        <span className="w-2 h-2 bg-red-600 rounded-full"></span>
-        <WifiOff className="w-3 h-3" />
+      <Badge variant="secondary" className="bg-red-100 text-red-800">
+        <WifiOff className="w-3 h-3 mr-1" />
         Disconnected
       </Badge>
     )
@@ -323,7 +269,7 @@ export default function RoutersPage() {
                       {router.connection_type ? router.connection_type.replace("_", " ") : "Unknown"}
                     </Badge>
                   </TableCell>
-                  <TableCell>{getStatusBadge(router.display_status)}</TableCell>
+                  <TableCell>{getStatusBadge(router.status)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button

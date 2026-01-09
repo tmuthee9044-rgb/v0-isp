@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 function getDatabaseUrl(): string {
   const possibleUrls = [
@@ -18,10 +18,10 @@ function getDatabaseUrl(): string {
   throw new Error("No database connection string found")
 }
 
+const sql = neon(getDatabaseUrl())
+
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") || ""
     const method = searchParams.get("method") || "all"
@@ -33,11 +33,12 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Fetching payments with filters:", { search, method, status, dateFrom, dateTo, limit, offset })
 
-    const conditions = ["1=1"]
+    let whereClause = ""
+    const searchConditions = []
 
     if (search) {
       const searchPattern = `%${search}%`
-      conditions.push(`(
+      searchConditions.push(`(
         c.first_name ILIKE '${searchPattern}' OR 
         c.last_name ILIKE '${searchPattern}' OR 
         p.transaction_id ILIKE '${searchPattern}' OR 
@@ -46,24 +47,26 @@ export async function GET(request: NextRequest) {
     }
 
     if (method !== "all") {
-      conditions.push(`p.payment_method = '${method}'`)
+      searchConditions.push(`p.payment_method = '${method}'`)
     }
 
     if (status !== "all") {
-      conditions.push(`p.status = '${status}'`)
+      searchConditions.push(`p.status = '${status}'`)
     }
 
     if (dateFrom) {
-      conditions.push(`COALESCE(p.payment_date, p.created_at) >= '${dateFrom}'`)
+      searchConditions.push(`COALESCE(p.payment_date, p.created_at) >= '${dateFrom}'`)
     }
 
     if (dateTo) {
-      conditions.push(`COALESCE(p.payment_date, p.created_at) <= '${dateTo}'`)
+      searchConditions.push(`COALESCE(p.payment_date, p.created_at) <= '${dateTo}'`)
     }
 
-    const whereClause = conditions.join(" AND ")
+    if (searchConditions.length > 0) {
+      whereClause = `AND ${searchConditions.join(" AND ")}`
+    }
 
-    const query = `
+    const paymentsResult = await sql`
       SELECT 
         p.id,
         p.customer_id,
@@ -82,23 +85,19 @@ export async function GET(request: NextRequest) {
       LEFT JOIN customers c ON p.customer_id = c.id
       LEFT JOIN customer_services cs ON cs.customer_id = c.id AND cs.status = 'active'
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      WHERE ${whereClause}
+      WHERE 1=1 ${sql.unsafe(whereClause)}
       ORDER BY COALESCE(p.payment_date, p.created_at) DESC 
       LIMIT ${limit} OFFSET ${offset}
     `
 
-    const paymentsResult = await sql.unsafe(query)
-
     console.log("[v0] Found", paymentsResult.length, "payments")
 
-    const countQuery = `
+    const countResult = await sql`
       SELECT COUNT(*) as total
       FROM payments p
       LEFT JOIN customers c ON p.customer_id = c.id
-      WHERE ${whereClause}
+      WHERE 1=1 ${sql.unsafe(whereClause)}
     `
-
-    const countResult = await sql.unsafe(countQuery)
 
     const total = Number.parseInt(countResult?.[0]?.total || "0")
     console.log("[v0] Total payments count:", total)

@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string; equipmentId: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     const equipmentId = Number.parseInt(params.equipmentId)
 

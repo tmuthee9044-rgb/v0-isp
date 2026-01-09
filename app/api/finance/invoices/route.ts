@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { ensureInvoiceItemsTable } from "@/lib/ensure-invoice-items-table"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +10,8 @@ export async function GET() {
     const invoices = await sql`
       SELECT 
         i.*,
-        c.name,
+        c.first_name,
+        c.last_name,
         c.email,
         c.business_name
       FROM invoices i
@@ -29,8 +29,6 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureInvoiceItemsTable()
-
     const { customer_id, amount, description, due_date, items } = await request.json()
 
     if (!customer_id || !amount || !description) {
@@ -47,8 +45,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO invoices (
         invoice_number,
         customer_id, 
-        amount,
-        total_amount,
+        amount, 
         description, 
         due_date, 
         status,
@@ -57,8 +54,7 @@ export async function POST(request: NextRequest) {
       VALUES (
         ${invoiceNumber},
         ${customer_id}, 
-        ${amount},
-        ${amount},
+        ${amount}, 
         ${description}, 
         ${due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}, 
         'pending',
@@ -104,7 +100,7 @@ export async function POST(request: NextRequest) {
           'invoice',
           ${invoice.id},
           ${JSON.stringify({ invoice_number: invoiceNumber, customer_id, amount, description })},
-          NULL,
+          'system',
           NOW()
         )
       `
@@ -223,7 +219,7 @@ export async function POST(request: NextRequest) {
                       payment_method: "Credit Balance",
                       reason: "Invoice paid by customer credit balance",
                     })},
-                    NULL,
+                    'system',
                     NOW()
                   )
                 `
@@ -258,7 +254,7 @@ export async function POST(request: NextRequest) {
                 payment_method: "Credit Balance",
                 status: newStatus,
               })},
-              NULL,
+              'system',
               NOW()
             )
           `

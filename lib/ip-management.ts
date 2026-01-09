@@ -1,5 +1,7 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { createMikroTikClient } from "./mikrotik-api"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export interface IPAllocationResult {
   success: boolean
@@ -22,7 +24,6 @@ export async function selectRouterByLocation(customerId: number, locationId?: nu
     console.log(`[v0] Selecting router for customer ${customerId}, location ${locationId}`)
 
     // If location ID is provided, use it directly
-    const sql = await getSql()
     if (locationId) {
       const [router] = await sql`
         SELECT DISTINCT nd.id 
@@ -107,7 +108,6 @@ export async function selectRouterByLocation(customerId: number, locationId?: nu
  */
 export async function findAvailableSubnet(routerId: number): Promise<number | null> {
   try {
-    const sql = await getSql()
     const [subnet] = await sql`
       SELECT 
         s.id, 
@@ -171,7 +171,6 @@ export async function allocateIPAddress(
     console.log(`[v0] Allocating IP for customer ${customerId}, service ${serviceId}`)
 
     // Step 1: Select router based on location if not provided
-    const sql = await getSql()
     if (!routerId) {
       routerId = await selectRouterByLocation(customerId, locationId)
       if (!routerId) {
@@ -337,7 +336,6 @@ export async function releaseIPAddress(serviceId: number, reason = "Service term
     console.log(`[v0] Releasing IP for service ${serviceId}, reason: ${reason}`)
 
     // Get service details
-    const sql = await getSql()
     const [service] = await sql`
       SELECT cs.*, ip.id as ip_address_id, ip.subnet_id
       FROM customer_services cs
@@ -458,7 +456,6 @@ export async function releaseAllCustomerIPs(customerId: number): Promise<IPRelea
   try {
     console.log(`[v0] Releasing all IPs for customer ${customerId}`)
 
-    const sql = await getSql()
     // Get all services with IPs for this customer
     const services = await sql`
       SELECT id, ip_address

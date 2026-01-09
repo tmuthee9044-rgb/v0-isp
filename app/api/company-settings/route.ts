@@ -1,8 +1,8 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export async function GET() {
   try {
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL!)
 
     const settings = await sql`
       SELECT 

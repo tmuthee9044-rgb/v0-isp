@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export const dynamic = "force-dynamic"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
     console.log("[v0] Starting inventory API request")
-
-    const sql = await getSql()
 
     if (!process.env.DATABASE_URL) {
       console.error("[v0] DATABASE_URL not found")

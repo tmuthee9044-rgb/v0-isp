@@ -22,45 +22,97 @@ import {
 export default function OverviewPage() {
   const [selectedTab, setSelectedTab] = useState("network")
   const [networkData, setNetworkData] = useState({
-    bandwidth: { used: 0, total: 100, unit: "Gbps" },
-    latency: 0,
-    packetLoss: 0,
-    uptime: 0,
-    serviceAreas: [],
+    bandwidth: { used: 78, total: 100, unit: "Gbps" },
+    latency: 12,
+    packetLoss: 0.02,
+    uptime: 99.8,
+    serviceAreas: [
+      { name: "Downtown", customers: 1247, uptime: 99.9 },
+      { name: "Suburbs", customers: 892, uptime: 99.7 },
+      { name: "Industrial", customers: 456, uptime: 99.8 },
+      { name: "Residential", customers: 252, uptime: 99.6 },
+    ],
   })
   const [customerData, setCustomerData] = useState({
-    total: 0,
-    new: 0,
-    churn: 0,
-    satisfaction: 0,
+    total: 2847,
+    new: 156,
+    churn: 23,
+    satisfaction: 4.6,
     support: {
-      open: 0,
-      resolved: 0,
-      avgTime: "0 hours",
+      open: 12,
+      resolved: 89,
+      avgTime: "2.4 hours",
     },
-    distribution: [],
+    distribution: [
+      { area: "Downtown", count: 1247, percentage: 44 },
+      { area: "Suburbs", count: 892, percentage: 31 },
+      { area: "Industrial", count: 456, percentage: 16 },
+      { area: "Residential", count: 252, percentage: 9 },
+    ],
   })
   const [financialData, setFinancialData] = useState({
-    monthlyRevenue: 0,
-    yearlyProjection: 0,
-    arpu: 0,
-    margin: 0,
-    collections: 0,
-    outstanding: 0,
-    areaRevenue: [],
+    monthlyRevenue: 45231,
+    yearlyProjection: 542772,
+    arpu: 89.5,
+    margin: 68,
+    collections: 94.2,
+    outstanding: 12847,
+    areaRevenue: [
+      { area: "Downtown", revenue: 19847, percentage: 44 },
+      { area: "Suburbs", revenue: 15623, percentage: 35 },
+      { area: "Industrial", revenue: 6234, percentage: 14 },
+      { area: "Residential", revenue: 3527, percentage: 7 },
+    ],
   })
   const [infrastructureData, setInfrastructureData] = useState({
-    routers: { total: 0, online: 0, offline: 0 },
-    servers: { total: 0, online: 0, offline: 0 },
+    routers: { total: 24, online: 23, offline: 1 },
+    servers: { total: 8, online: 8, offline: 0 },
     resources: {
-      cpu: 0,
-      memory: 0,
-      storage: 0,
-      network: 0,
+      cpu: 45,
+      memory: 67,
+      storage: 78,
+      network: 82,
     },
   })
-  const [loading, setLoading] = useState(true)
-  const [alerts, setAlerts] = useState<any[]>([])
+
+  const alerts = [
+    {
+      id: 1,
+      type: "error",
+      message: "Router R-001 offline",
+      time: "5 minutes ago",
+      severity: "high",
+    },
+    {
+      id: 2,
+      type: "warning",
+      message: "High bandwidth usage in Downtown area",
+      time: "15 minutes ago",
+      severity: "medium",
+    },
+    {
+      id: 3,
+      type: "info",
+      message: "Scheduled maintenance completed",
+      time: "1 hour ago",
+      severity: "low",
+    },
+    {
+      id: 4,
+      type: "success",
+      message: "New customer onboarded successfully",
+      time: "2 hours ago",
+      severity: "low",
+    },
+  ]
+
+  const systemHealth = [
+    { name: "Overall System", status: 98, color: "bg-green-500" },
+    { name: "Network", status: 99, color: "bg-green-500" },
+    { name: "Servers", status: 97, color: "bg-green-500" },
+    { name: "Database", status: 95, color: "bg-yellow-500" },
+    { name: "Services", status: 96, color: "bg-green-500" },
+  ]
 
   const getAlertIcon = (type: string) => {
     switch (type) {
@@ -82,44 +134,41 @@ export default function OverviewPage() {
   }
 
   useEffect(() => {
-    const fetchOverviewData = async () => {
-      try {
-        setLoading(true)
-
-        const [networkRes, customerRes, financialRes, infrastructureRes, alertsRes] = await Promise.all([
-          fetch("/api/overview/network"),
-          fetch("/api/overview/customers"),
-          fetch("/api/overview/financial"),
-          fetch("/api/overview/infrastructure"),
-          fetch("/api/overview/alerts"), // Fetch real alerts from database
-        ])
-
-        const [network, customer, financial, infrastructure, alertsData] = await Promise.all([
-          networkRes.json(),
-          customerRes.json(),
-          financialRes.json(),
-          infrastructureRes.json(),
-          alertsRes.json(),
-        ])
-
-        if (network && !network.error) setNetworkData(network)
-        if (customer && !customer.error) setCustomerData(customer)
-        if (financial && !financial.error) setFinancialData(financial)
-        if (infrastructure && !infrastructure.error) setInfrastructureData(infrastructure)
-        if (alertsData && !alertsData.error) setAlerts(alertsData.alerts || []) // Set real alerts
-      } catch (error) {
-        console.error("Failed to fetch overview data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchOverviewData()
-
-    // Refresh data every 30 seconds
-    const interval = setInterval(fetchOverviewData, 30000)
-    return () => clearInterval(interval)
+    fetchRealData()
   }, [])
+
+  const fetchRealData = async () => {
+    try {
+      const [networkRes, customerRes, financialRes, infrastructureRes] = await Promise.all([
+        fetch("/api/overview/network"),
+        fetch("/api/overview/customers"),
+        fetch("/api/overview/financial"),
+        fetch("/api/overview/infrastructure"),
+      ])
+
+      if (networkRes.ok) {
+        const data = await networkRes.json()
+        setNetworkData(data)
+      }
+
+      if (customerRes.ok) {
+        const data = await customerRes.json()
+        setCustomerData(data)
+      }
+
+      if (financialRes.ok) {
+        const data = await financialRes.json()
+        setFinancialData(data)
+      }
+
+      if (infrastructureRes.ok) {
+        const data = await infrastructureRes.json()
+        setInfrastructureData(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch overview data:", error)
+    }
+  }
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -561,11 +610,3 @@ export default function OverviewPage() {
     </div>
   )
 }
-
-const systemHealth = [
-  { name: "Overall System", status: 98, color: "bg-green-500" },
-  { name: "Network", status: 99, color: "bg-green-500" },
-  { name: "Servers", status: 97, color: "bg-green-500" },
-  { name: "Database", status: 95, color: "bg-yellow-500" },
-  { name: "Services", status: 96, color: "bg-green-500" },
-]

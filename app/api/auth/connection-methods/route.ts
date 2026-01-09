@@ -1,10 +1,11 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 // Connection Methods Management API (Public IP / OpenVPN)
 export async function GET(request: Request) {
   try {
-    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const customerId = searchParams.get("customer_id")
     const method = searchParams.get("method") // "public_ip" or "openvpn"
@@ -93,7 +94,6 @@ export async function GET(request: Request) {
 // Update connection method
 export async function POST(request: Request) {
   try {
-    const sql = await getSql()
     const { customer_id, connection_type, router_id } = await request.json()
 
     if (!customer_id || !connection_type) {

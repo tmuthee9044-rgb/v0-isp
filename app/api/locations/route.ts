@@ -1,27 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
-    const sql = await getSql()
     const locations = await sql`
-      SELECT id, name, city, region
-      FROM locations 
-      WHERE status = 'active'
+      SELECT * FROM locations 
       ORDER BY name ASC
     `
 
-    return NextResponse.json(
-      {
-        success: true,
-        locations: locations,
-      },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      },
-    )
+    return NextResponse.json({
+      success: true,
+      locations: locations,
+    })
   } catch (error) {
     console.error("Error fetching locations:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch locations" }, { status: 500 })
@@ -32,7 +24,6 @@ export async function POST(request: NextRequest) {
   try {
     const { name, address, city, region, description, status } = await request.json()
 
-    const sql = await getSql()
     const result = await sql`
       INSERT INTO locations (name, address, city, region, description, status)
       VALUES (${name}, ${address || null}, ${city || null}, ${region || null}, ${description || null}, ${status || "active"})
@@ -53,7 +44,6 @@ export async function PUT(request: NextRequest) {
   try {
     const { id, name, address, city, region, description, status } = await request.json()
 
-    const sql = await getSql()
     const result = await sql`
       UPDATE locations 
       SET name = ${name}, 
@@ -90,7 +80,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Location ID is required" }, { status: 400 })
     }
 
-    const sql = await getSql()
     const result = await sql`
       DELETE FROM locations 
       WHERE id = ${id}

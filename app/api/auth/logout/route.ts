@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AuthService } from "@/lib/auth"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (token) {
       await AuthService.logout(token)
 
-      const sql = await getSql()
+      // Log logout
       const user = await AuthService.getCurrentUser()
       if (user) {
         await sql`

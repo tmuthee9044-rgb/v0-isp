@@ -1,6 +1,6 @@
 "use server"
 
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 // Get database connection string
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -14,7 +14,11 @@ const isLocalDatabase = connectionString.includes("localhost") || connectionStri
 
 // Create Neon client (works for both local PostgreSQL and Neon serverless)
 console.log(`[v0] Using ${isLocalDatabase ? "local PostgreSQL" : "Neon serverless"} connection`)
-export const sql = getSql
+export const sql = neon(connectionString, {
+  fetchOptions: {
+    cache: "no-store",
+  },
+})
 
 // Helper function for retry logic on rate limit errors
 export async function executeWithRetry<T>(queryFn: () => Promise<T>, maxRetries = 3): Promise<T> {

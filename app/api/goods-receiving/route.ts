@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 // Get all goods receiving records
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "all"
     const poId = searchParams.get("po_id")
@@ -82,8 +82,6 @@ export async function GET(request: NextRequest) {
 // Create goods receiving record
 export async function POST(request: NextRequest) {
   try {
-    const sql = await getSql()
-
     const data = await request.json()
 
     console.log("[v0] Creating goods receiving record with data:", data)

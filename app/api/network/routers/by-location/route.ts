@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 function getDatabaseConnection() {
   const databaseUrl =
@@ -12,12 +12,12 @@ function getDatabaseConnection() {
     throw new Error("No database connection string found")
   }
 
-  return databaseUrl
+  return neon(databaseUrl)
 }
 
-export async function GET(request: NextRequest) {
-  const sql = await getSql()
+const sql = getDatabaseConnection()
 
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const locationId = searchParams.get("location_id")
@@ -93,8 +93,6 @@ export async function GET(request: NextRequest) {
 
 // Get optimal router for a customer based on location and capacity
 export async function POST(request: NextRequest) {
-  const sql = await getSql()
-
   try {
     const body = await request.json()
     const { customer_id, location_id } = body

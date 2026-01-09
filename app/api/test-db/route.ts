@@ -1,10 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
 
-export async function GET() {
-  // Initialize SQL client for dual database support
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function GET() {
   try {
     // Test basic connection
     const result = await sql`SELECT NOW() as current_time`

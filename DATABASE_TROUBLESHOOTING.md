@@ -4,10 +4,10 @@
 
 Run the comprehensive database test script:
 
-```bash
+\`\`\`bash
 chmod +x scripts/test-database-connection.sh
 bash scripts/test-database-connection.sh
-```
+\`\`\`
 
 This will verify:
 - PostgreSQL service is running
@@ -21,34 +21,34 @@ This will verify:
 ### Issue 1: "Permission denied" errors during installation
 
 **Symptom:** 
-```
+\`\`\`
 could not change directory to "/home/isp/isp-system/isp-system": Permission denied
-```
+\`\`\`
 
 **Cause:** The postgres user cannot access your project directory.
 
 **Fix:** The install.sh script automatically copies SQL files to `/tmp` before executing them. If you still see this error:
 
-```bash
+\`\`\`bash
 # Fix directory permissions
 sudo chown -R $USER:$USER ~/isp-system
 chmod -R 755 ~/isp-system
 
 # Re-run installation
 ./install.sh
-```
+\`\`\`
 
 ### Issue 2: "password authentication failed for user 'isp_admin'"
 
 **Symptom:**
-```
+\`\`\`
 FATAL: password authentication failed for user "isp_admin"
-```
+\`\`\`
 
 **Cause:** Database user password doesn't match .env.local
 
 **Fix:**
-```bash
+\`\`\`bash
 # Reset the database user password
 sudo -u postgres psql -c "ALTER USER isp_admin WITH PASSWORD 'SecurePass123!';"
 
@@ -57,21 +57,21 @@ cat .env.local | grep DATABASE_URL
 
 # Test connection
 PGPASSWORD="SecurePass123!" psql -h localhost -U isp_admin -d isp_system -c "SELECT 1;"
-```
+\`\`\`
 
 ### Issue 3: All tables are missing
 
 **Symptom:**
-```
+\`\`\`
 [ERROR] ✗ customers (table does not exist)
 [ERROR] ✗ service_plans (table does not exist)
 ...
-```
+\`\`\`
 
 **Cause:** Migration scripts didn't execute properly
 
 **Fix:**
-```bash
+\`\`\`bash
 # Run database fix
 ./install.sh --fix-db
 
@@ -80,19 +80,19 @@ sudo -u postgres psql -d isp_system -f scripts/000_complete_schema.sql
 
 # Verify tables
 bash scripts/test-database-connection.sh
-```
+\`\`\`
 
 ### Issue 4: "ECONNREFUSED 127.0.0.1:443"
 
 **Symptom:**
-```
+\`\`\`
 Error: connect ECONNREFUSED 127.0.0.1:443
-```
+\`\`\`
 
 **Cause:** System is trying to connect to Neon cloud instead of local PostgreSQL
 
 **Fix:**
-```bash
+\`\`\`bash
 # Check DATABASE_URL in .env.local
 cat .env.local | grep DATABASE_URL
 
@@ -105,17 +105,17 @@ rm .env.local
 
 # Fix all imports to use neon-wrapper
 bash scripts/fix-neon-imports.sh
-```
+\`\`\`
 
 ### Issue 5: PostgreSQL service not running
 
 **Symptom:**
-```
+\`\`\`
 [ERROR] PostgreSQL service is not running
-```
+\`\`\`
 
 **Fix:**
-```bash
+\`\`\`bash
 # Start PostgreSQL
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
@@ -125,13 +125,13 @@ sudo systemctl status postgresql
 
 # If it fails to start, check logs
 sudo journalctl -u postgresql -n 50
-```
+\`\`\`
 
 ## Manual Database Setup
 
 If automatic installation fails, you can set up the database manually:
 
-```bash
+\`\`\`bash
 # 1. Create database and user
 sudo -u postgres psql << EOF
 CREATE USER isp_admin WITH PASSWORD 'SecurePass123!';
@@ -157,13 +157,13 @@ EOF
 
 # 4. Test connection
 bash scripts/test-database-connection.sh
-```
+\`\`\`
 
 ## Verifying neon-wrapper Configuration
 
 The neon-wrapper automatically detects local vs cloud databases:
 
-```typescript
+\`\`\`typescript
 // lib/neon-wrapper.ts detects localhost in DATABASE_URL
 const isLocalDatabase =
   connectionString.includes("localhost") ||
@@ -171,7 +171,7 @@ const isLocalDatabase =
 
 // If local: uses pg Pool driver (offline PostgreSQL)
 // If cloud: uses Neon serverless driver
-```
+\`\`\`
 
 To verify it's working:
 1. Check console logs when app starts

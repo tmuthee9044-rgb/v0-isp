@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 import { ActivityLogger } from "@/lib/activity-logger"
 
-export async function POST(request: NextRequest) {
-  const sql = await getSql()
+const sql = neon(process.env.DATABASE_URL!)
 
+export async function POST(request: NextRequest) {
   let customerId: number | undefined
   let amount: number | undefined
   let phone: string | undefined

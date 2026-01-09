@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 export const dynamic = "force-dynamic"
-export const runtime = "nodejs" // Removed edge runtime as postgres library requires Node.js runtime with 'fs' module
+export const runtime = "edge"
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL)
 
     const [revenueResult, expensesResult, invoicesResult] = await Promise.all([
       sql`

@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
-  const sql = await getSql()
-
   try {
     const users = await sql`
       SELECT 
@@ -28,8 +28,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const sql = await getSql()
-
   try {
     const data = await request.json()
     const { hotspot_id, username, password, email, phone, time_limit, data_limit, expiry_days } = data

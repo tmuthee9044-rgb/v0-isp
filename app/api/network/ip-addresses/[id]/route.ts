@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 // GET - Get specific IP address details
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const ipId = Number.parseInt(params.id)
 
     const [address] = await sql`
@@ -48,7 +49,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 // DELETE - Release IP address
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const ipId = Number.parseInt(params.id)
 
     const [released] = await sql`

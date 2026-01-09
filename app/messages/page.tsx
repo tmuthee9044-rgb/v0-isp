@@ -819,10 +819,10 @@ export default function MessagesPage() {
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{template.name}</CardTitle>
                         <Badge variant={template.type === "email" ? "default" : "secondary"}>
-                          {template.type?.toUpperCase() || "UNKNOWN"}
+                          {template.type.toUpperCase()}
                         </Badge>
                       </div>
-                      <CardDescription>{template.category || "Uncategorized"}</CardDescription>
+                      <CardDescription>{template.category}</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-muted-foreground mb-2 line-clamp-3">
@@ -830,8 +830,8 @@ export default function MessagesPage() {
                         {template.content}
                       </p>
                       <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
-                        <span>Used {template.usage_count || 0} times</span>
-                        <span>{template.variables?.length || 0} variables</span>
+                        <span>Used {template.usage_count} times</span>
+                        <span>{template.variables.length} variables</span>
                       </div>
                       <div className="flex space-x-2">
                         <Button
@@ -1095,14 +1095,14 @@ export default function MessagesPage() {
                 <div>
                   <Label>Type</Label>
                   <Badge variant={selectedTemplate.type === "email" ? "default" : "secondary"}>
-                    {selectedTemplate.type?.toUpperCase() || "UNKNOWN"}
+                    {selectedTemplate.type.toUpperCase()}
                   </Badge>
                 </div>
               </div>
 
               <div>
                 <Label>Category</Label>
-                <p className="text-sm text-muted-foreground">{selectedTemplate.category || "Uncategorized"}</p>
+                <p className="text-sm text-muted-foreground">{selectedTemplate.category}</p>
               </div>
 
               {selectedTemplate.type === "email" && selectedTemplate.subject && (

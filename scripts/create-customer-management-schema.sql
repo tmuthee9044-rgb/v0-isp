@@ -9,15 +9,11 @@ DROP TABLE IF EXISTS invoices CASCADE;
 DROP TABLE IF EXISTS customer_services CASCADE;
 DROP TABLE IF EXISTS locations CASCADE;
 
--- Create locations table with ALL required columns to match Neon schema
+-- Create locations table
 CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    address TEXT,
-    city VARCHAR(255),
-    region VARCHAR(255),
     description TEXT,
-    status VARCHAR(50) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -208,13 +204,13 @@ CREATE INDEX idx_customer_communications_customer ON customer_communications(cus
 CREATE INDEX idx_customer_communications_type ON customer_communications(type);
 
 -- Insert sample locations
-INSERT INTO locations (name, address, city, region, description, status) VALUES
-('Nairobi Central', 'Nairobi CBD', 'Nairobi', 'Central', 'Main coverage area in Nairobi CBD', 'active'),
-('Westlands', 'Westlands', 'Nairobi', 'Western', 'Westlands and surrounding areas', 'active'),
-('Karen', 'Karen, Langata', 'Nairobi', 'Western', 'Karen, Langata and surrounding suburbs', 'active'),
-('Mombasa', 'Mombasa', 'Mombasa', 'Coastal', 'Mombasa coastal region', 'active'),
-('Kisumu', 'Kisumu', 'Kisumu', 'Western', 'Kisumu and western Kenya coverage', 'active'),
-('Nakuru', 'Nakuru', 'Nakuru', 'Rift Valley', 'Nakuru and Rift Valley region', 'active');
+INSERT INTO locations (name, description) VALUES
+('Nairobi Central', 'Main coverage area in Nairobi CBD'),
+('Westlands', 'Westlands and surrounding areas'),
+('Karen', 'Karen, Langata and surrounding suburbs'),
+('Mombasa', 'Mombasa coastal region'),
+('Kisumu', 'Kisumu and western Kenya coverage'),
+('Nakuru', 'Nakuru and Rift Valley region');
 
 -- Generate invoice numbers function
 CREATE OR REPLACE FUNCTION generate_invoice_number()

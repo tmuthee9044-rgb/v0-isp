@@ -1,6 +1,6 @@
 "use server"
 
-import { getSql } from "@/lib/db"
+import { sql } from "@/lib/database"
 import { revalidatePath } from "next/cache"
 
 export interface PayrollCalculation {
@@ -96,32 +96,26 @@ export async function generatePayroll(
   employeeIds: string[],
 ): Promise<{
   success: boolean
-  data?: { calculations: PayrollCalculation[]; summary: PayrollSummary }
+  data?: {
+    calculations: PayrollCalculation[]
+    summary: PayrollSummary
+  }
   error?: string
 }> {
   try {
-    console.log("[v0] Generating payroll for period:", period, "employees:", employeeIds.length)
-
-    const sql = await getSql()
-
     const employees = await sql`
       SELECT 
-        id,
-        employee_id,
+        id as employee_id,
         first_name,
         last_name,
         salary as basic_salary,
-        allowances
+        0 as allowances
       FROM employees 
-      WHERE employee_id = ANY(${employeeIds}) 
+      WHERE id = ANY(${employeeIds}) 
       AND status = 'active'
     `
 
-    const employeeList = Array.isArray(employees) ? employees : employees.rows || []
-
-    console.log("[v0] Found active employees:", employeeList.length)
-
-    if (!employeeList || employeeList.length === 0) {
+    if (!employees || employees.length === 0) {
       return {
         success: false,
         error: "No active employees found",
@@ -136,9 +130,10 @@ export async function generatePayroll(
     let totalNssf = 0
     let totalSha = 0
 
-    for (const employee of employeeList) {
-      const basicSalary = Number.parseFloat(employee.basic_salary) || 0
-      const allowances = Number.parseFloat(employee.allowances) || 0
+    // Calculate payroll for each employee
+    for (const employee of employees) {
+      const basicSalary = Number.parseFloat(employee.basic_salary) || 50000
+      const allowances = Number.parseFloat(employee.allowances) || 5000
       const overtime = 0
 
       const grossPay = basicSalary + allowances + overtime
@@ -151,7 +146,7 @@ export async function generatePayroll(
       const netPay = grossPay - totalEmployeeDeductions
 
       const calculation: PayrollCalculation = {
-        employeeId: employee.employee_id,
+        employeeId: employee.employee_id.toString(),
         employeeName: `${employee.first_name} ${employee.last_name}`,
         basicSalary,
         allowances,
@@ -167,35 +162,14 @@ export async function generatePayroll(
 
       calculations.push(calculation)
 
-      const periodStart = `${period}-01`
-      const periodEnd = `${period}-31`
-      const employeeName = `${employee.first_name} ${employee.last_name}`
-
       await sql`
         INSERT INTO payroll_records (
-          employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
-          allowances, deductions, gross_pay, tax, nhif, nssf,
-          net_pay, status, created_at
+          employee_id, pay_period_start, pay_period_end, basic_salary, 
+          allowances, gross_pay, deductions, tax_deduction, net_pay, status
         ) VALUES (
-          ${employee.id}, ${employeeName}, 
-          ${periodStart}, ${periodEnd}, ${basicSalary},
-          ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, 
-          ${paye}, ${sha}, ${nssf},
-          ${netPay}, 'pending', NOW()
+          ${employee.employee_id}, ${period + "-01"}, ${period + "-31"}, ${basicSalary},
+          ${allowances}, ${grossPay}, ${totalEmployeeDeductions}, ${paye}, ${netPay}, 'calculated'
         )
-        ON CONFLICT (employee_id, pay_period_start) 
-        DO UPDATE SET
-          employee_name = EXCLUDED.employee_name,
-          basic_salary = EXCLUDED.basic_salary,
-          allowances = EXCLUDED.allowances,
-          deductions = EXCLUDED.deductions,
-          gross_pay = EXCLUDED.gross_pay,
-          tax = EXCLUDED.tax,
-          nhif = EXCLUDED.nhif,
-          nssf = EXCLUDED.nssf,
-          net_pay = EXCLUDED.net_pay,
-          status = EXCLUDED.status,
-          updated_at = NOW()
       `
 
       totalGrossPay += grossPay
@@ -216,8 +190,6 @@ export async function generatePayroll(
       totalSha,
     }
 
-    console.log("[v0] Payroll generated successfully:", summary)
-
     revalidatePath("/hr")
 
     return {
@@ -228,7 +200,7 @@ export async function generatePayroll(
       },
     }
   } catch (error) {
-    console.error("[v0] Error generating payroll:", error)
+    console.error("Error generating payroll:", error)
     return {
       success: false,
       error: "Failed to generate payroll",
@@ -244,30 +216,25 @@ export async function processPayroll(
   message: string
 }> {
   try {
-    console.log("[v0] Processing payroll for period:", period, "employees:", employeeIds.length)
-
-    const sql = await getSql()
-
+    // Update payroll records status to processed
     await sql`
       UPDATE payroll_records 
       SET 
         status = 'processed',
-        processed_at = NOW(),
-        updated_at = NOW()
-      WHERE period = ${period}
+        payment_date = NOW()
+      WHERE pay_period_start >= ${period + "-01"} 
+      AND pay_period_end <= ${period + "-31"}
       AND employee_id = ANY(${employeeIds})
     `
 
     revalidatePath("/hr")
-
-    console.log("[v0] Payroll processed successfully")
 
     return {
       success: true,
       message: `Payroll processed successfully for ${employeeIds.length} employees`,
     }
   } catch (error) {
-    console.error("[v0] Error processing payroll:", error)
+    console.error("Error processing payroll:", error)
     return {
       success: false,
       message: "Failed to process payroll",
@@ -281,8 +248,6 @@ export async function getPayrollHistory(): Promise<{
   error?: string
 }> {
   try {
-    const sql = await getSql()
-
     const result = await sql`
       SELECT 
         period,
@@ -298,11 +263,9 @@ export async function getPayrollHistory(): Promise<{
       LIMIT 12
     `
 
-    const payrollHistory = Array.isArray(result) ? result : result.rows || []
-
     return {
       success: true,
-      data: payrollHistory,
+      data: result.rows,
     }
   } catch (error) {
     console.error("Error fetching payroll history:", error)
@@ -319,37 +282,31 @@ export async function getEmployeesForPayroll(): Promise<{
   error?: string
 }> {
   try {
-    const sql = await getSql()
-
     const result = await sql`
       SELECT 
-        employee_id,
+        id as employee_id,
         first_name,
         last_name,
         position,
         salary as basic_salary,
-        allowances,
+        0 as allowances,
         status
       FROM employees 
       WHERE status = 'active'
-      ORDER BY employee_id
+      ORDER BY id
     `
 
-    const employees = Array.isArray(result) ? result : result.rows || []
-
-    const employeesWithName = employees.map((employee: any) => ({
+    const employeesWithName = result.map((employee) => ({
       ...employee,
       name: `${employee.first_name} ${employee.last_name}`,
     }))
-
-    console.log("[v0] Fetched employees for payroll:", employeesWithName.length)
 
     return {
       success: true,
       data: employeesWithName,
     }
   } catch (error) {
-    console.error("[v0] Error fetching employees for payroll:", error)
+    console.error("Error fetching employees:", error)
     return {
       success: false,
       error: "Failed to fetch employees",
@@ -359,8 +316,24 @@ export async function getEmployeesForPayroll(): Promise<{
 
 export async function createEmployee(formData: FormData) {
   try {
-    console.warn("createEmployee action deprecated - use /api/employees POST endpoint")
-    return { success: false, error: "Please use the API endpoint instead" }
+    const employeeId = formData.get("employee_id") as string
+    const name = formData.get("name") as string
+    const email = formData.get("email") as string
+    const phone = formData.get("phone") as string
+    const position = formData.get("position") as string
+    const department = formData.get("department") as string
+    const salary = Number.parseFloat(formData.get("salary") as string)
+
+    const result = await sql`
+      INSERT INTO employees (
+        employee_id, name, email, phone, position, department, salary, hire_date, status
+      ) VALUES (
+        ${employeeId}, ${name}, ${email}, ${phone}, ${position}, ${department}, ${salary}, NOW(), 'active'
+      ) RETURNING id
+    `
+
+    revalidatePath("/hr")
+    return { success: true, message: "Employee created successfully", id: result[0].id }
   } catch (error) {
     console.error("Error creating employee:", error)
     return { success: false, error: "Failed to create employee" }

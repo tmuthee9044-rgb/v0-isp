@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,7 +32,6 @@ import {
   UserX,
   UserPlus,
   Filter,
-  Loader2,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
@@ -83,9 +80,6 @@ export default function CustomersPage() {
   const [stats, setStats] = useState<CustomerStats | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
-  const [displayLimit, setDisplayLimit] = useState(100)
-  const [totalCustomers, setTotalCustomers] = useState(0)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [locationFilter, setLocationFilter] = useState("all")
@@ -97,48 +91,75 @@ export default function CustomersPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/customers").then((r) => r.json()),
-      fetch("/api/reports/customers/stats").then((r) => r.json()),
-      fetch("/api/locations").then((r) => r.json()),
-    ])
-      .then(([customersData, statsData, locationsData]) => {
-        let customersArray = []
-        let total = 0
-
-        if (Array.isArray(customersData)) {
-          customersArray = customersData
-          total = customersData.length
-        } else if (customersData.customers && Array.isArray(customersData.customers)) {
-          customersArray = customersData.customers
-          total = customersData.total || customersData.customers.length
-        }
-
-        setCustomers(customersArray)
-        setTotalCustomers(total)
-        setStats(statsData)
-
-        const locationsArray = Array.isArray(locationsData.locations)
-          ? locationsData.locations
-          : Array.isArray(locationsData)
-            ? locationsData
-            : []
-        setLocations(locationsArray)
-        setLoading(false)
-      })
-      .catch((error) => {
-        console.error("Failed to fetch data:", error)
-        setCustomers([])
-        setLoading(false)
-        toast({
-          title: "Error",
-          description: "Failed to fetch data",
-          variant: "destructive",
-        })
-      })
+    fetchCustomers()
+    fetchStats()
+    fetchLocations()
   }, [])
 
-  const handleDeleteCustomer = async (customerId: number) => {
+  const fetchCustomers = async () => {
+    try {
+      const response = await fetch("/api/customers")
+      if (response.ok) {
+        const data = await response.json()
+        let customersData = []
+        if (Array.isArray(data)) {
+          customersData = data
+        } else if (data.customers && Array.isArray(data.customers)) {
+          customersData = data.customers
+        } else if (data.success === false) {
+          console.error("[v0] API returned error:", data.error)
+          customersData = []
+        }
+        console.log("[v0] Setting customers data:", customersData.length, "customers")
+        setCustomers(customersData)
+      } else {
+        console.error("[v0] Failed to fetch customers, status:", response.status)
+        const errorData = await response.json()
+        console.error("[v0] Error response:", errorData)
+        setCustomers([])
+      }
+    } catch (error) {
+      console.error("Failed to fetch customers:", error)
+      setCustomers([])
+      toast({
+        title: "Error",
+        description: "Failed to fetch customers",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch("/api/reports/customers/stats")
+      if (response.ok) {
+        const data = await response.json()
+        setStats(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch stats:", error)
+    }
+  }
+
+  const fetchLocations = async () => {
+    try {
+      const response = await fetch("/api/locations")
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Locations API response:", data)
+        const locationsArray = Array.isArray(data.locations) ? data.locations : Array.isArray(data) ? data : []
+        console.log("[v0] Setting locations to:", locationsArray)
+        setLocations(locationsArray)
+      }
+    } catch (error) {
+      console.error("Failed to fetch locations:", error)
+      setLocations([])
+    }
+  }
+
+  const handleDeleteCustomer = async () => {
     if (!deleteCustomerId || deleteConfirmText !== deleteCustomerId.toString()) {
       return
     }
@@ -152,6 +173,7 @@ export default function CustomersPage() {
         setCustomers(customers.filter((c) => c.id !== deleteCustomerId))
         setDeleteCustomerId(null)
         setDeleteConfirmText("")
+        fetchStats() // Refresh stats
         toast({
           title: "Success",
           description: "Customer deleted successfully",
@@ -183,7 +205,8 @@ export default function CustomersPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setCustomers(customers.map((c) => (c.id === customerId ? { ...c, status: "suspended" } : c)))
+        fetchCustomers()
+        fetchStats()
         toast({
           title: "Success",
           description: data.message || "Customer suspended successfully",
@@ -213,7 +236,8 @@ export default function CustomersPage() {
       })
 
       if (response.ok) {
-        setCustomers(customers.map((c) => (c.id === customerId ? { ...c, status: "active" } : c)))
+        fetchCustomers()
+        fetchStats()
         toast({
           title: "Success",
           description: "Customer activated successfully",
@@ -236,7 +260,7 @@ export default function CustomersPage() {
     }
   }
 
-  const handleExportCustomers = async () => {
+  const exportCustomers = async () => {
     try {
       const response = await fetch("/api/customers/export")
       if (response.ok) {
@@ -261,43 +285,6 @@ export default function CustomersPage() {
         description: "Failed to export customers",
         variant: "destructive",
       })
-    }
-  }
-
-  const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      const formData = new FormData()
-      formData.append("file", file)
-      try {
-        const response = await fetch("/api/customers/import", {
-          method: "POST",
-          body: formData,
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setCustomers([...customers, ...data.customers])
-          toast({
-            title: "Success",
-            description: "Customers imported successfully",
-          })
-        } else {
-          const errorData = await response.json()
-          toast({
-            title: "Error",
-            description: errorData.error || "Failed to import customers",
-            variant: "destructive",
-          })
-        }
-      } catch (error) {
-        console.error("Failed to import customers:", error)
-        toast({
-          title: "Error",
-          description: "Failed to import customers",
-          variant: "destructive",
-        })
-      }
     }
   }
 
@@ -387,38 +374,6 @@ export default function CustomersPage() {
     return formatted.startsWith("0.") ? formatted.substring(1) : formatted
   }
 
-  const loadMoreCustomers = async () => {
-    setLoadingMore(true)
-    try {
-      const response = await fetch(`/api/customers?limit=${displayLimit + 100}&offset=0`)
-      const data = await response.json()
-
-      let customersArray = []
-      if (Array.isArray(data)) {
-        customersArray = data
-      } else if (data.customers && Array.isArray(data.customers)) {
-        customersArray = data.customers
-      }
-
-      setCustomers(customersArray)
-      setDisplayLimit(displayLimit + 100)
-      setLoadingMore(false)
-
-      toast({
-        title: "Success",
-        description: `Loaded ${customersArray.length} customers`,
-      })
-    } catch (error) {
-      console.error("Failed to load more customers:", error)
-      setLoadingMore(false)
-      toast({
-        title: "Error",
-        description: "Failed to load more customers",
-        variant: "destructive",
-      })
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -428,94 +383,88 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="container mx-auto py-4 px-4 sm:py-6 sm:px-6 lg:py-8 space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Customers</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Manage your customer database with advanced filtering
-          </p>
+          <h1 className="text-3xl font-bold">Customer Management</h1>
+          <p className="text-muted-foreground">Manage all your customers and their services</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/customers/add">
-            <Button className="flex-1 sm:flex-none">
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="hidden xs:inline">Add Customer</span>
-              <span className="xs:hidden">Add</span>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportCustomers}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <Link href="/customers/import">
+            <Button variant="outline">
+              <Upload className="h-4 w-4 mr-2" />
+              Import
             </Button>
           </Link>
-          <Button variant="outline" onClick={handleExportCustomers} className="flex-1 sm:flex-none bg-transparent">
-            <Download className="mr-2 h-4 w-4" />
-            <span className="hidden xs:inline">Export</span>
-            <span className="xs:hidden">CSV</span>
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => (document.getElementById("bulk-import-input") as any)?.click()}
-            className="flex-1 sm:flex-none"
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            <span className="hidden xs:inline">Import</span>
-            <span className="xs:hidden">CSV</span>
-          </Button>
-          <input id="bulk-import-input" type="file" accept=".csv" onChange={handleBulkImport} className="hidden" />
+          <Link href="/customers/add">
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Customer
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* Stats Cards - Already responsive */}
+      {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">Total</CardTitle>
-              <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-xl sm:text-2xl font-bold">{stats.total_customers}</div>
+              <div className="text-2xl font-bold">{stats.total_customers}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">Active</CardTitle>
-              <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
+              <CardTitle className="text-sm font-medium">Active</CardTitle>
+              <UserCheck className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.active_customers}</div>
+              <div className="text-2xl font-bold text-green-600">{stats.active_customers}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">Suspended</CardTitle>
-              <UserX className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+              <CardTitle className="text-sm font-medium">Suspended</CardTitle>
+              <UserX className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-xl sm:text-2xl font-bold text-red-600">{stats.suspended_customers}</div>
+              <div className="text-2xl font-bold text-red-600">{stats.suspended_customers}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">New</CardTitle>
-              <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
+              <CardTitle className="text-sm font-medium">New This Month</CardTitle>
+              <UserPlus className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-xl sm:text-2xl font-bold text-blue-600">{stats.new_this_month}</div>
+              <div className="text-2xl font-bold text-blue-600">{stats.new_this_month}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
+      {/* Enhanced Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-            Filters
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Advanced Filters
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <div className="col-span-full">
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -523,7 +472,7 @@ export default function CustomersPage() {
                   placeholder="Search customers..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 text-sm sm:text-base"
+                  className="pl-8"
                 />
               </div>
             </div>
@@ -598,12 +547,11 @@ export default function CustomersPage() {
               onClick={() => {
                 setSearchTerm("")
                 setStatusFilter("all")
-                setTypeFilter("all")
                 setLocationFilter("all")
+                setTypeFilter("all")
                 setBalanceFilter("all")
                 setDateFilter("all")
               }}
-              className="w-full text-sm sm:text-base"
             >
               Clear Filters
             </Button>
@@ -611,11 +559,12 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
+      {/* Customer Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Customers ({filteredCustomers.length})</CardTitle>
-          <CardDescription className="text-xs sm:text-sm">Manage your customer database</CardDescription>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-2">
+          <CardTitle>Customers ({filteredCustomers.length})</CardTitle>
+          <CardDescription>Manage your customer database with advanced filtering and bulk operations</CardDescription>
+          <div className="flex gap-4 text-sm text-muted-foreground mt-2">
             <span>
               Total Outstanding: KES{" "}
               {formatCurrencyNoLeadingZero(filteredCustomers.reduce((sum, c) => sum + (c.outstanding_balance || 0), 0))}
@@ -627,20 +576,19 @@ export default function CustomersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Desktop Table View - Hidden on mobile */}
-          <div className="hidden md:block rounded-md border">
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs lg:text-sm">Customer Name</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Contact</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Type</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Status</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Services</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Location</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Balance</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Tickets</TableHead>
-                  <TableHead className="text-xs lg:text-sm">Actions</TableHead>
+                  <TableHead>Customer Name</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Services</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead>Tickets</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -648,42 +596,42 @@ export default function CustomersPage() {
                   <TableRow key={customer.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium text-xs lg:text-sm">
+                        <div className="font-medium">
                           {customer.first_name && customer.last_name
                             ? `${customer.first_name} ${customer.last_name}`
                             : customer.name || "No Name"}
                         </div>
-                        <div className="text-xs text-muted-foreground">ID: {customer.id}</div>
+                        <div className="text-sm text-muted-foreground">ID: {customer.id}</div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="text-xs lg:text-sm">{customer.email}</div>
-                        <div className="text-xs text-muted-foreground">{customer.phone}</div>
+                        <div className="text-sm">{customer.email}</div>
+                        <div className="text-sm text-muted-foreground">{customer.phone}</div>
                       </div>
                     </TableCell>
                     <TableCell>{getTypeBadge(customer.customer_type)}</TableCell>
                     <TableCell>{getStatusBadge(customer.status)}</TableCell>
                     <TableCell>
                       <div>
-                        <div className="text-xs lg:text-sm font-medium">{customer.service_count || 0} Services</div>
+                        <div className="text-sm font-medium">{customer.service_count || 0} Services</div>
                         {customer.service_plan_name && (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                             {customer.service_plan_name} - KES {formatCurrency(customer.monthly_fee)}/month
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs lg:text-sm">{customer.location_name || "Not Set"}</TableCell>
+                    <TableCell>{customer.location_name || "Not Set"}</TableCell>
                     <TableCell>
                       <div
-                        className={`text-xs lg:text-sm ${
+                        className={
                           customer.actual_balance && customer.actual_balance < 0
                             ? "text-red-600 font-medium"
                             : customer.actual_balance && customer.actual_balance > 0
                               ? "text-green-600 font-medium"
                               : "text-gray-600"
-                        }`}
+                        }
                       >
                         KES {formatCurrencyNoLeadingZero(customer.actual_balance)}
                       </div>
@@ -695,13 +643,9 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell>
                       {customer.open_tickets && customer.open_tickets > 0 ? (
-                        <Badge variant="destructive" className="text-xs">
-                          {customer.open_tickets}
-                        </Badge>
+                        <Badge variant="destructive">{customer.open_tickets}</Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          0
-                        </Badge>
+                        <Badge variant="secondary">0</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -747,146 +691,6 @@ export default function CustomersPage() {
               </TableBody>
             </Table>
           </div>
-
-          {/* Mobile Card View - Shown only on mobile */}
-          <div className="md:hidden space-y-3">
-            {filteredCustomers.map((customer) => (
-              <Card key={customer.id} className="p-4">
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-sm">
-                        {customer.first_name && customer.last_name
-                          ? `${customer.first_name} ${customer.last_name}`
-                          : customer.name || "No Name"}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">ID: {customer.id}</p>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <Link href={`/customers/${customer.id}`}>
-                          <DropdownMenuItem>
-                            <Edit className="mr-2 h-4 w-4" />
-                            View Profile
-                          </DropdownMenuItem>
-                        </Link>
-                        <Link href={`/customers/${customer.id}/edit`}>
-                          <DropdownMenuItem>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit Details
-                          </DropdownMenuItem>
-                        </Link>
-                        {customer.status === "active" ? (
-                          <DropdownMenuItem onClick={() => handleSuspendCustomer(customer.id)}>
-                            <Suspend className="mr-2 h-4 w-4" />
-                            Suspend
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => handleActivateCustomer(customer.id)}>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Activate
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem className="text-red-600" onClick={() => setDeleteCustomerId(customer.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {getTypeBadge(customer.customer_type)}
-                    {getStatusBadge(customer.status)}
-                    {customer.open_tickets && customer.open_tickets > 0 ? (
-                      <Badge variant="destructive" className="text-xs">
-                        {customer.open_tickets} Tickets
-                      </Badge>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Email:</span>
-                      <span className="font-medium">{customer.email}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Phone:</span>
-                      <span className="font-medium">{customer.phone}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Services:</span>
-                      <span className="font-medium">{customer.service_count || 0}</span>
-                    </div>
-                    {customer.service_plan_name && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Plan:</span>
-                        <span className="font-medium">{customer.service_plan_name}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Location:</span>
-                      <span className="font-medium">{customer.location_name || "Not Set"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Balance:</span>
-                      <span
-                        className={`font-medium ${
-                          customer.actual_balance && customer.actual_balance < 0
-                            ? "text-red-600"
-                            : customer.actual_balance && customer.actual_balance > 0
-                              ? "text-green-600"
-                              : "text-gray-600"
-                        }`}
-                      >
-                        KES {formatCurrencyNoLeadingZero(customer.actual_balance)}
-                      </span>
-                    </div>
-                    {customer.outstanding_balance && customer.outstanding_balance > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Unpaid:</span>
-                        <span className="text-red-600 font-medium">
-                          KES {formatCurrencyNoLeadingZero(customer.outstanding_balance)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          {/* Load More button */}
-          {customers.length < totalCustomers && (
-            <div className="mt-4 sm:mt-6 flex justify-center">
-              <Button
-                onClick={loadMoreCustomers}
-                disabled={loadingMore}
-                variant="outline"
-                size="lg"
-                className="w-full sm:w-auto bg-transparent"
-              >
-                {loadingMore ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading more...
-                  </>
-                ) : (
-                  <>
-                    Load More Customers
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      ({customers.length} of {totalCustomers})
-                    </span>
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -919,7 +723,7 @@ export default function CustomersPage() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteCustomerId !== null && handleDeleteCustomer(deleteCustomerId)}
+              onClick={handleDeleteCustomer}
               disabled={deleteConfirmText !== deleteCustomerId?.toString()}
               className="bg-red-600 hover:bg-red-700"
             >

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
-    const sql = await getSql()
-
     const configs = await sql`
       SELECT key, value 
       FROM system_config 
@@ -45,8 +45,6 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const sql = await getSql()
-
     const { provider, apiKey, senderId, isActive } = await request.json()
 
     // Update SMS configuration in database

@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const documentId = params.id
 
     const invoice = await sql`
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         i.invoice_date,
         null as payment_date,
         '{}' as metadata,
-        c.name,
+        c.first_name,
+        c.last_name,
         c.business_name,
         c.customer_type,
         c.email,
@@ -45,6 +47,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
     }
 
+    // If not found in invoices, try payments table
     const payment = await sql`
       SELECT 
         p.id,
@@ -63,7 +66,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         null as invoice_date,
         p.payment_date,
         '{}' as metadata,
-        c.name,
+        c.first_name,
+        c.last_name,
         c.business_name,
         c.customer_type,
         c.email,
@@ -98,7 +102,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const documentId = params.id
     const body = await request.json()
 

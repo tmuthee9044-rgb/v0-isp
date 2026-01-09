@@ -1,5 +1,7 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { NextResponse } from "next/server"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 // Get customer equipment
 export async function GET(request: Request) {
@@ -17,8 +19,6 @@ export async function GET(request: Request) {
         { status: 400 },
       )
     }
-
-    const sql = await getSql()
 
     let query = `
       SELECT 
@@ -136,8 +136,6 @@ export async function PUT(request: Request) {
         { status: 400 },
       )
     }
-
-    const sql = await getSql()
 
     const result = await sql.begin(async (sql) => {
       // Get current equipment details

@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export const dynamic = "force-dynamic"
-export const runtime = "nodejs"
+export const runtime = "edge"
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ inventory_total: 0 })
     }
 
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL)
 
     console.log("[v0] Calculating total inventory stock value")
 

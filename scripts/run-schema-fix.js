@@ -1,12 +1,12 @@
-import { getSql } from "../lib/db.js"
+import { neon } from "@neondatabase/serverless"
 import fs from "fs"
 import path from "path"
+
+const sql = neon(process.env.DATABASE_URL)
 
 async function runSchemaMigration() {
   try {
     console.log("[v0] Starting schema migration to fix database issues...")
-
-    const sql = await getSql()
 
     // Read the SQL migration file
     const migrationPath = path.join(process.cwd(), "scripts", "fix-schema-issues.sql")

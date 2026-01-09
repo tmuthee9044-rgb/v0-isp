@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = await getSql()
     const { authorization } = Object.fromEntries(request.headers.entries())
 
     if (authorization !== `Bearer ${process.env.CRON_SECRET}`) {

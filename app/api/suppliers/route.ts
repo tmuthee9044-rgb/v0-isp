@@ -1,12 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export const dynamic = "force-dynamic"
 
 // Get all suppliers
 export async function GET(request: NextRequest) {
   try {
-    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "all"
 
@@ -15,14 +16,21 @@ export async function GET(request: NextRequest) {
       const isActiveValue = status === "active"
       result = await sql`
         SELECT 
-          s.*
+          s.*,
+          0 as total_orders,
+          0 as total_order_value,
+          0 as active_orders
         FROM suppliers s
         WHERE s.is_active = ${isActiveValue}
         ORDER BY s.company_name ASC
       `
     } else {
       result = await sql`
-        SELECT s.*
+        SELECT 
+          s.*,
+          0 as total_orders,
+          0 as total_order_value,
+          0 as active_orders
         FROM suppliers s
         ORDER BY s.company_name ASC
       `
@@ -60,7 +68,7 @@ export async function GET(request: NextRequest) {
       summary: {
         total_suppliers: suppliers.length,
         active_suppliers: suppliers.filter((s) => s.status === "active").length,
-        total_order_value: 0,
+        total_order_value: suppliers.reduce((sum, s) => sum + s.total_order_value, 0),
       },
     })
   } catch (error) {
@@ -84,25 +92,23 @@ export async function GET(request: NextRequest) {
 // Create new supplier
 export async function POST(request: NextRequest) {
   try {
-    const sql = await getSql()
     const data = await request.json()
 
     const result = await sql`
       INSERT INTO suppliers (
-        company_name, contact_person, email, phone, address,
-        city, state, country, supplier_type, notes, status
+        company_name, name, contact_name, email, phone, address,
+        website, tax_id, payment_terms, is_active
       ) VALUES (
         ${data.company_name}, 
+        ${data.name || data.company_name}, 
         ${data.contact_person || null},
         ${data.email || null}, 
         ${data.phone || null}, 
         ${data.address || null},
-        ${data.city || null},
-        ${data.state || null},
-        ${data.country || null},
-        ${data.supplier_type || "vendor"},
-        ${data.notes || null},
-        ${data.status || "active"}
+        ${data.website || null}, 
+        ${data.tax_number || null}, 
+        ${data.payment_terms || 30}, 
+        ${data.status === "active"}
       )
       RETURNING *
     `

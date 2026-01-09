@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
-
     const [ticket] = await sql`
       SELECT 
         st.*,
@@ -30,13 +30,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = await getSql()
     const body = await request.json()
     const { status, assigned_to, priority, resolution_notes, time_spent, items_used } = body
-
-    const sanitizedTimeSpent = time_spent && typeof time_spent === "number" ? time_spent : null
-    const sanitizedItemsUsed = items_used && typeof items_used === "string" ? items_used : null
-    const sanitizedResolutionNotes = resolution_notes && typeof resolution_notes === "string" ? resolution_notes : null
 
     // Update ticket
     const [ticket] = await sql`
@@ -56,14 +51,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Record performance tracking if provided
-    if (assigned_to && (sanitizedTimeSpent || sanitizedItemsUsed || sanitizedResolutionNotes)) {
+    if (assigned_to && (time_spent || items_used || resolution_notes)) {
       await sql`
         INSERT INTO employee_performance_tracking (
           ticket_id, employee_id, action_type, time_spent, items_used, 
           resolution_notes, created_at
         ) VALUES (
           ${params.id}, ${assigned_to}, ${status || "updated"}, 
-          ${sanitizedTimeSpent}, ${sanitizedItemsUsed}, ${sanitizedResolutionNotes}, NOW()
+          ${time_spent}, ${items_used}, ${resolution_notes}, NOW()
         )
       `
     }

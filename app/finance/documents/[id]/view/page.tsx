@@ -102,58 +102,55 @@ export default function ViewDocumentPage({ params }: { params: { id: string } })
   }
 
   return (
-    <div className="flex-1 space-y-3 sm:space-y-4 p-3 sm:p-6 lg:p-8 pt-4 sm:pt-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-        <div className="flex items-center space-x-2 sm:space-x-4">
-          <Button variant="outline" onClick={() => router.back()} size="sm" className="sm:size-default">
-            <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-            <span className="text-xs sm:text-sm">Back</span>
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
           </Button>
           <div>
-            <h1 className="text-lg sm:text-2xl font-bold">
+            <h1 className="text-2xl font-bold">
               {document.type === "invoice" ? "Invoice" : document.type === "payment" ? "Payment" : "Credit Note"}
             </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              {document.reference_number || document.invoice_number}
-            </p>
+            <p className="text-muted-foreground">{document.reference_number || document.invoice_number}</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={handleDownload} size="sm" className="text-xs sm:text-sm bg-transparent">
-            <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-            <span className="hidden xs:inline">Download</span>
-            <span className="xs:hidden">PDF</span>
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={handleDownload}>
+            <Download className="h-4 w-4 mr-2" />
+            Download
           </Button>
-          <Button variant="outline" onClick={handlePrint} size="sm" className="text-xs sm:text-sm bg-transparent">
-            <Print className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+          <Button variant="outline" onClick={handlePrint}>
+            <Print className="h-4 w-4 mr-2" />
             Print
           </Button>
-          <Button onClick={handleEdit} size="sm" className="text-xs sm:text-sm">
-            <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+          <Button onClick={handleEdit}>
+            <Edit className="h-4 w-4 mr-2" />
             Edit
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
               Document Details
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
-            <div className="grid gap-3 sm:gap-4 grid-cols-2">
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 grid-cols-2">
               <div>
-                <label className="text-xs sm:text-sm font-medium text-muted-foreground">Type</label>
-                <Badge variant="outline" className="mt-1 text-xs">
+                <label className="text-sm font-medium text-muted-foreground">Type</label>
+                <Badge variant="outline" className="mt-1">
                   {document.type.replace("_", " ").toUpperCase()}
                 </Badge>
               </div>
               <div>
-                <label className="text-xs sm:text-sm font-medium text-muted-foreground">Status</label>
-                <Badge variant={document.status === "paid" ? "default" : "destructive"} className="mt-1 text-xs">
+                <label className="text-sm font-medium text-muted-foreground">Status</label>
+                <Badge variant={document.status === "paid" ? "default" : "destructive"} className="mt-1">
                   {document.status.toUpperCase()}
                 </Badge>
               </div>
@@ -161,30 +158,30 @@ export default function ViewDocumentPage({ params }: { params: { id: string } })
 
             {document.description && (
               <div>
-                <label className="text-xs sm:text-sm font-medium text-muted-foreground">Description</label>
-                <p className="mt-1 text-sm sm:text-base">{document.description}</p>
+                <label className="text-sm font-medium text-muted-foreground">Description</label>
+                <p className="mt-1">{document.description}</p>
               </div>
             )}
 
             {document.notes && (
               <div>
-                <label className="text-xs sm:text-sm font-medium text-muted-foreground">Notes</label>
-                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{document.notes}</p>
+                <label className="text-sm font-medium text-muted-foreground">Notes</label>
+                <p className="mt-1 text-sm text-muted-foreground">{document.notes}</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5" />
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
                 Financial Details
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 sm:space-y-3">
-              <div className="flex justify-between text-sm sm:text-base">
+            <CardContent className="space-y-3">
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Amount:</span>
                 <span className="font-medium">
                   KSh {Math.round(document.amount || document.total_amount || 0).toLocaleString()}
@@ -195,12 +192,12 @@ export default function ViewDocumentPage({ params }: { params: { id: string } })
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
                 Important Dates
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 sm:space-y-3 text-sm sm:text-base">
+            <CardContent className="space-y-3">
               {document.created_at && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created:</span>
@@ -231,22 +228,22 @@ export default function ViewDocumentPage({ params }: { params: { id: string } })
           {(document.customer_name || document.customer_email) && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                  <User className="h-4 w-4 sm:h-5 sm:w-5" />
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
                   Customer Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 sm:space-y-3 text-sm sm:text-base">
+              <CardContent className="space-y-3">
                 {document.customer_name && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Name:</span>
-                    <span className="break-all text-right">{document.customer_name}</span>
+                    <span>{document.customer_name}</span>
                   </div>
                 )}
                 {document.customer_email && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Email:</span>
-                    <span className="break-all text-right text-xs sm:text-sm">{document.customer_email}</span>
+                    <span>{document.customer_email}</span>
                   </div>
                 )}
               </CardContent>

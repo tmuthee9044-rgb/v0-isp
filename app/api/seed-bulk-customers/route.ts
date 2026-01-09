@@ -1,5 +1,8 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
+const sql = neon(process.env.DATABASE_URL!)
+
+// Kenyan names and data for realistic customer generation
 const kenyanFirstNames = [
   "John",
   "Mary",
@@ -306,9 +309,9 @@ function generateCustomer(index: number) {
       2020 + Math.floor(Math.random() * 4),
       Math.floor(Math.random() * 12),
       Math.floor(Math.random() * 28) + 1,
-      Math.floor(Math.random() * 24),
-      Math.floor(Math.random() * 60),
-    ).toISOString(),
+    )
+      .toISOString()
+      .split("T")[0],
     last_payment_date:
       Math.random() > 0.2
         ? new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1).toISOString().split("T")[0]
@@ -333,7 +336,6 @@ function generateCustomer(index: number) {
 
 export async function POST() {
   try {
-    const sql = await getSql()
     console.log("[v0] Starting bulk customer seeding...")
 
     const batchSize = 100

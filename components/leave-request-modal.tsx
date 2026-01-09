@@ -130,8 +130,6 @@ export function LeaveRequestModal({ open, onOpenChange }: LeaveRequestModalProps
         setEndDate(undefined)
         setReason("")
         onOpenChange(false)
-
-        window.dispatchEvent(new CustomEvent("leaveRequestAdded"))
       } else {
         console.error("Failed to submit leave request")
       }
@@ -161,7 +159,7 @@ export function LeaveRequestModal({ open, onOpenChange }: LeaveRequestModalProps
                 <SelectContent>
                   {employees.map((employee) => (
                     <SelectItem key={employee.employee_id} value={employee.employee_id}>
-                      {employee.first_name} {employee.last_name} ({employee.employee_id})
+                      {employee.name} ({employee.employee_id})
                     </SelectItem>
                   ))}
                 </SelectContent>

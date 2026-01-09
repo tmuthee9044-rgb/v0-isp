@@ -1,4 +1,6 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 interface CurrencyConfig {
   code: string
@@ -25,8 +27,6 @@ async function getLocalizationSettings(): Promise<string> {
   }
 
   try {
-    const sql = await getSql()
-
     const result = await sql`
       SELECT currency 
       FROM company_profiles 

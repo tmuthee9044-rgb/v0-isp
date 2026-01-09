@@ -1,10 +1,10 @@
-import { getSql } from "../lib/db.js"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL)
 
 async function runMigration() {
   try {
     console.log("[v0] Starting monthly_cost column migration...")
-
-    const sql = await getSql()
 
     // Add the monthly_cost column
     await sql`

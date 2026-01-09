@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request, { params }: { params: { name: string } }) {
   try {
-    const sql = await getSql()
-
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const pageSize = Number.parseInt(searchParams.get("pageSize") || "50")
     const search = searchParams.get("search") || ""
     const offset = (page - 1) * pageSize
 
+    const sql = neon(process.env.DATABASE_URL!)
     const tableName = params.name
 
     // Validate table name to prevent SQL injection

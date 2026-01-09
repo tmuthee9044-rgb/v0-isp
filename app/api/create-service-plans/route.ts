@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST() {
-  const sql = await getSql()
-
   try {
     console.log("Creating service_plans table...")
 
@@ -81,10 +81,8 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const sql = await getSql()
-
     // Check if table exists and return sample data
-    const { rows: plans } = await sql`SELECT * FROM service_plans ORDER BY price ASC`
+    const plans = await sql`SELECT * FROM service_plans ORDER BY price ASC`
 
     return NextResponse.json({
       success: true,

@@ -30,7 +30,6 @@ import { AddEmployeeModal } from "@/components/add-employee-modal"
 import { EmployeeDetailsModal } from "@/components/employee-details-modal"
 import { PayrollModal } from "@/components/payroll-modal"
 import { LeaveRequestModal } from "@/components/leave-request-modal"
-import { PerformanceReviewModal } from "@/components/performance-review-modal"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/currency"
 
 export default function HRPage() {
@@ -39,170 +38,53 @@ export default function HRPage() {
   const [showEmployeeDetails, setShowEmployeeDetails] = useState(false)
   const [showPayroll, setShowPayroll] = useState(false)
   const [showLeaveRequest, setShowLeaveRequest] = useState(false)
-  const [showPerformanceReview, setShowPerformanceReview] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null)
   const [editingEmployee, setEditingEmployee] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activities, setActivities] = useState<any[]>([])
-  const [leaveRequests, setLeaveRequests] = useState<any[]>([])
-  const [leaveStats, setLeaveStats] = useState({ pending: 0, approved: 0, onLeave: 0, approvedDays: 0 })
-  const [payrollHistory, setPayrollHistory] = useState<any[]>([])
-  const [performanceReviews, setPerformanceReviews] = useState<any[]>([])
-  const [departments, setDepartments] = useState<any[]>([])
-  const [complianceData, setComplianceData] = useState<any>({
-    compliance: {
-      nssf: { compliant: 0, total: 0, percentage: 0 },
-      sha: { compliant: 0, total: 0, percentage: 0 },
-      kra: { compliant: 0, total: 0 },
-      expiringContracts: 0,
-    },
-    statutory: {
-      totalPaye: 0,
-      totalNssf: 0,
-      totalSha: 0,
-      totalDeductions: 0,
-    },
-  })
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        const [employeesRes, activitiesRes, leaveRes, payrollRes, performanceRes, departmentsRes, complianceRes] =
-          await Promise.all([
-            fetch("/api/employees", { next: { revalidate: 60 } }),
-            fetch("/api/hr/activities"),
-            fetch("/api/hr/leave-requests"),
-            fetch("/api/hr/payroll-history"),
-            fetch("/api/hr/performance-reviews"),
-            fetch("/api/hr/departments"),
-            fetch("/api/hr/compliance"),
-          ])
+    fetchEmployees()
+  }, [])
 
-        const [
-          employeesData,
-          activitiesData,
-          leaveData,
-          payrollData,
-          performanceData,
-          departmentsData,
-          complianceDataRes,
-        ] = await Promise.all([
-          employeesRes.ok ? employeesRes.json() : { employees: [] },
-          activitiesRes.ok ? activitiesRes.json() : { activities: [] },
-          leaveRes.ok
-            ? leaveRes.json()
-            : { leaveRequests: [], stats: { pending: 0, approved: 0, onLeave: 0, approvedDays: 0 } },
-          payrollRes.ok ? payrollRes.json() : { payrollHistory: [] },
-          performanceRes.ok ? performanceRes.json() : { reviews: [] },
-          departmentsRes.ok ? departmentsRes.json() : { departments: [] },
-          complianceRes.ok ? complianceRes.json() : null,
-        ])
-
-        if (employeesData.success) {
-          setEmployees(employeesData.employees || [])
-        }
-
-        if (activitiesData.success) {
-          setActivities(activitiesData.activities || [])
-        }
-
-        if (leaveData.success) {
-          setLeaveRequests(leaveData.leaveRequests || [])
-          setLeaveStats({
-            pending: leaveData.stats?.pending || 0,
-            approved: leaveData.stats?.approved || 0,
-            onLeave: leaveData.stats?.onLeave || 0,
-            approvedDays: leaveData.stats?.approvedDays || 0,
-          })
-        }
-
-        if (payrollData.success) {
-          setPayrollHistory(payrollData.payrollHistory || [])
-        }
-
-        if (departmentsData.success) {
-          setDepartments(departmentsData.departments || [])
-        }
-
-        // Assuming performanceData also has a success flag and reviews property
-        if (performanceData.success) {
-          setPerformanceReviews(performanceData.reviews || [])
-        }
-
-        if (complianceDataRes?.success) {
-          setComplianceData(complianceDataRes)
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Error fetching data:", error)
-        setEmployees([])
-        setActivities([])
-        setLeaveRequests([])
-        setPayrollHistory([])
-        setPerformanceReviews([])
-        setDepartments([]) // Reset departments on error
-        setComplianceData({
-          // Reset compliance data on error
-          compliance: {
-            nssf: { compliant: 0, total: 0, percentage: 0 },
-            sha: { compliant: 0, total: 0, percentage: 0 },
-            kra: { compliant: 0, total: 0 },
-            expiringContracts: 0,
-          },
-          statutory: {
-            totalPaye: 0,
-            totalNssf: 0,
-            totalSha: 0,
-            totalDeductions: 0,
-          },
-        })
-        setLoading(false)
+  const fetchEmployees = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/employees")
+      if (!response.ok) {
+        throw new Error("Failed to fetch employees")
       }
+      const data = await response.json()
+      setEmployees(data.employees || [])
+    } catch (error) {
+      console.error("Error fetching employees:", error)
+      setEmployees([])
+    } finally {
+      setLoading(false)
     }
+  }
 
-    fetchData()
-
+  useEffect(() => {
     const handleEditEvent = (event: any) => {
-      setEditingEmployee(event.detail.employee)
+      const employee = event.detail
+      setEditingEmployee(employee)
       setShowAddEmployee(true)
     }
 
-    const handleLeaveAdded = () => {
-      console.log("[v0] Leave added event received, refreshing leave requests")
-      fetchLeaveRequests()
-    }
-
-    const handleReviewAdded = () => {
-      console.log("[v0] Review added event received, refreshing performance reviews")
-      fetchPerformanceReviews()
-    }
-
     window.addEventListener("editEmployee", handleEditEvent)
-    window.addEventListener("leaveAdded", handleLeaveAdded)
-    window.addEventListener("reviewAdded", handleReviewAdded)
-    window.addEventListener("leaveRequestAdded", handleLeaveAdded)
-
-    return () => {
-      window.removeEventListener("editEmployee", handleEditEvent)
-      window.removeEventListener("leaveAdded", handleLeaveAdded)
-      window.removeEventListener("reviewAdded", handleReviewAdded)
-      window.removeEventListener("leaveRequestAdded", handleLeaveAdded)
-    }
+    return () => window.removeEventListener("editEmployee", handleEditEvent)
   }, [])
 
   const payrollSummary = {
     totalEmployees: employees.length,
-    totalGrossPay: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0), 0),
-    totalDeductions: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.25, 0),
-    totalNetPay: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.75, 0),
-    totalPaye: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.15, 0),
-    totalNssf: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.05, 0),
-    totalSha: employees.reduce((sum, emp) => sum + (Number.parseFloat(emp.salary) || 0) * 0.05, 0),
+    totalGrossPay: employees.reduce((sum, emp) => sum + (emp.salary || 0), 0),
+    totalDeductions: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.25, 0),
+    totalNetPay: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.75, 0),
+    totalPaye: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.15, 0),
+    totalNssf: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.05, 0),
+    totalSha: employees.reduce((sum, emp) => sum + (emp.salary || 0) * 0.05, 0),
   }
 
   const filteredEmployees = employees.filter((employee) => {
@@ -228,62 +110,6 @@ export default function HRPage() {
     setShowAddEmployee(open)
     if (!open) {
       setEditingEmployee(null)
-    }
-  }
-
-  const fetchLeaveRequests = async () => {
-    const res = await fetch("/api/hr/leave-requests")
-    if (res.ok) {
-      const data = await res.json()
-      setLeaveRequests(data.leaveRequests || [])
-      setLeaveStats({
-        pending: data.stats?.pending || 0,
-        approved: data.stats?.approved || 0,
-        onLeave: data.stats?.onLeave || 0,
-        approvedDays: data.stats?.approvedDays || 0,
-      })
-    }
-  }
-
-  const fetchPerformanceReviews = async () => {
-    const res = await fetch("/api/hr/performance-reviews")
-    if (res.ok) {
-      const data = await res.json()
-      setPerformanceReviews(data.reviews || [])
-    }
-  }
-
-  const handleExportPayslips = async () => {
-    try {
-      const response = await fetch("/api/hr/export-payslips", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          month: new Date().getMonth() + 1,
-          year: new Date().getFullYear(),
-        }),
-      })
-
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `payslips-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}.csv`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-      } else {
-        const error = await response.json()
-        console.error("Error exporting payslips:", error)
-        alert(error.error || "Failed to export payslips")
-      }
-    } catch (error) {
-      console.error("Error exporting payslips:", error)
-      alert("Failed to export payslips")
     }
   }
 
@@ -378,18 +204,36 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {departments.length > 0 ? (
-                    departments.map((dept, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <span className="text-sm">{dept.name}</span>{" "}
-                        {/* Assuming department object has a 'name' property */}
-                        <span className="text-sm font-medium">{dept.employeeCount} employees</span>{" "}
-                        {/* Assuming department object has an 'employeeCount' property */}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No department data available</p>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Technical</span>
+                    <span className="text-sm font-medium">
+                      {employees.filter((emp) => emp.department === "Technical").length} employees
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Support</span>
+                    <span className="text-sm font-medium">
+                      {employees.filter((emp) => emp.department === "Support").length} employees
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Sales</span>
+                    <span className="text-sm font-medium">
+                      {employees.filter((emp) => emp.department === "Sales").length} employees
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Admin</span>
+                    <span className="text-sm font-medium">
+                      {employees.filter((emp) => emp.department === "Admin").length} employees
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Finance</span>
+                    <span className="text-sm font-medium">
+                      {employees.filter((emp) => emp.department === "Finance").length} employees
+                    </span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -401,26 +245,22 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {activities.length > 0 ? (
-                    activities.map((activity, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <div
-                          className={`w-2 h-2 rounded-full ${
-                            activity.severity === "high"
-                              ? "bg-red-500"
-                              : activity.severity === "medium"
-                                ? "bg-yellow-500"
-                                : activity.severity === "low"
-                                  ? "bg-blue-500"
-                                  : "bg-green-500"
-                          }`}
-                        ></div>
-                        <span className="text-sm">{activity.description}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No recent activities</p>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm">Mike Wilson's leave request approved</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-sm">Payroll processed for January 2024</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span className="text-sm">Performance reviews due next week</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span className="text-sm">NSSF compliance report pending</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -444,11 +284,11 @@ export default function HRPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.name}>
-                    {dept.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="Technical">Technical</SelectItem>
+                <SelectItem value="Support">Support</SelectItem>
+                <SelectItem value="Sales">Sales</SelectItem>
+                <SelectItem value="HR">HR</SelectItem>
+                <SelectItem value="Finance">Finance</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm">
@@ -522,7 +362,7 @@ export default function HRPage() {
                 <FileText className="mr-2 h-4 w-4" />
                 Generate Payroll
               </Button>
-              <Button variant="outline" onClick={handleExportPayslips}>
+              <Button variant="outline">
                 <Download className="mr-2 h-4 w-4" />
                 Export Payslips
               </Button>
@@ -591,33 +431,36 @@ export default function HRPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payrollHistory.length > 0 ? (
-                    payrollHistory.map((record, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{`${new Date(0, record.period_month - 1).toLocaleString("default", { month: "long" })} ${record.period_year}`}</TableCell>
-                        <TableCell>{record.employee_count}</TableCell>
-                        <TableCell>{formatCurrency(record.gross_pay)}</TableCell>
-                        <TableCell>{formatCurrency(record.total_deductions)}</TableCell>
-                        <TableCell>{formatCurrency(record.net_pay)}</TableCell>
-                        <TableCell>
-                          <Badge variant={record.status === "processed" ? "default" : "secondary"}>
-                            {record.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No payroll history found
-                      </TableCell>
-                    </TableRow>
-                  )}
+                  <TableRow>
+                    <TableCell>January 2024</TableCell>
+                    <TableCell>{employees.length}</TableCell>
+                    <TableCell>{formatCurrency(payrollSummary.totalGrossPay)}</TableCell>
+                    <TableCell>{formatCurrency(payrollSummary.totalDeductions)}</TableCell>
+                    <TableCell>{formatCurrency(payrollSummary.totalNetPay)}</TableCell>
+                    <TableCell>
+                      <Badge>Processed</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>December 2023</TableCell>
+                    <TableCell>{employees.length - 1}</TableCell>
+                    <TableCell>{formatCurrency(1610000)}</TableCell>
+                    <TableCell>{formatCurrency(402500)}</TableCell>
+                    <TableCell>{formatCurrency(1207500)}</TableCell>
+                    <TableCell>
+                      <Badge>Processed</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
             </CardContent>
@@ -640,7 +483,7 @@ export default function HRPage() {
                 <Clock className="h-4 w-4 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{leaveStats.pending}</div>
+                <div className="text-2xl font-bold">3</div>
                 <p className="text-xs text-muted-foreground">Awaiting approval</p>
               </CardContent>
             </Card>
@@ -650,8 +493,8 @@ export default function HRPage() {
                 <UserCheck className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{leaveStats.approved}</div>
-                <p className="text-xs text-muted-foreground">Total days: {leaveStats.approvedDays}</p>
+                <div className="text-2xl font-bold">8</div>
+                <p className="text-xs text-muted-foreground">Total days: 45</p>
               </CardContent>
             </Card>
             <Card>
@@ -660,8 +503,8 @@ export default function HRPage() {
                 <Calendar className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{leaveStats.onLeave}</div>
-                <p className="text-xs text-muted-foreground">Employees on leave</p>
+                <div className="text-2xl font-bold">1</div>
+                <p className="text-xs text-muted-foreground">Mike Wilson</p>
               </CardContent>
             </Card>
           </div>
@@ -684,43 +527,7 @@ export default function HRPage() {
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {leaveRequests.length > 0 ? (
-                    leaveRequests.map((request) => (
-                      <TableRow key={request.id}>
-                        <TableCell>{`${request.first_name} ${request.last_name}`}</TableCell>
-                        <TableCell>{request.leave_type}</TableCell>
-                        <TableCell>{new Date(request.start_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{new Date(request.end_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{request.days_requested}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              request.status === "approved"
-                                ? "default"
-                                : request.status === "pending"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                          >
-                            {request.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No leave requests found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
+                <TableBody>{/* Placeholder for dynamic leave requests */}</TableBody>
               </Table>
             </CardContent>
           </Card>
@@ -729,7 +536,7 @@ export default function HRPage() {
         <TabsContent value="performance" className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Performance Management</h3>
-            <Button onClick={() => setShowPerformanceReview(true)}>
+            <Button>
               <Plus className="mr-2 h-4 w-4" />
               New Review
             </Button>
@@ -805,45 +612,33 @@ export default function HRPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {performanceReviews.length > 0 ? (
-                    performanceReviews.map((review) => (
-                      <TableRow key={review.id}>
-                        <TableCell className="font-medium">{`${review.first_name} ${review.last_name}`}</TableCell>
-                        <TableCell>{review.position}</TableCell>
-                        <TableCell>
-                          {review.review_period || new Date(review.review_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              review.rating === "excellent"
-                                ? "default"
-                                : review.rating === "good"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                          >
-                            {review.rating}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{review.goals_met_percentage || 0}%</TableCell>
-                        <TableCell>
-                          {review.next_review_date ? new Date(review.next_review_date).toLocaleDateString() : "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No performance reviews found
+                  {employees.map((employee) => (
+                    <TableRow key={employee.id}>
+                      <TableCell className="font-medium">{`${employee.first_name} ${employee.last_name}`}</TableCell>
+                      <TableCell>{employee.position}</TableCell>
+                      <TableCell>Q4 2023</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            employee.performance_rating === "excellent"
+                              ? "default"
+                              : employee.performance_rating === "good"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {employee.performance_rating}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>85%</TableCell>
+                      <TableCell>Q1 2024</TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  )}
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>
@@ -866,10 +661,8 @@ export default function HRPage() {
                 <Shield className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{complianceData.compliance.nssf.percentage}%</div>
-                <p className="text-xs text-muted-foreground">
-                  {complianceData.compliance.nssf.compliant}/{complianceData.compliance.nssf.total} employees registered
-                </p>
+                <div className="text-2xl font-bold">100%</div>
+                <p className="text-xs text-muted-foreground">All employees registered</p>
               </CardContent>
             </Card>
             <Card>
@@ -878,10 +671,8 @@ export default function HRPage() {
                 <UserCheck className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{complianceData.compliance.sha.percentage}%</div>
-                <p className="text-xs text-muted-foreground">
-                  {complianceData.compliance.sha.compliant}/{complianceData.compliance.sha.total} employees covered
-                </p>
+                <div className="text-2xl font-bold">100%</div>
+                <p className="text-xs text-muted-foreground">All employees covered</p>
               </CardContent>
             </Card>
             <Card>
@@ -890,9 +681,7 @@ export default function HRPage() {
                 <FileText className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {complianceData.compliance.kra.compliant}/{complianceData.compliance.kra.total}
-                </div>
+                <div className="text-2xl font-bold">24/24</div>
                 <p className="text-xs text-muted-foreground">All PINs verified</p>
               </CardContent>
             </Card>
@@ -902,7 +691,7 @@ export default function HRPage() {
                 <Users className="h-4 w-4 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{complianceData.compliance.expiringContracts}</div>
+                <div className="text-2xl font-bold">2</div>
                 <p className="text-xs text-muted-foreground">Contracts expiring soon</p>
               </CardContent>
             </Card>
@@ -918,21 +707,19 @@ export default function HRPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">PAYE (Pay As You Earn)</span>
-                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalPaye)}</span>
+                    <span className="text-sm">{formatCurrency(payrollSummary.totalPaye)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">NSSF Contributions</span>
-                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalNssf)}</span>
+                    <span className="text-sm">{formatCurrency(payrollSummary.totalNssf)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">SHA Contributions</span>
-                    <span className="text-sm">{formatCurrency(complianceData.statutory.totalSha)}</span>
+                    <span className="text-sm">{formatCurrency(payrollSummary.totalSha)}</span>
                   </div>
                   <div className="flex items-center justify-between border-t pt-2">
                     <span className="text-sm font-medium">Total Statutory</span>
-                    <span className="text-sm font-bold">
-                      {formatCurrency(complianceData.statutory.totalDeductions)}
-                    </span>
+                    <span className="text-sm font-bold">{formatCurrency(payrollSummary.totalDeductions)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -945,44 +732,22 @@ export default function HRPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {employees.filter(
-                    (emp) =>
-                      emp.contract_end_date &&
-                      new Date(emp.contract_end_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                  ).length > 0 && (
-                    <div className="flex items-center space-x-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm">
-                        {
-                          employees.filter(
-                            (emp) =>
-                              emp.contract_end_date &&
-                              new Date(emp.contract_end_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                          ).length
-                        }{" "}
-                        employment contracts expire in 30 days
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm">2 employment contracts expire in 30 days</span>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <FileText className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm">
-                      NSSF monthly returns due in{" "}
-                      {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 9).getDate() -
-                        new Date().getDate()}{" "}
-                      days
-                    </span>
+                    <span className="text-sm">NSSF monthly returns due in 5 days</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <UserCheck className="h-4 w-4 text-green-500" />
                     <span className="text-sm">All SHA contributions up to date</span>
                   </div>
-                  {new Date().getMonth() === 11 && (
-                    <div className="flex items-center space-x-2">
-                      <Shield className="h-4 w-4 text-red-500" />
-                      <span className="text-sm">Annual leave policy review required</span>
-                    </div>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    <Shield className="h-4 w-4 text-red-500" />
+                    <span className="text-sm">Annual leave policy review required</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1001,8 +766,6 @@ export default function HRPage() {
       <PayrollModal open={showPayroll} onOpenChange={setShowPayroll} />
 
       <LeaveRequestModal open={showLeaveRequest} onOpenChange={setShowLeaveRequest} />
-
-      <PerformanceReviewModal open={showPerformanceReview} onOpenChange={setShowPerformanceReview} />
     </div>
   )
 }

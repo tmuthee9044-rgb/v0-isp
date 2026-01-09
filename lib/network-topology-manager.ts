@@ -1,4 +1,6 @@
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export interface NetworkNode {
   id: number
@@ -39,8 +41,6 @@ export interface TopologyLayout {
 
 export class NetworkTopologyManager {
   async getNetworkTopology(): Promise<TopologyLayout> {
-    const sql = await getSql()
-
     // Get all network devices
     const devices = await sql`
       SELECT 
@@ -162,8 +162,6 @@ export class NetworkTopologyManager {
   }
 
   async updateDeviceMetrics(deviceId: number, metrics: Partial<DeviceMetrics>): Promise<void> {
-    const sql = await getSql()
-
     await sql`
       UPDATE network_devices 
       SET 
@@ -200,8 +198,6 @@ export class NetworkTopologyManager {
     ip_address: string
     location: string
   }): Promise<number> {
-    const sql = await getSql()
-
     const [newDevice] = await sql`
       INSERT INTO network_devices (
         device_name,
@@ -231,8 +227,6 @@ export class NetworkTopologyManager {
     connection_type: string
     bandwidth_mbps: number
   }): Promise<void> {
-    const sql = await getSql()
-
     await sql`
       INSERT INTO network_topology (
         parent_device_id,
@@ -251,8 +245,6 @@ export class NetworkTopologyManager {
   }
 
   async getDevicePerformanceHistory(deviceId: number, hours = 24): Promise<any[]> {
-    const sql = await getSql()
-
     return await sql`
       SELECT 
         metric_type,
@@ -267,8 +259,6 @@ export class NetworkTopologyManager {
   }
 
   async getNetworkHealthSummary(): Promise<any> {
-    const sql = await getSql()
-
     const [summary] = await sql`
       SELECT 
         COUNT(*) as total_devices,

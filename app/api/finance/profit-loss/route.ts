@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Start date and end date are required" }, { status: 400 })
     }
 
-    const sql = await getSql()
+    const sql = neon(process.env.DATABASE_URL!)
 
     // Fetch revenue data (from invoices and payments)
     const revenueResult = await sql`
@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(CASE WHEN i.status = 'paid' THEN i.amount ELSE 0 END), 0) as paid_revenue,
         COALESCE(SUM(CASE WHEN i.status = 'pending' THEN i.amount ELSE 0 END), 0) as pending_revenue
       FROM invoices i
-      WHERE i.created_at BETWEEN ${startDate}::date AND ${endDate}::date
+      WHERE i.created_at >= ${startDate}::date
+        AND i.created_at <= ${endDate}::date
     `
 
     // Fetch expense data
@@ -30,7 +31,8 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(CASE WHEN e.status = 'approved' THEN e.amount ELSE 0 END), 0) as approved_expenses,
         COALESCE(SUM(CASE WHEN e.status = 'pending' THEN e.amount ELSE 0 END), 0) as pending_expenses
       FROM expenses e
-      WHERE e.expense_date BETWEEN ${startDate}::date AND ${endDate}::date
+      WHERE e.expense_date >= ${startDate}::date
+        AND e.expense_date <= ${endDate}::date
     `
 
     // Fetch expenses by category
@@ -40,25 +42,26 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(e.amount), 0) as amount
       FROM expenses e
       LEFT JOIN expense_categories ec ON e.category_id = ec.id
-      WHERE e.expense_date BETWEEN ${startDate}::date AND ${endDate}::date
+      WHERE e.expense_date >= ${startDate}::date
+        AND e.expense_date <= ${endDate}::date
         AND e.status = 'approved'
       GROUP BY ec.name
       ORDER BY amount DESC
-      LIMIT 20
     `
 
     // Revenue by service will be calculated from customer_services instead
     const revenueByServiceResult = await sql`
       SELECT 
-        COALESCE(sp.name, 'Other') as service_name,
+        sp.name as service_name,
         COUNT(DISTINCT cs.customer_id) as customer_count,
         COALESCE(SUM(cs.monthly_fee), 0) as amount
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.status = 'active'
+        AND cs.start_date <= ${endDate}::date
+        AND (cs.end_date IS NULL OR cs.end_date >= ${startDate}::date)
       GROUP BY sp.name
       ORDER BY amount DESC
-      LIMIT 20
     `
 
     const revenue = revenueResult[0]
@@ -89,7 +92,6 @@ export async function GET(request: NextRequest) {
         revenueByService: revenueByServiceResult.map((row) => ({
           service: row.service_name || "Other",
           amount: Number.parseFloat(row.amount || "0"),
-          customerCount: Number.parseInt(row.customer_count || "0"),
         })),
       },
     })

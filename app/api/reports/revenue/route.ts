@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest) {
-  const sql = await getSql()
-
   try {
     const { searchParams } = new URL(request.url)
     const period = searchParams.get("period") || "6months"

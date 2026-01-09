@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET() {
   try {
-    const sql = await getSql()
-
     const budgets = await sql`
       SELECT 
         id,
@@ -44,8 +44,6 @@ export async function POST(request: NextRequest) {
     if (!budgets || !Array.isArray(budgets)) {
       return NextResponse.json({ error: "Budgets array is required" }, { status: 400 })
     }
-
-    const sql = await getSql()
 
     // Delete existing budgets for the year/period
     await sql`

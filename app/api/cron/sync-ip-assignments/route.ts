@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: Request) {
   // Verify cron secret to ensure only authorized requests
@@ -8,8 +10,6 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-
-  const sql = await getSql()
 
   try {
     console.log("[v0] Starting IP assignment sync job...")

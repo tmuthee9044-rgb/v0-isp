@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string; documentId: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     const documentId = Number.parseInt(params.documentId)
 
@@ -55,8 +55,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string; documentId: string } }) {
   try {
-    const sql = await getSql()
-
     const customerId = Number.parseInt(params.id)
     const documentId = Number.parseInt(params.documentId)
 

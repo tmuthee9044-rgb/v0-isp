@@ -1,9 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST() {
   try {
-    const sql = await getSql()
-
     console.log("[v0] Starting comprehensive customer schema update...")
 
     const alterQueries = [
@@ -78,7 +78,7 @@ export async function POST() {
 
     // Execute all ALTER TABLE queries
     for (const query of alterQueries) {
-      await sql.unsafe(query)
+      await sql(query)
       console.log("[v0] Executed:", query.substring(0, 80) + "...")
     }
 
@@ -93,7 +93,7 @@ export async function POST() {
     ]
 
     for (const query of indexQueries) {
-      await sql.unsafe(query)
+      await sql(query)
       console.log("[v0] Created index:", query.substring(0, 80) + "...")
     }
 

@@ -1,9 +1,9 @@
-import { getSql } from "@/lib/database"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST() {
   try {
-    const sql = await getSql()
-
     console.log("[v0] Starting database schema fixes...")
 
     // Read the SQL fix script content
@@ -61,7 +61,7 @@ export async function POST() {
 
     for (const query of fixQueries) {
       try {
-        await sql.unsafe(query)
+        await sql(query)
         queriesExecuted++
         console.log(`[v0] Executed query ${queriesExecuted}/${fixQueries.length}`)
       } catch (error) {
@@ -99,7 +99,7 @@ export async function POST() {
 
         if (checkResult.length === 0) {
           // Column doesn't exist, add it
-          await sql.unsafe(`ALTER TABLE ${addition.table} ADD COLUMN ${addition.column} ${addition.type}`)
+          await sql(`ALTER TABLE ${addition.table} ADD COLUMN ${addition.column} ${addition.type}`)
           console.log(`[v0] Added ${addition.column} column to ${addition.table}`)
           results.push({
             action: "add_column",
@@ -178,8 +178,6 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const sql = await getSql()
-
     // Check current database status
     const tablesToCheck = ["inventory_movements", "invoice_items"]
     const columnsToCheck = [

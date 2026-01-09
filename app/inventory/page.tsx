@@ -1,7 +1,5 @@
 "use client"
 
-import { DialogTrigger } from "@/components/ui/dialog"
-
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -46,9 +44,6 @@ import {
   Cable,
   HardDrive,
   Warehouse,
-  Cpu,
-  Wrench,
-  Antenna,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -93,46 +88,68 @@ interface WarehouseOption {
 }
 
 export default function InventoryPage() {
-  const [inventoryData, setInventoryData] = useState<any | null>(null)
+  const [inventoryData, setInventoryData] = useState<InventoryData | null>(null)
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState("overview")
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
-  const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState("")
-  const [newCategoryIcon, setNewCategoryIcon] = useState("Package")
-  const [newCategoryColor, setNewCategoryColor] = useState("bg-blue-500")
-  const [categories, setCategories] = useState<any[]>([])
-  const [selectedCategory, setSelectedCategory] = useState<string>("")
   const { toast } = useToast()
 
   const fetchInventoryData = async () => {
     try {
       setLoading(true)
-      const [inventoryResponse, categoriesResponse] = await Promise.all([
-        fetch("/api/inventory"),
-        fetch("/api/inventory/categories"),
-      ])
-
-      if (inventoryResponse.ok) {
-        const result = await inventoryResponse.json()
-        setInventoryData(result.data)
-      }
-
-      if (categoriesResponse.ok) {
-        const categoriesResult = await categoriesResponse.json()
-        console.log("[v0] Categories fetched:", categoriesResult)
-        setCategories(categoriesResult.categories || [])
+      const response = await fetch("/api/inventory")
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.data) {
+          // Transform API data to match frontend expectations
+          const transformedData = {
+            totalItems: result.data.totalItems,
+            lowStockItems: result.data.lowStockItems,
+            outOfStock: result.data.outOfStock,
+            totalValue: result.data.totalValue,
+            categories: result.data.categories.map((cat: any) => ({
+              name: cat.name,
+              count: cat.item_count,
+              value: cat.total_value,
+              icon: cat.icon,
+              color: cat.color,
+            })),
+            items: result.data.items.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              category: item.category,
+              sku: item.sku,
+              stock_quantity: item.total_stock,
+              unit_cost: item.unit_cost,
+              location: item.warehouse_names || "No Location",
+              warehouse_id: item.warehouse_id,
+              status: item.status,
+              description: item.description,
+            })),
+            recentMovements: result.data.recentMovements.map((movement: any) => ({
+              id: movement.id,
+              item: movement.item_name,
+              type: movement.movement_type,
+              quantity: movement.quantity,
+              date: movement.created_at,
+              reason: movement.reason,
+            })),
+          }
+          setInventoryData(transformedData)
+        } else {
+          throw new Error("Invalid API response format")
+        }
       } else {
-        console.log("[v0] Categories API error:", categoriesResponse.status)
+        throw new Error("Failed to fetch inventory data")
       }
     } catch (error) {
       console.error("Error fetching inventory:", error)
       toast({
-        variant: "destructive",
         title: "Error",
-        description: "Failed to fetch inventory data",
+        description: "Failed to load inventory data",
+        variant: "destructive",
       })
     } finally {
       setLoading(false)
@@ -159,54 +176,18 @@ export default function InventoryPage() {
     }
   }
 
-  const handleAddCategory = async (e: any) => {
-    e.preventDefault()
-    try {
-      console.log("[v0] Adding category:", { name: newCategoryName, icon: newCategoryIcon, color: newCategoryColor })
-
-      const response = await fetch("/api/inventory/categories", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: newCategoryName, icon: newCategoryIcon, color: newCategoryColor }),
-      })
-
-      const result = await response.json()
-      console.log("[v0] Category creation response:", result)
-
-      if (!response.ok) {
-        throw new Error("Failed to create category")
-      }
-
-      toast({
-        title: "Success",
-        description: "Category created successfully",
-      })
-
-      setNewCategoryName("")
-      setNewCategoryIcon("Package")
-      setNewCategoryColor("bg-blue-500")
-      setShowCategoryModal(false)
-
-      await fetchInventoryData()
-    } catch (error) {
-      console.error("[v0] Error adding category:", error)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create category",
-      })
-    }
-  }
+  useEffect(() => {
+    fetchInventoryData()
+    fetchWarehouses() // Fetch warehouses on component mount
+  }, [])
 
   const handleAddItem = async (formData: FormData) => {
     try {
       const warehouseId = formData.get("warehouse_id")
-      const data = {
+      const itemData = {
         name: formData.get("name"),
         sku: formData.get("sku"),
-        category: selectedCategory, // Use state value
+        category: formData.get("category"),
         stock_quantity: Number.parseInt(formData.get("stock_quantity") as string),
         unit_cost: Number.parseFloat(formData.get("unit_cost") as string),
         warehouse_id: warehouseId === "none" ? null : Number.parseInt(warehouseId as string),
@@ -220,16 +201,15 @@ export default function InventoryPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(itemData),
       })
 
       if (response.ok) {
         toast({
           title: "Success",
-          description: "Item added successfully",
+          description: "Inventory item added successfully",
         })
         setShowAddModal(false)
-        setSelectedCategory("")
         fetchInventoryData()
       } else {
         throw new Error("Failed to add item")
@@ -319,17 +299,9 @@ export default function InventoryPage() {
       Server,
       Cable,
       HardDrive,
-      Cpu,
-      Wrench,
-      Antenna,
     }
     return iconMap[iconName] || Package
   }
-
-  useEffect(() => {
-    fetchInventoryData()
-    fetchWarehouses() // Fetch warehouses on component mount
-  }, [])
 
   if (loading) {
     return (
@@ -357,7 +329,7 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Inventory Management</h2>
         <div className="flex items-center space-x-2">
@@ -439,7 +411,7 @@ export default function InventoryPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{category.count}</div>
-                    <p className="text-xs text-muted-foreground">KSh {(category.value || 0).toLocaleString()} value</p>
+                    <p className="text-xs text-muted-foreground">KSh {category.value.toLocaleString()} value</p>
                   </CardContent>
                 </Card>
               )
@@ -560,117 +532,38 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Categories</h2>
-            <Dialog open={showCategoryModal} onOpenChange={setShowCategoryModal}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Category
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Category</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleAddCategory} className="space-y-4">
-                  <div>
-                    <Label htmlFor="categoryName">Category Name</Label>
-                    <Input
-                      id="categoryName"
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Enter category name"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="categoryIcon">Icon</Label>
-                    <Select value={newCategoryIcon} onValueChange={setNewCategoryIcon}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an icon" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Package">📦 Package</SelectItem>
-                        <SelectItem value="Cpu">💻 CPU</SelectItem>
-                        <SelectItem value="Wrench">🔧 Wrench</SelectItem>
-                        <SelectItem value="Wifi">📡 Wifi</SelectItem>
-                        <SelectItem value="HardDrive">💾 Hard Drive</SelectItem>
-                        <SelectItem value="Cable">🔌 Cable</SelectItem>
-                        <SelectItem value="Server">🖥️ Server</SelectItem>
-                        <SelectItem value="Antenna">📶 Antenna</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="categoryColor">Color</Label>
-                    <Select value={newCategoryColor} onValueChange={setNewCategoryColor}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a color" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="blue">🔵 Blue</SelectItem>
-                        <SelectItem value="green">🟢 Green</SelectItem>
-                        <SelectItem value="red">🔴 Red</SelectItem>
-                        <SelectItem value="yellow">🟡 Yellow</SelectItem>
-                        <SelectItem value="purple">🟣 Purple</SelectItem>
-                        <SelectItem value="orange">🟠 Orange</SelectItem>
-                        <SelectItem value="pink">🩷 Pink</SelectItem>
-                        <SelectItem value="gray">⚫ Gray</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setShowCategoryModal(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit">Add Category</Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {categories.length === 0 ? (
-              <p className="text-muted-foreground col-span-full">
-                No categories found. Click "Add Category" to create one.
-              </p>
-            ) : (
-              categories.map((category) => {
-                const stats = inventoryData.categories?.find(
-                  (c: any) => c.name.toLowerCase() === category.name.toLowerCase(),
-                ) || { count: 0, value: 0 }
-
-                const IconComponent = getIconComponent(category.icon)
-
-                return (
-                  <Card key={category.name}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
-                      <div
-                        className="h-8 w-8 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: category.color }}
-                      >
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {inventoryData.categories.map((category) => {
+              const IconComponent = getIconComponent(category.icon)
+              return (
+                <Card key={category.name}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className={`p-2 rounded-lg ${category.color}`}>
                         <IconComponent className="h-4 w-4 text-white" />
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stats.count}</div>
-                      <p className="text-xs text-muted-foreground">KSh {(stats.value || 0).toLocaleString()} value</p>
-                    </CardContent>
-                  </Card>
-                )
-              })
-            )}
+                      {category.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Items</span>
+                        <span className="font-medium">{category.count}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Value</span>
+                        <span className="font-medium">KSh {category.value.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Category Management Modal */}
-      {/* Removed the old category modal code */}
-
-      {/* Item Management Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent>
           <DialogHeader>
@@ -696,22 +589,16 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <Label htmlFor="category">Category</Label>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory} required>
+                  <Select name="category" required>
                     <SelectTrigger>
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.length > 0 ? (
-                        categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
-                            {cat.name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="" disabled>
-                          No categories available
+                      {inventoryData.categories.map((cat) => (
+                        <SelectItem key={cat.name} value={cat.name}>
+                          {cat.name}
                         </SelectItem>
-                      )}
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -760,7 +647,6 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Item Modal */}
       <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
         <DialogContent>
           <DialogHeader>
@@ -792,8 +678,8 @@ export default function InventoryPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
+                        {inventoryData.categories.map((cat) => (
+                          <SelectItem key={cat.name} value={cat.name}>
                             {cat.name}
                           </SelectItem>
                         ))}

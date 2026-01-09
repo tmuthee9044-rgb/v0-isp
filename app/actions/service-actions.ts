@@ -1,77 +1,61 @@
 "use server"
 
-import { getSql } from "@/lib/db"
+import { sql } from "@/lib/database"
 import { revalidatePath } from "next/cache"
 
 export async function getServicePlans() {
   try {
-    const sql = await getSql()
-
     const plans = await sql`
       SELECT 
         sp.id,
         sp.name,
         sp.description,
-        sp.speed_download,
-        sp.speed_upload,
+        sp.download_speed,
+        sp.upload_speed,
         sp.price,
         sp.status,
+        sp.category,
         sp.data_limit,
-        sp.fup_limit,
-        sp.fup_speed,
-        sp.setup_fee,
-        sp.billing_cycle,
-        sp.currency,
-        sp.contract_period,
+        sp.features,
         sp.created_at,
-        sp.priority_level,
-        sp.qos_enabled,
-        sp.static_ip,
-        sp.port_forwarding,
-        sp.vpn_access,
-        sp.is_active,
         COUNT(cs.id) as customer_count
       FROM service_plans sp
       LEFT JOIN customer_services cs ON sp.id = cs.service_plan_id AND cs.status = 'active'
-      WHERE sp.is_active = true 
-      GROUP BY sp.id, sp.name, sp.description, sp.speed_download, sp.speed_upload, 
-               sp.price, sp.status, sp.data_limit, sp.fup_limit, sp.fup_speed,
-               sp.setup_fee, sp.billing_cycle, sp.currency, sp.contract_period,
-               sp.created_at, sp.priority_level, sp.qos_enabled, sp.static_ip,
-               sp.port_forwarding, sp.vpn_access, sp.is_active
+      WHERE sp.status = 'active' 
+      GROUP BY sp.id
       ORDER BY sp.price ASC
     `
 
-    if (!plans || !Array.isArray(plans)) {
-      return { success: true, data: [] }
-    }
+    const plansWithDefaults = plans.map((plan) => ({
+      ...plan,
+      throttled_speed: null, // Default value since column doesn't exist
+    }))
 
-    return { success: true, data: plans }
+    return { success: true, data: plansWithDefaults }
   } catch (error) {
     console.error("Error fetching service plans:", error)
-    return { success: true, data: [] }
+    return { success: false, error: "Failed to fetch service plans", data: [] }
   }
 }
 
 export async function createServicePlan(formData: FormData) {
   try {
-    const sql = await getSql()
-
     const name = formData.get("name") as string
     const description = formData.get("description") as string
-    const speedDownload = Number.parseInt(formData.get("speed_download") as string)
-    const speedUpload = Number.parseInt(formData.get("speed_upload") as string)
+    const category = formData.get("category") as string
+    const downloadSpeed = Number.parseInt(formData.get("download_speed") as string)
+    const uploadSpeed = Number.parseInt(formData.get("upload_speed") as string)
     const price = Number.parseFloat(formData.get("price") as string)
     const dataLimit = formData.get("data_limit") ? Number.parseInt(formData.get("data_limit") as string) : null
-    const setupFee = formData.get("setup_fee") ? Number.parseFloat(formData.get("setup_fee") as string) : 0
+    const features = formData.get("features") as string
 
     const result = await sql`
       INSERT INTO service_plans (
-        name, description, speed_download, speed_upload, price, status, 
-        data_limit, setup_fee, is_active, created_at
+        name, description, download_speed, upload_speed, price, status, category, 
+        data_limit, features, created_at
       ) VALUES (
-        ${name}, ${description}, ${speedDownload}, ${speedUpload}, ${price}, 'active',
-        ${dataLimit}, ${setupFee}, true, NOW()
+        ${name}, ${description}, ${downloadSpeed}, ${uploadSpeed}, ${price}, 'active', ${category},
+        ${dataLimit}, ${features}, NOW()
       ) RETURNING id
     `
 
@@ -85,13 +69,11 @@ export async function createServicePlan(formData: FormData) {
 
 export async function updateServicePlan(formData: FormData) {
   try {
-    const sql = await getSql()
-
     const id = Number.parseInt(formData.get("id") as string)
     const name = formData.get("name") as string
     const description = formData.get("description") as string
-    const speedDownload = Number.parseInt(formData.get("speed_download") as string)
-    const speedUpload = Number.parseInt(formData.get("speed_upload") as string)
+    const downloadSpeed = Number.parseInt(formData.get("download_speed") as string)
+    const uploadSpeed = Number.parseInt(formData.get("upload_speed") as string)
     const price = Number.parseFloat(formData.get("price") as string)
     const dataLimit = formData.get("data_limit") ? Number.parseInt(formData.get("data_limit") as string) : null
 
@@ -100,11 +82,10 @@ export async function updateServicePlan(formData: FormData) {
       SET 
         name = ${name},
         description = ${description},
-        speed_download = ${speedDownload},
-        speed_upload = ${speedUpload},
+        download_speed = ${downloadSpeed},
+        upload_speed = ${uploadSpeed},
         price = ${price},
-        data_limit = ${dataLimit},
-        updated_at = NOW()
+        data_limit = ${dataLimit}
       WHERE id = ${id}
     `
 
@@ -118,11 +99,9 @@ export async function updateServicePlan(formData: FormData) {
 
 export async function deleteServicePlan(id: number) {
   try {
-    const sql = await getSql()
-
     await sql`
       UPDATE service_plans 
-      SET is_active = false, updated_at = NOW()
+      SET status = 'inactive', updated_at = NOW()
       WHERE id = ${id}
     `
 

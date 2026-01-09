@@ -65,6 +65,8 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'draft'`.catch(
       () => {},
     )
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(255)`.catch(() => {})
+    await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS reviewer_id INTEGER`.catch(() => {})
 
     // Add missing router_id columns
     await sql`ALTER TABLE router_performance_history ADD COLUMN IF NOT EXISTS router_id VARCHAR(50)`.catch(() => {})
@@ -109,7 +111,7 @@ async function ensureCriticalColumns() {
     await sql`
       DO $$
       BEGIN
-        -- Create sequence if it doesn't exist
+        -- Create users sequence if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'users_id_seq') THEN
           CREATE SEQUENCE users_id_seq;
         END IF;
@@ -122,6 +124,25 @@ async function ensureCriticalColumns() {
         
         -- Sync sequence to current max id value
         PERFORM setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);
+      END $$;
+    `.catch(() => {})
+
+    await sql`
+      DO $$
+      BEGIN
+        -- Create suppliers sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
+          CREATE SEQUENCE suppliers_id_seq;
+        END IF;
+        
+        -- Set sequence ownership to suppliers.id column
+        ALTER SEQUENCE suppliers_id_seq OWNED BY suppliers.id;
+        
+        -- Set default value for id column to use sequence
+        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
+        
+        -- Sync sequence to current max id value
+        PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
       END $$;
     `.catch(() => {})
 

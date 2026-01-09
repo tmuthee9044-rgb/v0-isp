@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   console.log("[v0] === INITIALIZING DATABASE ===")
 
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
 
     const tables = [
       {

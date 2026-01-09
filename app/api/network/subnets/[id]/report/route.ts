@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { addLetterheadToPDF, addFooterToPDF, getCompanyLetterhead } from "@/lib/letterhead"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
     const subnetId = params.id
 
     // Fetch subnet details

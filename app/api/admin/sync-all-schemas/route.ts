@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server"
-import { Pool } from "pg"
+import { getSql } from "@/lib/db"
 
 export async function POST() {
   try {
     console.log("[v0] Starting complete schema synchronization...")
 
     // Get the local PostgreSQL connection
-    const localConnectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-
-    if (!localConnectionString) {
-      return NextResponse.json({ error: "No local database connection string found" }, { status: 500 })
-    }
-
-    const localPool = new Pool({ connectionString: localConnectionString })
+    const sql = await getSql()
 
     // Get Neon connection
     const neonUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL_UNPOOLED
@@ -44,7 +38,7 @@ export async function POST() {
 
       try {
         // Check if table exists in local
-        const localCheck = await localPool.query(
+        const localCheck = await sql.query(
           `
           SELECT EXISTS (
             SELECT FROM information_schema.tables 
@@ -82,7 +76,7 @@ export async function POST() {
           `
 
           if (createStatement.length > 0) {
-            await localPool.query(createStatement[0].text)
+            await sql.query(createStatement[0].text)
             tablesCreated++
             results.push({ table: tableName, action: "created", status: "success" })
           }
@@ -95,7 +89,7 @@ export async function POST() {
             ORDER BY ordinal_position
           `
 
-          const localColumns = await localPool.query(
+          const localColumns = await sql.query(
             `
             SELECT column_name, data_type, character_maximum_length, is_nullable, column_default, udt_name
             FROM information_schema.columns
@@ -126,7 +120,7 @@ export async function POST() {
 
               const addColumnSql = `ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS "${col.column_name}" ${colType}${nullable}${defaultVal}`
 
-              await localPool.query(addColumnSql)
+              await sql.query(addColumnSql)
               columnsAdded++
             }
 
@@ -152,7 +146,8 @@ export async function POST() {
       }
     }
 
-    await localPool.end()
+    // No need to end the pool as getSql() handles it
+    // await localPool.end()
 
     return NextResponse.json({
       success: true,

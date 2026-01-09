@@ -196,51 +196,44 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         console.log("[v0] Router synced to FreeRADIUS nas table successfully")
       } catch (nasError) {
         console.error("[v0] Error syncing to nas table:", nasError)
-        // Don't fail router update if nas sync fails
       }
     }
 
     if (type === "mikrotik" && result[0]) {
       try {
-        console.log("[v0] Applying updated MikroTik configuration to physical router...")
+        console.log("[v0] Queuing router configuration update for background processing...")
 
-        const routerHost = hostname || result[0].ip_address
-        const routerUsername = mikrotik_user || username || configuration.mikrotik_user || "admin"
-        const routerPassword = mikrotik_password || password || configuration.mikrotik_password
+        await sql`
+          INSERT INTO provisioning_queue (
+            action,
+            entity_type,
+            entity_id,
+            configuration,
+            status,
+            created_at
+          ) VALUES (
+            'update_router_config',
+            'router',
+            ${routerId},
+            ${JSON.stringify({
+              host: hostname || result[0].ip_address,
+              port: api_port || 8728,
+              username: mikrotik_user || username,
+              customer_auth_method,
+              enable_traffic_recording,
+              enable_speed_control,
+              radius_nas_ip,
+              radius_secret,
+              blocking_page_url,
+            })},
+            'pending',
+            NOW()
+          )
+        `
 
-        if (routerHost && routerUsername && routerPassword) {
-          const { MikroTikAPI } = await import("@/lib/mikrotik-api")
-          const mikrotik = new MikroTikAPI({
-            host: routerHost,
-            port: api_port || configuration.api_port || 8728,
-            username: routerUsername,
-            password: routerPassword,
-          })
-
-          await mikrotik.connect()
-
-          const configResult = await mikrotik.applyRouterConfiguration({
-            customer_auth_method: customer_auth_method || configuration.customer_auth_method,
-            trafficking_record: enable_traffic_recording ?? false,
-            speed_control: enable_speed_control ?? false,
-            radius_server: radius_nas_ip || configuration.nas_ip_address,
-            radius_secret: radius_secret || configuration.radius_secret,
-            blocking_page_url: blocking_page_url || null,
-          })
-
-          console.log("[v0] MikroTik configuration update result:", configResult)
-
-          await mikrotik.disconnect()
-
-          if (!configResult.success) {
-            console.warn("[v0] Some router configuration updates failed:", configResult.errors)
-          }
-        } else {
-          console.warn("[v0] Missing router credentials, skipping configuration push")
-        }
-      } catch (configError) {
-        console.error("[v0] Error applying router configuration updates:", configError)
-        // Don't fail the router update if config push fails
+        console.log("[v0] Router configuration queued for background update")
+      } catch (queueError) {
+        console.error("[v0] Error queuing router configuration:", queueError)
       }
     }
 

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { Pool } from "pg"
+import { getSql } from "@/lib/db"
 
 export async function POST() {
   try {
-    
     // Get Neon connection string
     const neonConnectionString =
       process.env.POSTGRES_URL || process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING
@@ -13,16 +13,16 @@ export async function POST() {
     }
 
     // Get local PostgreSQL connection
-    const localConnectionString = process.env.DATABASE_URL
+    const sql = await getSql()
 
-    if (!localConnectionString || !localConnectionString.includes("localhost")) {
+    if (!sql || !sql.includes("localhost")) {
       return NextResponse.json({ error: "Not connected to local database" }, { status: 400 })
     }
 
     // Import Neon dynamically
     const { neon } = await import("@neondatabase/serverless")
     const neonClient = neon(neonConnectionString)
-    const localPool = new Pool({ connectionString: localConnectionString })
+    const localPool = new Pool({ connectionString: sql })
 
     // Get all tables from Neon
     const tables = await neonClient`

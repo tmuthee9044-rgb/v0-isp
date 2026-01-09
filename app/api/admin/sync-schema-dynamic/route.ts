@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { neon } from "@neondatabase/serverless"
 
 export async function POST() {
   try {
-    const localSql = await getSql()
-    const neonSql = neon(process.env.DATABASE_URL!)
+    const sql = await getSql()
 
-    const neonTables = await neonSql`
+    const neonTables = await sql`
       SELECT 
         t.table_name,
         json_agg(
@@ -25,7 +23,7 @@ export async function POST() {
       ORDER BY t.table_name
     `
 
-    const localTables = await localSql`
+    const localTables = await sql`
       SELECT 
         t.table_name,
         json_agg(
@@ -107,7 +105,7 @@ export async function POST() {
 
     for (const statement of sqlStatements) {
       try {
-        await localSql.unsafe(statement)
+        await sql.unsafe(statement)
         successCount++
       } catch (error: any) {
         // Ignore "already exists" errors

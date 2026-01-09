@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 export async function POST() {
   console.log("[v0] === CREATE TABLES NOW START ===")
 
-  const sql = neon(process.env.DATABASE_URL!)
+  const sql = await getSql()
   const results = []
   const errors = []
 

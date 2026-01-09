@@ -245,7 +245,7 @@ export default function AddServiceModal({
       const result =
         editMode && editingService
           ? await updateCustomerService(editingService.id, formData)
-          : await addCustomerService(formData)
+          : await addCustomerService(customerId, formData)
 
       console.log("[v0] Result:", result)
 

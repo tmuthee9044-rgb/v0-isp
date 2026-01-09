@@ -158,7 +158,7 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS phone_number TEXT`.catch(() => {})
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS city TEXT`.catch(() => {})
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS state TEXT`.catch(() => {})
-    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Kenya'`.catch(() => {})
+    await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya'`.catch(() => {})
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS postal_code TEXT`.catch(() => {})
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS description TEXT`.catch(() => {})
     await sql`ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS capacity_cubic_meters DECIMAL(10,2)`.catch(() => {})
@@ -237,6 +237,35 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius'`.catch(
       () => {},
     )
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS payroll_records (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL,
+        employee_name VARCHAR(255),
+        pay_period_start DATE NOT NULL,
+        pay_period_end DATE NOT NULL,
+        basic_salary DECIMAL(10, 2) NOT NULL,
+        allowances DECIMAL(10, 2) DEFAULT 0.00,
+        deductions DECIMAL(10, 2) DEFAULT 0.00,
+        gross_pay DECIMAL(10, 2) NOT NULL,
+        tax DECIMAL(10, 2) DEFAULT 0.00,
+        nhif DECIMAL(10, 2) DEFAULT 0.00,
+        nssf DECIMAL(10, 2) DEFAULT 0.00,
+        net_pay DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(employee_id, pay_period_start)
+      )
+    `.catch(() => {})
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_employee ON payroll_records(employee_id)`.catch(() => {})
+    await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_period ON payroll_records(pay_period_start, pay_period_end)`.catch(
+      () => {},
+    )
+    await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_status ON payroll_records(status)`.catch(() => {})
 
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {

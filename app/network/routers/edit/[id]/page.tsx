@@ -1,42 +1,37 @@
 "use client"
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-
-import type React from "react"
+import { CardDescription } from "@/components/ui/card"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
 import {
-  AlertCircle,
-  Activity,
-  CheckCircle,
+  ArrowLeft,
+  Save,
   Database,
-  Info,
+  Shield,
+  Activity,
+  Loader2,
   RouterIcon,
   BarChart3,
   FileText,
-  Shield,
-  Save,
-  RefreshCw,
-  ArrowLeft,
+  Info,
+  Network,
+  Terminal,
   EyeOff,
   Eye,
   Signal,
   XCircle,
-  Network,
-  Terminal,
-  Loader2,
+  AlertCircle,
+  CheckCircle,
   AlertTriangle,
-  Twitch as Switch,
+  RefreshCw,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
+
 import {
   LineChart,
   Line,
@@ -49,6 +44,13 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts"
+
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Switch } from "@/components/ui/switch"
 
 interface Router {
   id: number
@@ -152,15 +154,15 @@ type FormData = {
   gps_longitude: string
 }
 
-export default function RouterEditPage({ params }: { params: { id: string } }) {
+export default function EditRouterPage() {
   const router = useRouter()
-  const routerId = params.id as string
+  const params = useParams()
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [routerData, setRouterData] = useState<Router | null>(null) // Changed to Router | null for type safety
 
-  const [routerData, setRouterData] = useState<Router | null>(null)
+  // State for router details, troubleshooting, RADIUS, etc.
   const [locations, setLocations] = useState<Location[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const [trafficData, setTrafficData] = useState<TrafficData[]>([])
   const [blockingRules, setBlockingRules] = useState<BlockingRule[]>([])
   const [interfaces, setInterfaces] = useState<RouterInterface[]>([])
@@ -170,57 +172,53 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   const [logFilter, setLogFilter] = useState<string>("")
   const [liveTraffic, setLiveTraffic] = useState<InterfaceTraffic[]>([])
   const [historicalRange, setHistoricalRange] = useState<"24h" | "7d" | "30d">("24h")
-
   const [troubleshootResults, setTroubleshootResults] = useState<any>(null)
   const [isTroubleshooting, setIsTroubleshooting] = useState(false)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
-
   const [routerDetails, setRouterDetails] = useState<any>(null)
-
   const [radiusSettings, setRadiusSettings] = useState<any>(null)
   const [radiusTestResult, setRadiusTestResult] = useState<any>(null)
   const [radiusTestLoading, setRadiusTestLoading] = useState(false)
-
   const [portTrafficHistory, setPortTrafficHistory] = useState<any[]>([])
   const [availablePorts, setAvailablePorts] = useState<string[]>([])
+  const [showPassword, setShowPassword] = useState(false)
 
+  // Form data state, initialized with default values or fetched data
+  const [formData, setFormData] = useState<FormData>({
+    name: "",
+    type: "mikrotik" as const,
+    location_id: "",
+    connection_type: "public_ip",
+    hostname: "",
+    api_port: 8728,
+    ssh_port: 22,
+    username: "",
+    password: "",
+    mikrotik_user: "",
+    mikrotik_password: "",
+    customer_auth_method: "pppoe_radius",
+    enable_traffic_recording: false,
+    enable_speed_control: false,
+    blocking_page_url: "",
+    radius_secret: "",
+    radius_nas_ip: "",
+    gps_latitude: "",
+    gps_longitude: "",
+  })
+
+  // Fetch essential router data on mount for fast loading
   useEffect(() => {
     fetchRouter()
-    fetchLocations()
-    fetchTrafficData()
-    fetchBlockingRules()
-    fetchInterfaces()
-    fetchLogs()
-    // Fetch router details on mount
-    fetchRouterDetails()
-    const fetchRadiusSettings = async () => {
-      try {
-        const response = await fetch("/api/server-settings")
-        if (response.ok) {
-          const data = await response.json()
-          setRadiusSettings(data.radius)
-        }
-      } catch (error) {
-        console.error("Error fetching RADIUS settings:", error)
-      }
-    }
-    fetchRadiusSettings()
-  }, [routerId])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchLiveTraffic()
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [routerId])
+  }, [params.id])
 
   const fetchRouter = async () => {
+    setIsLoading(true)
     try {
-      const response = await fetch(`/api/network/routers/${routerId}`)
+      const response = await fetch(`/api/network/routers/${params.id}`)
       if (response.ok) {
         const data = await response.json()
         setRouterData(data)
+        // Initialize form data with fetched router data
         setFormData({
           name: data.name || "",
           type: data.type || "mikrotik",
@@ -230,30 +228,39 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
           api_port: data.api_port || 8728,
           ssh_port: data.ssh_port || 22,
           username: data.username || "admin",
-          password: "",
+          password: "", // Password should not be pre-filled for security
           mikrotik_user: data.mikrotik_user || "demo",
-          mikrotik_password: "",
+          mikrotik_password: "", // Password should not be pre-filled for security
           customer_auth_method: data.customer_auth_method || "pppoe_radius",
-          enable_traffic_recording: data.enable_traffic_recording || false, // Changed
-          enable_speed_control: data.enable_speed_control || false, // Changed
-          blocking_page_url: data.blocking_page_url || "", // Changed
+          enable_traffic_recording: data.enable_traffic_recording || false,
+          enable_speed_control: data.enable_speed_control || false,
+          blocking_page_url: data.blocking_page_url || "",
           radius_secret: data.radius_secret || "",
           radius_nas_ip: data.radius_nas_ip || "",
           gps_latitude: data.gps_latitude?.toString() || "",
           gps_longitude: data.gps_longitude?.toString() || "",
         })
       } else {
-        // Handle cases where router is not found
-        setRouterData(null)
+        toast.error("Failed to load router")
+        router.push("/network/routers")
       }
     } catch (error) {
-      console.error("Error fetching router:", error)
-      toast.error("Failed to fetch router data")
-      setRouterData(null) // Ensure routerData is null on error
+      toast.error("Error loading router")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
+
+  // Fetch other data when tabs are activated or on specific triggers
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (liveTraffic.length > 0) {
+        // Only fetch live traffic if it's already being tracked
+        fetchLiveTraffic()
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [liveTraffic]) // Added liveTraffic to dependency array
 
   const fetchLocations = async () => {
     try {
@@ -269,8 +276,8 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchTrafficData = async () => {
     try {
-      console.log("[v0] Fetching traffic data for router", routerId)
-      const response = await fetch(`/api/network/routers/${routerId}/monitor`)
+      console.log("[v0] Fetching traffic data for router", params.id)
+      const response = await fetch(`/api/network/routers/${params.id}/monitor`)
       if (response.ok) {
         const data = await response.json()
         console.log("[v0] Monitor API response:", data)
@@ -310,7 +317,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchBlockingRules = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/firewall-rules`)
+      const response = await fetch(`/api/network/routers/${params.id}/firewall-rules`)
       if (response.ok) {
         const data = await response.json()
         setBlockingRules(data.rules || [])
@@ -322,7 +329,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchInterfaces = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/interfaces`)
+      const response = await fetch(`/api/network/routers/${params.id}/interfaces`)
       if (response.ok) {
         const data = await response.json()
         setInterfaces(data.interfaces || [])
@@ -338,7 +345,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchLiveTraffic = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/interfaces?snapshot=true`)
+      const response = await fetch(`/api/network/routers/${params.id}/interfaces?snapshot=true`)
       if (response.ok) {
         const data = await response.json()
         setLiveTraffic(data.trafficHistory || [])
@@ -350,7 +357,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchHistoricalTraffic = async (range: "24h" | "7d" | "30d") => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/interfaces?range=${range}`)
+      const response = await fetch(`/api/network/routers/${params.id}/interfaces?range=${range}`)
       if (response.ok) {
         const data = await response.json()
         setTrafficHistory(data.trafficHistory || [])
@@ -362,7 +369,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchPortTrafficHistory = async (range: string) => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/port-traffic-history?range=${range}`)
+      const response = await fetch(`/api/network/routers/${params.id}/port-traffic-history?range=${range}`)
       const data = await response.json()
 
       console.log("[v0] Port traffic history data:", data)
@@ -385,7 +392,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   const fetchLogs = async () => {
     try {
       console.log("[v0] Fetching logs from API...")
-      const response = await fetch(`/api/network/routers/${routerId}/logs`)
+      const response = await fetch(`/api/network/routers/${params.id}/logs`)
 
       console.log("[v0] Logs API response status:", response.status)
 
@@ -426,7 +433,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchRouterDetails = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/test-connection`, {
+      const response = await fetch(`/api/network/routers/${params.id}/test-connection`, {
         method: "POST",
       })
       if (response.ok) {
@@ -440,7 +447,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const handleDeleteRule = async (ruleId: number) => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/firewall-rules?ruleId=${ruleId}`, {
+      const response = await fetch(`/api/network/routers/${params.id}/firewall-rules?ruleId=${ruleId}`, {
         method: "DELETE",
       })
       if (response.ok) {
@@ -475,68 +482,41 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
       log.topics.toLowerCase().includes(logFilter.toLowerCase()),
   )
 
-  const [formData, setFormData] = useState<FormData>({
-    name: "",
-    type: "mikrotik" as const,
-    location_id: "",
-    connection_type: "public_ip",
-    hostname: "",
-    api_port: 8728,
-    ssh_port: 22,
-    username: "",
-    password: "",
-    mikrotik_user: "",
-    mikrotik_password: "",
-    customer_auth_method: "pppoe_radius",
-    enable_traffic_recording: false, // Changed from trafficking_record
-    enable_speed_control: false, // Changed from speed_control
-    blocking_page_url: "", // Changed from save_visited_ips
-    radius_secret: "",
-    radius_nas_ip: "",
-    gps_latitude: "",
-    gps_longitude: "",
-  })
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true) // Changed from setLoading to setSaving
-    setLoading(true) // Keeping setLoading as per the update
-
+  const handleSave = async () => {
+    setIsSaving(true)
     try {
-      console.log("[v0] Submitting router update with data:", formData)
+      // Ensure location_id is a number if it exists
+      const payload = {
+        ...formData,
+        location_id: formData.location_id ? Number.parseInt(formData.location_id, 10) : undefined,
+        gps_latitude: formData.gps_latitude ? Number.parseFloat(formData.gps_latitude) : undefined,
+        gps_longitude: formData.gps_longitude ? Number.parseFloat(formData.gps_longitude) : undefined,
+      }
 
-      const response = await fetch(`/api/network/routers/${routerId}`, {
+      // Remove empty fields before sending
+      Object.keys(payload).forEach((key) => {
+        if (
+          payload[key as keyof typeof payload] === "" ||
+          payload[key as keyof typeof payload] === null ||
+          payload[key as keyof typeof payload] === undefined
+        ) {
+          delete payload[key as keyof typeof payload]
+        }
+      })
+
+      console.log("[v0] Submitting router update with data:", payload)
+
+      const response = await fetch(`/api/network/routers/${params.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          type: formData.type,
-          location_id: formData.location_id,
-          connection_type: formData.connection_type,
-          hostname: formData.hostname,
-          api_port: formData.api_port,
-          ssh_port: formData.ssh_port,
-          username: formData.username,
-          password: formData.password,
-          mikrotik_user: formData.mikrotik_user,
-          mikrotik_password: formData.mikrotik_password,
-          customer_auth_method: formData.customer_auth_method,
-          enable_traffic_recording: formData.enable_traffic_recording,
-          enable_speed_control: formData.enable_speed_control,
-          blocking_page_url: formData.blocking_page_url,
-          radius_secret: formData.radius_secret,
-          radius_nas_ip: formData.radius_nas_ip,
-          gps_latitude: formData.gps_latitude,
-          gps_longitude: formData.gps_longitude,
-          status: routerData?.status || "active",
-        }),
+        body: JSON.stringify(payload),
       })
 
       console.log("[v0] Response status:", response.status)
 
       if (response.ok) {
         toast.success("Router updated successfully")
-        router.push("/network/routers")
+        router.push("/network/routers") // Navigate back after successful save
       } else {
         const error = await response.json()
         toast.error(error.message || "Failed to update router")
@@ -545,8 +525,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
       console.error("Error updating router:", error)
       toast.error("Failed to update router")
     } finally {
-      setSaving(false)
-      setLoading(false) // Added setLoading(false) here
+      setIsSaving(false)
     }
   }
 
@@ -556,7 +535,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     setTroubleshootResults(null)
 
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/troubleshoot`, {
+      const response = await fetch(`/api/network/routers/${params.id}/troubleshoot`, {
         method: "POST",
       })
 
@@ -575,10 +554,10 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   }
 
   const getStatusIcon = (status: string) => {
-    if (status === "success") return <CheckCircle className="w-5 h-5 text-green-500" /> // Changed from CheckCircle2
+    if (status === "success") return <CheckCircle className="w-5 h-5 text-green-500" />
     if (status === "failed") return <AlertCircle className="w-5 h-5 text-red-500" />
-    if (status === "running") return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" /> // Loader2 was not imported in updates, but was present in existing. Keeping Loader2.
-    return <AlertTriangle className="w-5 h-5 text-yellow-500" /> // AlertTriangle was not imported in updates, but was present in existing. Keeping AlertTriangle.
+    if (status === "running") return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+    return <AlertTriangle className="w-5 h-5 text-yellow-500" />
   }
 
   const handleTestRadius = async () => {
@@ -586,7 +565,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     setRadiusTestResult(null)
 
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/test-radius`, {
+      const response = await fetch(`/api/network/routers/${params.id}/test-radius`, {
         method: "POST",
       })
 
@@ -618,10 +597,16 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
     }
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      <div className="container mx-auto p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-96 w-full" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-80 w-full" />
+        </div>
+        <Skeleton className="h-96 w-full" />
       </div>
     )
   }
@@ -635,12 +620,12 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> {/* ArrowLeft was not imported in updates, keeping it */}
+            <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div>
@@ -656,6 +641,8 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchRouter}>
+            {" "}
+            {/* Use fetchRouter to refresh data */}
             <RefreshCw className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push("/network/routers")}>
@@ -675,8 +662,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
             <Button onClick={handleTroubleshoot} disabled={isTroubleshooting}>
               {isTroubleshooting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />{" "}
-                  {/* Loader2 was not imported in updates, but was present in existing. Keeping Loader2. */}
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Running Diagnostics...
                 </>
               ) : (
@@ -760,8 +746,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
               </>
             ) : isTroubleshooting ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />{" "}
-                {/* Loader2 was not imported in updates, but was present in existing. Keeping Loader2. */}
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <span className="ml-3 text-muted-foreground">Running diagnostic tests...</span>
               </div>
             ) : (
@@ -811,7 +796,9 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                 <CardTitle>Router Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={(e) => e.preventDefault()}>
+                  {" "}
+                  {/* Prevent default form submission */}
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="router-name">Router Name</Label>
@@ -940,13 +927,32 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                           className="absolute right-2 top-1/2 -translate-y-1/2"
                           onClick={() => setShowPassword(!showPassword)}
                         >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}{" "}
-                          {/* EyeOff, Eye were not imported in updates, keeping them */}
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
                       </div>
                     </div>
 
-                    {/* Radius Configuration */}
+                    {/* GPS Coordinates */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="gps_latitude">GPS Latitude</Label>
+                        <Input
+                          id="gps_latitude"
+                          value={formData.gps_latitude}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, gps_latitude: e.target.value }))}
+                          placeholder="e.g., 34.0522"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="gps_longitude">GPS Longitude</Label>
+                        <Input
+                          id="gps_longitude"
+                          value={formData.gps_longitude}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, gps_longitude: e.target.value }))}
+                          placeholder="e.g., -118.2437"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </form>
               </CardContent>
@@ -1013,7 +1019,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Signal className="w-5 h-5" /> {/* Signal was not imported in updates, keeping it */}
+                  <Signal className="w-5 h-5" />
                   Connection Status
                 </CardTitle>
                 <Button size="sm" variant="outline" onClick={fetchRouterDetails}>
@@ -1102,7 +1108,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                 {!routerDetails?.success && routerDetails?.error && (
                   <div className="pt-4 border-t">
                     <p className="text-sm text-red-600 flex items-center gap-2">
-                      <XCircle className="w-4 h-4" /> {/* XCircle was not imported in updates, keeping it */}
+                      <XCircle className="w-4 h-4" />
                       {routerDetails.error}
                     </p>
                   </div>
@@ -1200,7 +1206,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Network className="w-5 h-5" /> {/* Network was not imported in updates, keeping it */}
+                  <Network className="w-5 h-5" />
                   Network Configuration
                 </CardTitle>
               </CardHeader>
@@ -1232,7 +1238,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Terminal className="w-5 h-5" /> {/* Terminal was not imported in updates, keeping it */}
+                  <Terminal className="w-5 h-5" />
                   Raw System Information
                 </CardTitle>
               </CardHeader>
@@ -1502,8 +1508,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
                               variant="ghost"
                               onClick={() => toast.info("Toggle rule feature coming soon")}
                             >
-                              <Switch checked={rule.state === "ACTIVE"} />{" "}
-                              {/* Switch was not imported in updates, keeping it */}
+                              <Switch checked={rule.state === "ACTIVE"} />
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => handleDeleteRule(rule.id)}>
                               🗑️
@@ -2136,8 +2141,8 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={saving} className="min-w-32">
-          {saving ? (
+        <Button onClick={handleSave} disabled={isSaving} className="min-w-32">
+          {isSaving ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
           ) : (
             <Save className="w-4 h-4 mr-2" />

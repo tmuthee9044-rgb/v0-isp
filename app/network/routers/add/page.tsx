@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -9,174 +7,141 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, Save, Database, Shield, Settings } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, RouterIcon, Shield, Network } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 
 interface Location {
   id: number
   name: string
-  address: string
-  latitude: number
-  longitude: number
 }
+
+const STEPS = [
+  { id: 1, title: "Vendor Selection", description: "Choose router vendor" },
+  { id: 2, title: "Basic Information", description: "Router details" },
+  { id: 3, title: "Network Configuration", description: "IP and ports" },
+  { id: 4, title: "Authentication", description: "Credentials and security" },
+  { id: 5, title: "Vendor Configuration", description: "Vendor-specific settings" },
+]
 
 export default function AddRouterPage() {
   const router = useRouter()
+  const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
-  const [radiusSettings, setRadiusSettings] = useState<any>(null)
 
-  // Form state
   const [formData, setFormData] = useState({
+    // Step 1: Vendor
+    type: "",
+    // Step 2: Basic Info
     name: "",
-    type: "mikrotik",
     location_id: "",
+    status: "active",
+    // Step 3: Network
     ip_address: "",
     port: "8728",
     ssh_port: "22",
+    connection_method: "api",
+    // Step 4: Authentication
     username: "admin",
     password: "",
-    connection_method: "api",
     radius_secret: "",
     nas_ip_address: "",
+    // Step 5: Vendor Specific
     api_username: "admin",
     api_password: "",
+    customer_auth_method: "pppoe_radius",
     enable_traffic_recording: true,
     enable_speed_control: true,
+    blocking_page_url: "",
     latitude: 0,
     longitude: 0,
-    blocking_page_url: "",
-    status: "active",
-    customer_auth_method: "pppoe_radius",
   })
 
-  // Load locations
   useEffect(() => {
-    const fetchLocations = async () => {
-      try {
-        const response = await fetch("/api/locations")
-        if (response.ok) {
-          const data = await response.json()
-          if (Array.isArray(data)) {
-            setLocations(data)
-          } else if (data && Array.isArray(data.locations)) {
-            setLocations(data.locations)
-          } else {
-            console.error("Locations API returned unexpected format:", data)
-            setLocations([])
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching locations:", error)
-        setLocations([])
-      }
-    }
-    fetchLocations()
-  }, [])
-
-  useEffect(() => {
-    const fetchRadiusSettings = async () => {
-      try {
-        const response = await fetch("/api/server-settings")
-        if (response.ok) {
-          const data = await response.json()
-          setRadiusSettings(data.radius)
-          if (data.radius?.enabled && formData.ip_address && !formData.nas_ip_address) {
-            setFormData((prev) => ({
-              ...prev,
-              nas_ip_address: formData.ip_address,
-            }))
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching RADIUS settings:", error)
-      }
-    }
-    fetchRadiusSettings()
+    fetch("/api/locations")
+      .then((res) => res.json())
+      .then((data) => setLocations(Array.isArray(data) ? data : data.locations || []))
+      .catch(() => setLocations([]))
   }, [])
 
   const handleInputChange = (field: string, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleLocationChange = (locationId: string) => {
-    const location = locations.find((loc) => loc.id.toString() === locationId)
-    if (location) {
-      setFormData((prev) => ({
-        ...prev,
-        location_id: locationId,
-        latitude: location.latitude,
-        longitude: location.longitude,
-      }))
+  const validateStep = (step: number): boolean => {
+    switch (step) {
+      case 1:
+        return formData.type !== ""
+      case 2:
+        return formData.name !== "" && formData.location_id !== ""
+      case 3:
+        return formData.ip_address !== ""
+      case 4:
+        return formData.username !== "" && formData.password !== ""
+      default:
+        return true
     }
   }
 
-  const handleGPSChange = (lat: number, lng: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      latitude: lat,
-      longitude: lng,
-    }))
+  const handleNext = () => {
+    if (!validateStep(currentStep)) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+    if (currentStep < STEPS.length) setCurrentStep(currentStep + 1)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
+  const handlePrevious = () => {
+    if (currentStep > 1) setCurrentStep(currentStep - 1)
+  }
 
+  const handleSubmit = async () => {
+    if (!validateStep(currentStep)) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
     try {
       const payload = {
         ...formData,
-        location_id: formData.location_id ? Number.parseInt(formData.location_id) : null,
+        location_id: Number.parseInt(formData.location_id),
         port: Number.parseInt(formData.port),
         ssh_port: Number.parseInt(formData.ssh_port),
-        // Explicitly include MikroTik configuration
-        api_username: formData.api_username,
-        api_password: formData.api_password,
-        customer_auth_method: formData.customer_auth_method,
-        enable_traffic_recording: formData.enable_traffic_recording,
-        enable_speed_control: formData.enable_speed_control,
-        blocking_page_url: formData.blocking_page_url,
       }
-
-      console.log("[v0] Submitting router data:", payload)
 
       const response = await fetch("/api/network/routers", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
 
       if (response.ok) {
-        const data = await response.json()
-        console.log("[v0] Router created successfully:", data)
-        toast({
-          title: "Success",
-          description: "Router created successfully",
-        })
+        toast({ title: "Success", description: "Router created successfully" })
         router.push("/network/routers")
       } else {
-        const errorData = await response.json()
-        const errorMessage = errorData.message || errorData.error || "Failed to create router"
-        console.error("[v0] Error response:", errorData)
+        const error = await response.json()
         toast({
           title: "Error",
-          description: errorMessage,
+          description: error.message || "Failed to create router",
           variant: "destructive",
         })
       }
     } catch (error) {
-      console.error("[v0] Error creating router:", error)
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create router",
+        description: "Failed to create router",
         variant: "destructive",
       })
     } finally {
@@ -184,442 +149,396 @@ export default function AddRouterPage() {
     }
   }
 
+  const getVendorDefaultPorts = (vendor: string) => {
+    switch (vendor) {
+      case "mikrotik":
+        return { port: "8728", ssh_port: "22" }
+      case "ubiquiti":
+        return { port: "443", ssh_port: "22" }
+      case "juniper":
+        return { port: "830", ssh_port: "22" }
+      default:
+        return { port: "22", ssh_port: "22" }
+    }
+  }
+
+  const handleVendorChange = (vendor: string) => {
+    const defaults = getVendorDefaultPorts(vendor)
+    setFormData((prev) => ({
+      ...prev,
+      type: vendor,
+      port: defaults.port,
+      ssh_port: defaults.ssh_port,
+      connection_method: vendor === "mikrotik" ? "api" : vendor === "juniper" ? "netconf" : "ssh",
+    }))
+  }
+
+  const progress = (currentStep / STEPS.length) * 100
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 max-w-4xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/network/routers")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Routers
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Add New Router</h1>
-            <p className="text-muted-foreground">Configure a new network router</p>
-          </div>
-        </div>
-        <Button onClick={handleSubmit} disabled={isLoading}>
-          <Save className="h-4 w-4 mr-2" />
-          {isLoading ? "Creating..." : "Create Router"}
+      <div className="mb-8">
+        <Button variant="ghost" size="sm" onClick={() => router.push("/network/routers")} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Routers
         </Button>
+        <h1 className="text-3xl font-bold">Add New Router</h1>
+        <p className="text-muted-foreground mt-1">Configure a multi-vendor network router</p>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <Tabs defaultValue="basic" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="basic" className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              Data & Configuration
-            </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Security
-            </TabsTrigger>
-            <TabsTrigger value="mikrotik" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              MikroTik
-            </TabsTrigger>
-          </TabsList>
+      {/* Progress Steps */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          {STEPS.map((step, index) => (
+            <div key={step.id} className="flex items-center flex-1">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                    currentStep === step.id
+                      ? "bg-primary text-primary-foreground"
+                      : currentStep > step.id
+                        ? "bg-green-500 text-white"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {currentStep > step.id ? <Check className="h-5 w-5" /> : step.id}
+                </div>
+                <div className="text-xs font-medium mt-2 text-center max-w-[80px]">{step.title}</div>
+              </div>
+              {index < STEPS.length - 1 && (
+                <div className={`flex-1 h-1 mx-2 ${currentStep > step.id ? "bg-green-500" : "bg-muted"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+        <Progress value={progress} className="h-2" />
+      </div>
 
-          {/* Basic Configuration */}
-          <TabsContent value="basic">
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic Router Information</CardTitle>
-                <CardDescription>Configure the basic router settings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+      {/* Step Content */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{STEPS[currentStep - 1].title}</CardTitle>
+          <CardDescription>{STEPS[currentStep - 1].description}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Step 1: Vendor Selection */}
+          {currentStep === 1 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { value: "mikrotik", label: "MikroTik", desc: "RouterOS API (Port 8728)" },
+                { value: "ubiquiti", label: "Ubiquiti", desc: "EdgeRouter / UniFi" },
+                { value: "juniper", label: "Juniper", desc: "JunOS NETCONF" },
+              ].map((vendor) => (
+                <Card
+                  key={vendor.value}
+                  className={`cursor-pointer transition-all ${
+                    formData.type === vendor.value ? "ring-2 ring-primary bg-primary/5" : "hover:border-primary/50"
+                  }`}
+                  onClick={() => handleVendorChange(vendor.value)}
+                >
+                  <CardContent className="p-6 text-center">
+                    <RouterIcon className="h-12 w-12 mx-auto mb-3 text-primary" />
+                    <h3 className="font-semibold text-lg">{vendor.label}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">{vendor.desc}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Step 2: Basic Information */}
+          {currentStep === 2 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Router Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  placeholder="e.g., Core Router 01"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location *</Label>
+                  <Select
+                    value={formData.location_id}
+                    onValueChange={(value) => handleInputChange("location_id", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locations.map((loc) => (
+                        <SelectItem key={loc.id} value={loc.id.toString()}>
+                          {loc.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm font-medium">Selected Vendor</p>
+                <Badge className="mt-2">{formData.type.toUpperCase()}</Badge>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Network Configuration */}
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="ip_address">IP Address *</Label>
+                <Input
+                  id="ip_address"
+                  value={formData.ip_address}
+                  onChange={(e) => handleInputChange("ip_address", e.target.value)}
+                  placeholder="192.168.1.1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="port">
+                    {formData.type === "mikrotik"
+                      ? "API Port"
+                      : formData.type === "juniper"
+                        ? "NETCONF Port"
+                        : "Management Port"}
+                  </Label>
+                  <Input
+                    id="port"
+                    type="number"
+                    value={formData.port}
+                    onChange={(e) => handleInputChange("port", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ssh_port">SSH Port</Label>
+                  <Input
+                    id="ssh_port"
+                    type="number"
+                    value={formData.ssh_port}
+                    onChange={(e) => handleInputChange("ssh_port", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="connection_method">Connection Method</Label>
+                <Select
+                  value={formData.connection_method}
+                  onValueChange={(value) => handleInputChange("connection_method", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formData.type === "mikrotik" && <SelectItem value="api">MikroTik API</SelectItem>}
+                    {formData.type === "juniper" && <SelectItem value="netconf">NETCONF</SelectItem>}
+                    <SelectItem value="ssh">SSH</SelectItem>
+                    <SelectItem value="both">Both API & SSH</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Authentication */}
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <div className="space-y-4 p-4 bg-muted rounded-lg">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Router Credentials
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Router Name</Label>
+                    <Label htmlFor="username">Username *</Label>
                     <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
-                      placeholder="Enter router name"
-                      required
+                      id="username"
+                      value={formData.username}
+                      onChange={(e) => handleInputChange("username", e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="type">Router Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => handleInputChange("type", value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mikrotik">MikroTik</SelectItem>
-                        <SelectItem value="ubiquiti">Ubiquiti</SelectItem>
-                        <SelectItem value="juniper">Juniper</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="password">Password *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => handleInputChange("password", e.target.value)}
+                    />
                   </div>
                 </div>
+              </div>
 
+              <div className="space-y-4 p-4 bg-muted rounded-lg">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Network className="h-4 w-4" />
+                  RADIUS Configuration (Optional)
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="location">Location</Label>
-                    <Select value={formData.location_id} onValueChange={handleLocationChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.isArray(locations) && locations.length > 0 ? (
-                          locations.map((location) => (
-                            <SelectItem key={location.id} value={location.id.toString()}>
-                              {location.name}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <div className="px-2 py-1.5 text-sm text-muted-foreground">No locations available</div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="maintenance">Maintenance</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ip_address">IP Address</Label>
+                    <Label htmlFor="radius_secret">RADIUS Shared Secret</Label>
                     <Input
-                      id="ip_address"
-                      value={formData.ip_address}
-                      onChange={(e) => handleInputChange("ip_address", e.target.value)}
-                      placeholder="192.168.1.1"
-                      required
+                      id="radius_secret"
+                      type="password"
+                      value={formData.radius_secret}
+                      onChange={(e) => handleInputChange("radius_secret", e.target.value)}
+                      placeholder="Leave empty if not using RADIUS"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="port">API Port</Label>
+                    <Label htmlFor="nas_ip_address">NAS IP Address</Label>
                     <Input
-                      id="port"
-                      type="number"
-                      value={formData.port}
-                      onChange={(e) => handleInputChange("port", e.target.value)}
-                      placeholder="8728"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ssh_port">SSH Port</Label>
-                    <Input
-                      id="ssh_port"
-                      type="number"
-                      value={formData.ssh_port}
-                      onChange={(e) => handleInputChange("ssh_port", e.target.value)}
-                      placeholder="22"
+                      id="nas_ip_address"
+                      value={formData.nas_ip_address}
+                      onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
+                      placeholder={formData.ip_address || "Router IP"}
                     />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
+            </div>
+          )}
 
-          {/* Security Configuration */}
-          <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle>Security Configuration</CardTitle>
-                <CardDescription>Configure authentication and security settings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Router Authentication */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Router Authentication</h3>
+          {/* Step 5: Vendor Configuration */}
+          {currentStep === 5 && (
+            <div className="space-y-4">
+              {formData.type === "mikrotik" && (
+                <>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h3 className="font-semibold text-blue-900 mb-2">MikroTik Specific Settings</h3>
+                    <p className="text-sm text-blue-700">Configure MikroTik RouterOS features</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
+                      <Label htmlFor="api_username">API Username</Label>
                       <Input
-                        id="username"
-                        value={formData.username}
-                        onChange={(e) => handleInputChange("username", e.target.value)}
-                        placeholder="admin"
-                        required
+                        id="api_username"
+                        value={formData.api_username}
+                        onChange={(e) => handleInputChange("api_username", e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="password">Password</Label>
+                      <Label htmlFor="api_password">API Password</Label>
                       <Input
-                        id="password"
+                        id="api_password"
                         type="password"
-                        value={formData.password}
-                        onChange={(e) => handleInputChange("password", e.target.value)}
-                        placeholder="Enter password"
-                        required
+                        value={formData.api_password}
+                        onChange={(e) => handleInputChange("api_password", e.target.value)}
                       />
                     </div>
                   </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="connection_method">Connection Method</Label>
+                    <Label htmlFor="customer_auth_method">Customer Authorization Method</Label>
                     <Select
-                      value={formData.connection_method}
-                      onValueChange={(value) => handleInputChange("connection_method", value)}
+                      value={formData.customer_auth_method}
+                      onValueChange={(value) => handleInputChange("customer_auth_method", value)}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="api">API (Recommended)</SelectItem>
-                        <SelectItem value="ssh">SSH</SelectItem>
-                        <SelectItem value="both">Both API & SSH</SelectItem>
+                        <SelectItem value="pppoe_radius">PPPoE + RADIUS</SelectItem>
+                        <SelectItem value="pppoe_local">PPPoE Local</SelectItem>
+                        <SelectItem value="hotspot">Hotspot</SelectItem>
+                        <SelectItem value="ipoe">IPoE</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">RADIUS Authentication (FreeRADIUS)</h3>
-                    {radiusSettings?.enabled && (
-                      <Badge className="bg-green-100 text-green-800">
-                        <activity className="w-3 h-3 mr-1" />
-                        Server Active
-                      </Badge>
-                    )}
-                  </div>
-
-                  {radiusSettings?.enabled ? (
-                    <>
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm space-y-2">
-                        <p className="font-medium text-blue-900">FreeRADIUS Server Detected</p>
-                        <div className="space-y-1 text-blue-700">
-                          <p>
-                            Server:{" "}
-                            <span className="font-mono">
-                              {radiusSettings.host}:{radiusSettings.authPort}
-                            </span>
-                          </p>
-                          <p>Protocols: PPPoE, IPoE, Hotspot, Wireless</p>
-                          <p>Accounting: {radiusSettings.acctPort}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="radius_secret">RADIUS Shared Secret 🔒</Label>
-                          <Input
-                            id="radius_secret"
-                            type="password"
-                            value={formData.radius_secret}
-                            onChange={(e) => handleInputChange("radius_secret", e.target.value)}
-                            placeholder="Enter shared secret"
-                            required
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Must match the secret configured in FreeRADIUS clients.conf
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="nas_ip_address">NAS IP Address</Label>
-                          <Input
-                            id="nas_ip_address"
-                            value={formData.nas_ip_address}
-                            onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
-                            placeholder={formData.ip_address || "Router IP address"}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Network Access Server identifier (usually router IP)
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-3 bg-gray-50 border rounded-lg space-y-2">
-                        <p className="text-sm font-medium">After creating this router, configure MikroTik:</p>
-                        <div className="space-y-1 text-xs font-mono bg-white p-2 rounded border">
-                          <div className="text-muted-foreground"># Add RADIUS server</div>
-                          <div>/radius add service=ppp,login address={radiusSettings.host} secret=[YOUR_SECRET]</div>
-                          <div className="text-muted-foreground mt-2"># Enable RADIUS AAA</div>
-                          <div>/ppp aaa set use-radius=yes accounting=yes</div>
-                        </div>
-                      </div>
-
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <p className="text-sm text-green-900">
-                          <strong>Supported Features:</strong> User authentication, bandwidth control via
-                          vendor-specific attributes (Mikrotik-Rate-Limit), session accounting, and failover redundancy.
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="radius_secret">RADIUS Secret (Optional)</Label>
-                          <Input
-                            id="radius_secret"
-                            type="password"
-                            value={formData.radius_secret}
-                            onChange={(e) => handleInputChange("radius_secret", e.target.value)}
-                            placeholder="Leave empty if not using RADIUS"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="nas_ip_address">NAS IP Address (Optional)</Label>
-                          <Input
-                            id="nas_ip_address"
-                            value={formData.nas_ip_address}
-                            onChange={(e) => handleInputChange("nas_ip_address", e.target.value)}
-                            placeholder="Leave empty if not using RADIUS"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <div className="flex items-start gap-3">
-                          <Shield className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-medium text-yellow-900">FreeRADIUS Not Configured</p>
-                            <p className="text-sm text-yellow-700 mt-1">
-                              To enable centralized AAA (Authentication, Authorization, Accounting) with FreeRADIUS,
-                              configure your RADIUS server in{" "}
-                              <a
-                                href="/settings/servers"
-                                target="_blank"
-                                className="underline font-medium"
-                                rel="noreferrer"
-                              >
-                                Settings → Servers
-                              </a>
-                              .
-                            </p>
-                            <p className="text-sm text-yellow-700 mt-2">
-                              <strong>Benefits:</strong> Centralized user management, PPPoE/IPoE/Hotspot authentication,
-                              dynamic bandwidth control, session tracking, and multi-vendor support (MikroTik, Ubiquiti,
-                              Cisco, Juniper, Cambium, Huawei).
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* MikroTik Configuration */}
-          <TabsContent value="mikrotik">
-            <Card>
-              <CardHeader>
-                <CardTitle>MikroTik Configuration</CardTitle>
-                <CardDescription>MikroTik specific settings and features</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="api_username">API Username</Label>
-                    <Input
-                      id="api_username"
-                      value={formData.api_username}
-                      onChange={(e) => handleInputChange("api_username", e.target.value)}
-                      placeholder="admin"
-                    />
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="enable_traffic_recording">Enable Traffic Recording</Label>
+                      <Switch
+                        id="enable_traffic_recording"
+                        checked={formData.enable_traffic_recording}
+                        onCheckedChange={(checked) => handleInputChange("enable_traffic_recording", checked)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="enable_speed_control">Enable Speed Control</Label>
+                      <Switch
+                        id="enable_speed_control"
+                        checked={formData.enable_speed_control}
+                        onCheckedChange={(checked) => handleInputChange("enable_speed_control", checked)}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="api_password">API Password</Label>
+                    <Label htmlFor="blocking_page_url">Blocking Page URL</Label>
                     <Input
-                      id="api_password"
-                      type="password"
-                      value={formData.api_password}
-                      onChange={(e) => handleInputChange("api_password", e.target.value)}
-                      placeholder="Enter API password"
+                      id="blocking_page_url"
+                      value={formData.blocking_page_url}
+                      onChange={(e) => handleInputChange("blocking_page_url", e.target.value)}
+                      placeholder="http://portal.isp.com/blocked"
                     />
                   </div>
-                </div>
+                </>
+              )}
 
-                {/* Customer Authorization Method dropdown */}
-                <div className="space-y-2">
-                  <Label htmlFor="customer_auth_method">Customer Authorization Method</Label>
-                  <Select
-                    value={formData.customer_auth_method || "pppoe_radius"}
-                    onValueChange={(value) => handleInputChange("customer_auth_method", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select authorization method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dhcp_lease">
-                        <div className="flex flex-col">
-                          <span className="font-medium">DHCP Lease</span>
-                          <span className="text-xs text-muted-foreground">
-                            Customers get IP addresses via DHCP without authentication
-                          </span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="pppoe_radius">
-                        <div className="flex flex-col">
-                          <span className="font-medium">PPPoE with DHCP and RADIUS Authentication</span>
-                          <span className="text-xs text-muted-foreground">
-                            Customers authenticate via PPPoE using RADIUS server (Recommended)
-                          </span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="pppoe_secrets">
-                        <div className="flex flex-col">
-                          <span className="font-medium">PPPoE Secrets</span>
-                          <span className="text-xs text-muted-foreground">
-                            Customers authenticate via PPPoE using local router secrets
-                          </span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    This setting determines how customers will be authorized to browse the internet
+              {formData.type === "ubiquiti" && (
+                <div className="p-4 bg-muted rounded-lg space-y-4">
+                  <h3 className="font-semibold">Ubiquiti Configuration</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Ubiquiti routers use SSH and RADIUS with WISPr-Bandwidth attributes for speed control.
                   </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Enable Traffic Recording</Label>
-                      <p className="text-sm text-muted-foreground">Record traffic data for monitoring</p>
-                    </div>
-                    <Switch
-                      checked={formData.enable_traffic_recording}
-                      onCheckedChange={(checked) => handleInputChange("enable_traffic_recording", checked)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Enable Speed Control</Label>
-                      <p className="text-sm text-muted-foreground">Enable bandwidth management</p>
-                    </div>
-                    <Switch
-                      checked={formData.enable_speed_control}
-                      onCheckedChange={(checked) => handleInputChange("enable_speed_control", checked)}
-                    />
+                  <div className="p-3 bg-background rounded border">
+                    <p className="text-xs font-mono">Authentication: RADIUS + SSH</p>
+                    <p className="text-xs font-mono">Speed Control: WISPr-Bandwidth-Max-Up/Down</p>
                   </div>
                 </div>
+              )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="blocking_page_url">Blocking Page URL</Label>
-                  <Input
-                    id="blocking_page_url"
-                    value={formData.blocking_page_url}
-                    onChange={(e) => handleInputChange("blocking_page_url", e.target.value)}
-                    placeholder="http://example.com/blocked"
-                  />
+              {formData.type === "juniper" && (
+                <div className="p-4 bg-muted rounded-lg space-y-4">
+                  <h3 className="font-semibold">Juniper Configuration</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Juniper routers use NETCONF and RADIUS with ERX-Qos-Profile attributes.
+                  </p>
+                  <div className="p-3 bg-background rounded border">
+                    <p className="text-xs font-mono">Protocol: NETCONF over SSH (Port 830)</p>
+                    <p className="text-xs font-mono">Speed Control: ERX-Qos-Profile</p>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </form>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Navigation Buttons */}
+      <div className="flex justify-between mt-6">
+        <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 1 || isLoading}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Previous
+        </Button>
+        {currentStep < STEPS.length ? (
+          <Button onClick={handleNext} disabled={isLoading}>
+            Next
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        ) : (
+          <Button onClick={handleSubmit} disabled={isLoading}>
+            {isLoading ? "Creating..." : "Create Router"}
+            <Check className="h-4 w-4 ml-2" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

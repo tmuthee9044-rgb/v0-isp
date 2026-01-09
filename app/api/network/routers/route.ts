@@ -113,17 +113,7 @@ export async function POST(request: NextRequest) {
     }
 
     const configuration = {
-      mikrotik_user: api_username || username || "admin",
-      mikrotik_password: api_password || password || "",
-      api_port: api_port || port || 8728,
-      enable_traffic_recording: enable_traffic_recording !== undefined ? enable_traffic_recording : true,
-      enable_speed_control: enable_speed_control !== undefined ? enable_speed_control : true,
-      blocking_page_url: blocking_page_url || null,
       customer_auth_method: customer_auth_method || "pppoe_radius",
-      radius_secret: radius_secret || null,
-      nas_ip_address: nas_ip_address || null,
-      api_username: api_username || null,
-      api_password: api_password || null,
     }
 
     console.log("[v0] Inserting router with configuration:", configuration)
@@ -134,7 +124,7 @@ export async function POST(request: NextRequest) {
         location_id,
         name, 
         type, 
-        ip_address, 
+        ip_address,
         hostname,
         model,
         serial_number,
@@ -163,7 +153,7 @@ export async function POST(request: NextRequest) {
         ${name}, 
         ${type}, 
         ${ip_address},
-        ${hostname || null},
+        ${hostname || ip_address},
         ${model || null},
         ${serial || null},
         ${port || api_port || 8728},

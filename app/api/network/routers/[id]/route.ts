@@ -37,24 +37,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     return NextResponse.json({
       ...routerData,
-      model: config.model || null,
-      serial: config.serial || null,
       connection_type: config.connection_type || "public_ip",
-      hostname: routerData.ip_address || config.hostname || "",
-      api_port: config.api_port || routerData.api_port || 8728,
-      ssh_port: config.ssh_port || routerData.ssh_port || 22,
-      username: config.username || routerData.username || "",
       password: "", // Never return passwords
-      mikrotik_user: config.mikrotik_user || "",
+      mikrotik_user: routerData.api_username || "",
       mikrotik_password: "", // Never return passwords
-      trafficking_record: config.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
-      speed_control: config.speed_control || "PCQ + Addresslist",
-      save_visited_ips: config.save_visited_ips ?? true,
+      trafficking_record: "Traffic Flow (RouterOS V6x,V7.x)",
+      speed_control: "PCQ + Addresslist",
+      save_visited_ips: true,
       customer_auth_method: config.customer_auth_method || "pppoe_radius",
-      radius_secret: config.radius_secret || routerData.radius_secret || "",
-      radius_nas_ip: config.nas_ip_address || routerData.nas_ip_address || "",
-      gps_latitude: config.gps_latitude || routerData.latitude || null,
-      gps_longitude: config.gps_longitude || routerData.longitude || null,
+      radius_nas_ip: routerData.nas_ip_address || "",
+      gps_latitude: routerData.latitude || null,
+      gps_longitude: routerData.longitude || null,
     })
   } catch (error) {
     console.error("[v0] Error fetching router:", error)
@@ -108,7 +101,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const existingRouter = await sql`
-      SELECT id, configuration, location, ip_address FROM network_devices 
+      SELECT id, configuration, location, ip_address, port, api_port, ssh_port, 
+             username, connection_method FROM network_devices 
       WHERE id = ${routerId} 
         AND (type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR type ILIKE '%router%')
     `
@@ -131,21 +125,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const configuration = {
       ...existingConfig,
-      connection_type: connection_type || existingConfig.connection_type || "public_ip",
-      api_port: api_port || existingConfig.api_port || 8728,
-      ssh_port: ssh_port || existingConfig.ssh_port || 22,
-      username: username || existingConfig.username || "",
-      ...(password && { password }),
-      mikrotik_user: mikrotik_user || existingConfig.mikrotik_user || "",
-      ...(mikrotik_password && { mikrotik_password }),
-      trafficking_record: trafficking_record || existingConfig.trafficking_record || "Traffic Flow (RouterOS V6x,V7.x)",
-      speed_control: speed_control || existingConfig.speed_control || "PCQ + Addresslist",
-      save_visited_ips: save_visited_ips ?? existingConfig.save_visited_ips ?? true,
       customer_auth_method: customer_auth_method || existingConfig.customer_auth_method || "pppoe_radius",
-      radius_secret: radius_secret || "",
-      nas_ip_address: radius_nas_ip || "",
-      gps_latitude: gps_latitude ?? null,
-      gps_longitude: gps_longitude ?? null,
     }
 
     console.log("[v0] Saving configuration:", configuration)
@@ -155,7 +135,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         name = ${name},
         type = ${type},
         location = ${locationName},
-        ip_address = ${hostname || existingRouter[0].ip_address},
+        location_id = ${location_id ? Number.parseInt(location_id) : null},
+        hostname = ${hostname || existingRouter[0].ip_address},
+        api_port = ${api_port || existingRouter[0].api_port || 8728},
+        ssh_port = ${ssh_port || existingRouter[0].ssh_port || 22},
+        username = ${username || existingRouter[0].username || null},
+        password = ${password || existingRouter[0].password || null},
+        connection_method = ${connection_type || existingRouter[0].connection_method || "api"},
+        api_username = ${mikrotik_user || username || null},
+        api_password = ${mikrotik_password || password || null},
         status = ${status || "active"},
         radius_secret = ${radius_secret || null},
         nas_ip_address = ${radius_nas_ip || null},

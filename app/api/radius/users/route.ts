@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import bcrypt from "bcryptjs"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 // GET - List RADIUS users
 export async function GET(request: NextRequest) {
   try {
+    const sql = getSql()
     const { searchParams } = new URL(request.url)
     const customer_id = searchParams.get("customer_id")
     const status = searchParams.get("status")
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     query += ` GROUP BY ru.id, c.full_name, c.email ORDER BY ru.created_at DESC LIMIT 100`
 
-    const users = await sql(query)
+    const users = await sql.unsafe(query)
 
     return NextResponse.json({ users }, { status: 200 })
   } catch (error: any) {
@@ -44,6 +43,7 @@ export async function GET(request: NextRequest) {
 // POST - Create RADIUS user
 export async function POST(request: NextRequest) {
   try {
+    const sql = getSql()
     const {
       username,
       password,

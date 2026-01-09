@@ -1,11 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import bcrypt from "bcryptjs"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = getSql()
     const { username, password, nas_ip_address, service_type = "PPPoE", calling_station_id } = await request.json()
 
     console.log("[v0] RADIUS Auth request for:", username, "from NAS:", nas_ip_address)

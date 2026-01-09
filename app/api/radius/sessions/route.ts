@@ -1,11 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 // GET - List active RADIUS sessions
 export async function GET(request: NextRequest) {
   try {
+    const sql = getSql()
     const { searchParams } = new URL(request.url)
     const customer_id = searchParams.get("customer_id")
     const nas_id = searchParams.get("nas_id")
@@ -34,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     query += ` ORDER BY rsa.start_time DESC LIMIT 200`
 
-    const sessions = await sql(query)
+    const sessions = await sql.unsafe(query)
 
     return NextResponse.json({ sessions }, { status: 200 })
   } catch (error: any) {
@@ -46,6 +45,7 @@ export async function GET(request: NextRequest) {
 // DELETE - Disconnect session (CoA)
 export async function DELETE(request: NextRequest) {
   try {
+    const sql = getSql()
     const { searchParams } = new URL(request.url)
     const session_id = searchParams.get("session_id")
 

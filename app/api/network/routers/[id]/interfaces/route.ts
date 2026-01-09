@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       SELECT *
       FROM router_performance_history
       WHERE router_id = ${routerId}
-        AND timestamp > NOW() - INTERVAL '${hoursBack} hours'
+        AND timestamp > NOW() - INTERVAL '${sql.unsafe(hoursBack.toString())} hours'
       ORDER BY timestamp DESC
     `
 

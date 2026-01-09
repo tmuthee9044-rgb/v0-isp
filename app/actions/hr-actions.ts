@@ -169,26 +169,25 @@ export async function generatePayroll(
 
       await sql`
         INSERT INTO payroll_records (
-          employee_id, period, employee_name, basic_salary, 
-          allowances, overtime, gross_pay, paye, nssf, sha,
-          other_deductions, total_deductions, net_pay, status, created_at
+          employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
+          allowances, deductions, gross_pay, tax, nhif, nssf,
+          net_pay, status, created_at
         ) VALUES (
-          ${employee.id}, ${period}, ${`${employee.first_name} ${employee.last_name}`}, ${basicSalary},
-          ${allowances}, ${overtime}, ${grossPay}, ${paye}, ${nssf}, ${sha},
-          ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
+          ${employee.id}, ${`${employee.first_name} ${employee.last_name}`}, 
+          ${period}-01, ${period}-31, ${basicSalary},
+          ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, ${paye}, ${sha}, ${nssf},
+          ${netPay}, 'pending', NOW()
         )
-        ON CONFLICT (employee_id, period) 
+        ON CONFLICT (employee_id, pay_period_start) 
         DO UPDATE SET
           employee_name = EXCLUDED.employee_name,
           basic_salary = EXCLUDED.basic_salary,
           allowances = EXCLUDED.allowances,
-          overtime = EXCLUDED.overtime,
+          deductions = EXCLUDED.deductions,
           gross_pay = EXCLUDED.gross_pay,
-          paye = EXCLUDED.paye,
+          tax = EXCLUDED.tax,
+          nhif = EXCLUDED.nhif,
           nssf = EXCLUDED.nssf,
-          sha = EXCLUDED.sha,
-          other_deductions = EXCLUDED.other_deductions,
-          total_deductions = EXCLUDED.total_deductions,
           net_pay = EXCLUDED.net_pay,
           status = EXCLUDED.status,
           updated_at = NOW()

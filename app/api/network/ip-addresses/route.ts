@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 // GET - List all IP addresses with filtering
 export async function GET(request: NextRequest) {
@@ -11,63 +9,112 @@ export async function GET(request: NextRequest) {
     const subnetId = searchParams.get("subnet_id")
     const customerId = searchParams.get("customer_id")
     const routerId = searchParams.get("router_id")
+    const search = searchParams.get("search")
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "100")
+    const offset = (page - 1) * limit
 
-    console.log("[v0] Fetching IP addresses with filters:", { status, subnetId, customerId, routerId })
+    const sql = await getSql()
 
-    const whereConditions: string[] = []
-
-    if (status) {
-      whereConditions.push(`ia.status = '${status}'`)
-    }
+    const whereConditions: string[] = ["1=1"]
+    const params: any[] = []
+    let paramIndex = 1
 
     if (subnetId) {
-      whereConditions.push(`ia.subnet_id = ${Number.parseInt(subnetId)}`)
+      whereConditions.push(`ia.subnet_id = $${paramIndex}`)
+      params.push(Number.parseInt(subnetId))
+      paramIndex++
+    }
+
+    if (status && status !== "all") {
+      if (status === "assigned") {
+        whereConditions.push(`cs.id IS NOT NULL`)
+      } else if (status === "available") {
+        whereConditions.push(`cs.id IS NULL`)
+      } else {
+        whereConditions.push(`ia.status = $${paramIndex}`)
+        params.push(status)
+        paramIndex++
+      }
     }
 
     if (customerId) {
-      whereConditions.push(`ia.customer_id = ${Number.parseInt(customerId)}`)
+      whereConditions.push(`cs.customer_id = $${paramIndex}`)
+      params.push(Number.parseInt(customerId))
+      paramIndex++
     }
 
     if (routerId) {
-      whereConditions.push(`s.router_id = ${Number.parseInt(routerId)}`)
+      whereConditions.push(`ia.subnet_id IN (SELECT id FROM ip_subnets WHERE router_id = $${paramIndex})`)
+      params.push(Number.parseInt(routerId))
+      paramIndex++
     }
 
-    const whereClause = whereConditions.length > 0 ? `AND ${whereConditions.join(" AND ")}` : ""
+    if (search) {
+      whereConditions.push(`(
+        ia.ip_address::text LIKE $${paramIndex}
+        OR c.first_name ILIKE $${paramIndex}
+        OR c.last_name ILIKE $${paramIndex}
+        OR c.business_name ILIKE $${paramIndex}
+      )`)
+      params.push(`%${search}%`)
+      paramIndex++
+    }
 
-    const addresses = await sql`
+    const whereClause = whereConditions.join(" AND ")
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT ia.id) as total
+      FROM ip_addresses ia
+      LEFT JOIN customer_services cs ON cs.ip_address::text = ia.ip_address::text 
+        AND cs.status IN ('active', 'pending', 'suspended')
+      LEFT JOIN customers c ON cs.customer_id = c.id
+      WHERE ${whereClause}
+    `
+
+    const countResult = await sql.unsafe(countQuery, params)
+    const total = Number(countResult[0]?.total || 0)
+
+    const query = `
       SELECT 
         ia.id,
-        ia.ip_address,
+        ia.ip_address::text as ip_address,
         ia.subnet_id,
-        ia.customer_id,
         ia.status,
         ia.created_at,
-        ia.assigned_at,
-        s.cidr as subnet_cidr,
-        s.name as subnet_name,
-        s.router_id,
-        nd.name as router_name,
+        ia.assigned_date,
+        cs.id as service_id,
+        cs.customer_id,
+        cs.service_plan_id as plan_id,
+        cs.activation_date as assigned_at,
+        cs.status as service_status,
         c.first_name,
         c.last_name,
         c.business_name
       FROM ip_addresses ia
-      LEFT JOIN ip_subnets s ON ia.subnet_id = s.id
-      LEFT JOIN network_devices nd ON s.router_id = nd.id
-      LEFT JOIN customers c ON ia.customer_id = c.id
-      WHERE 1=1 ${sql.unsafe(whereClause)}
-      ORDER BY ia.ip_address
+      LEFT JOIN customer_services cs ON cs.ip_address::text = ia.ip_address::text 
+        AND cs.status IN ('active', 'pending', 'suspended')
+      LEFT JOIN customers c ON cs.customer_id = c.id
+      WHERE ${whereClause}
+      ORDER BY 
+        CASE WHEN cs.id IS NOT NULL THEN 0 ELSE 1 END,
+        ia.id
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `
 
-    console.log("[v0] Found IP addresses:", addresses.length)
-    console.log("[v0] IP addresses data:", addresses.slice(0, 3)) // Log first 3 for debugging
+    params.push(limit, offset)
+    const addresses = await sql.unsafe(query, params)
 
     return NextResponse.json({
       success: true,
       addresses,
-      total: addresses.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     })
   } catch (error) {
-    console.error("[v0] Error fetching IP addresses:", error)
+    console.error("Error fetching IP addresses:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch IP addresses" }, { status: 500 })
   }
 }

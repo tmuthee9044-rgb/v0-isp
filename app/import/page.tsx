@@ -1,32 +1,33 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Upload, CheckCircle, AlertCircle, Download, Users, Car, Briefcase, Settings } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
+import { ArrowLeft, Upload, Download, Users, Package, Wrench, Check, AlertCircle, FileSpreadsheet } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast" // Import useToast
+import { Label } from "@/components/ui/label" // Import Label
+import * as XLSX from "xlsx" // Import xlsx library for Excel parsing
 
-interface FileData {
-  headers: string[]
-  rows: any[][]
-  filename: string
-}
+type EntityType = "customers" | "services" | "inventory" | "vehicles"
 
-interface ColumnMapping {
-  [key: string]: string
-}
-
-interface EntityColumn {
+interface ColumnConfig {
   key: string
   label: string
   required: boolean
+  description?: string // Added description field
+}
+
+interface EntityConfig {
+  name: string
+  icon: any
+  backUrl: string
+  apiEndpoint: string
+  columns: ColumnConfig[]
 }
 
 const ENTITY_CONFIGS = {
@@ -34,75 +35,155 @@ const ENTITY_CONFIGS = {
     name: "Customers",
     icon: Users,
     backUrl: "/customers",
-    apiEndpoint: "/api/import-customers/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
+      // Core identification
+      { key: "account_number", label: "Account Number", required: false },
+      { key: "name", label: "Full Name", required: true },
       { key: "first_name", label: "First Name", required: true },
       { key: "last_name", label: "Last Name", required: true },
-      { key: "email", label: "Email", required: true },
-      { key: "phone", label: "Phone", required: true },
-      { key: "address", label: "Address", required: false },
-      { key: "city", label: "City", required: false },
-      { key: "postal_code", label: "Postal Code", required: false },
-      { key: "customer_type", label: "Customer Type", required: false },
       { key: "business_name", label: "Business Name", required: false },
+
+      // Contact information
+      { key: "email", label: "Email", required: false },
+      { key: "alternate_email", label: "Alternate Email", required: false },
+      { key: "phone", label: "Phone", required: true },
+      { key: "phone_primary", label: "Primary Phone", required: false },
+      { key: "phone_secondary", label: "Secondary Phone", required: false },
+      { key: "phone_office", label: "Office Phone", required: false },
+
+      // Personal identification
       { key: "national_id", label: "National ID", required: false },
       { key: "date_of_birth", label: "Date of Birth", required: false },
       { key: "gender", label: "Gender", required: false },
+
+      // Customer classification
+      { key: "customer_type", label: "Customer Type (residential/business)", required: false },
+      { key: "status", label: "Status (active/inactive)", required: false },
+
+      // Physical address
+      { key: "physical_address", label: "Physical Address", required: false },
+      { key: "physical_city", label: "Physical City", required: false },
+      { key: "physical_county", label: "Physical County", required: false },
+      { key: "physical_postal_code", label: "Physical Postal Code", required: false },
+      { key: "physical_country", label: "Physical Country", required: false },
+      { key: "physical_gps_coordinates", label: "Physical GPS Coordinates", required: false },
+
+      // Billing address
+      { key: "billing_address", label: "Billing Address", required: false },
+      { key: "billing_city", label: "Billing City", required: false },
+      { key: "billing_postal_code", label: "Billing Postal Code", required: false },
+
+      // Installation address
+      { key: "installation_address", label: "Installation Address", required: false },
+      { key: "city", label: "City", required: false },
+      { key: "state", label: "State/Region", required: false },
+      { key: "country", label: "Country", required: false },
+      { key: "postal_code", label: "Postal Code", required: false },
+      { key: "gps_coordinates", label: "GPS Coordinates", required: false },
+      { key: "region", label: "Region", required: false },
+
+      // Emergency contact
+      { key: "emergency_contact_name", label: "Emergency Contact Name", required: false },
+      { key: "emergency_contact_phone", label: "Emergency Contact Phone", required: false },
+      { key: "emergency_contact_relationship", label: "Emergency Contact Relationship", required: false },
+
+      // Business information
+      { key: "business_type", label: "Business Type", required: false },
+      { key: "business_reg_no", label: "Business Registration Number", required: false },
+      { key: "contact_person", label: "Contact Person", required: false },
+      { key: "tax_number", label: "Tax Number", required: false },
+      { key: "vat_pin", label: "VAT PIN", required: false },
+
+      // Service and account details
+      { key: "plan", label: "Service Plan", required: false },
+      { key: "monthly_fee", label: "Monthly Fee", required: false },
+      { key: "balance", label: "Account Balance", required: false },
+      { key: "connection_quality", label: "Connection Quality", required: false },
+
+      // Portal credentials
+      { key: "portal_login_id", label: "Portal Login ID", required: false },
+      { key: "portal_username", label: "Portal Username", required: false },
+      { key: "portal_password", label: "Portal Password", required: false },
+
+      // Important dates
+      { key: "installation_date", label: "Installation Date", required: false },
+      { key: "last_payment_date", label: "Last Payment Date", required: false },
+      { key: "contract_end_date", label: "Contract End Date", required: false },
+
+      // Preferences and tracking
+      { key: "preferred_contact_method", label: "Preferred Contact Method", required: false },
+      { key: "referral_source", label: "Referral Source", required: false },
+      { key: "sales_rep", label: "Sales Representative", required: false },
+      { key: "account_manager", label: "Account Manager", required: false },
+      { key: "special_requirements", label: "Special Requirements", required: false },
+      { key: "internal_notes", label: "Internal Notes", required: false },
+
+      // Billing preferences
+      { key: "billing_cycle", label: "Billing Cycle", required: false },
+      { key: "auto_renewal", label: "Auto Renewal (true/false)", required: false },
+      { key: "paperless_billing", label: "Paperless Billing (true/false)", required: false },
+      { key: "sms_notifications", label: "SMS Notifications (true/false)", required: false },
     ],
   },
   services: {
     name: "Service Plans",
-    icon: Settings,
+    icon: Wrench,
     backUrl: "/services",
-    apiEndpoint: "/api/import-services/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
       { key: "name", label: "Plan Name", required: true },
+      { key: "description", label: "Description", required: false },
       { key: "price", label: "Price", required: true },
       { key: "download_speed", label: "Download Speed (Mbps)", required: true },
       { key: "upload_speed", label: "Upload Speed (Mbps)", required: true },
-      { key: "service_type", label: "Service Type", required: false },
-      { key: "description", label: "Description", required: false },
       { key: "data_limit", label: "Data Limit (GB)", required: false },
-      { key: "contract_length", label: "Contract Length (months)", required: false },
-      { key: "setup_fee", label: "Setup Fee", required: false },
+      { key: "billing_cycle", label: "Billing Cycle", required: false },
+      { key: "currency", label: "Currency", required: false },
+      { key: "priority_level", label: "Priority Level", required: false },
+      { key: "fair_usage_policy", label: "Fair Usage Policy", required: false },
+      { key: "status", label: "Status", required: false },
+    ],
+  },
+  inventory: {
+    name: "Inventory",
+    icon: Package,
+    backUrl: "/inventory",
+    apiEndpoint: "/api/import/bulk",
+    columns: [
+      { key: "product_id", label: "Product ID", required: true },
+      { key: "product_name", label: "Product Name", required: true },
+      { key: "quantity", label: "Quantity", required: true },
+      { key: "price_per_unit", label: "Price per Unit", required: true },
+      { key: "supplier", label: "Supplier", required: false },
+      { key: "category", label: "Category", required: false },
+      { key: "reorder_level", label: "Reorder Level", required: false },
+      { key: "expiry_date", label: "Expiry Date", required: false },
       { key: "status", label: "Status", required: false },
     ],
   },
   vehicles: {
     name: "Vehicles",
-    icon: Car,
+    icon: FileSpreadsheet,
     backUrl: "/vehicles",
-    apiEndpoint: "/api/import-vehicles/process",
+    apiEndpoint: "/api/import/bulk",
     columns: [
-      { key: "vehicle_number", label: "Vehicle Number", required: true },
-      { key: "make", label: "Make", required: true },
-      { key: "model", label: "Model", required: true },
-      { key: "year", label: "Year", required: true },
-      { key: "vehicle_type", label: "Vehicle Type", required: false },
+      { key: "name", label: "Vehicle Name", required: true },
+      { key: "registration", label: "Registration Number", required: true },
+      { key: "type", label: "Vehicle Type", required: true },
+      { key: "model", label: "Model", required: false },
+      { key: "year", label: "Year", required: false },
       { key: "fuel_type", label: "Fuel Type", required: false },
-      { key: "engine_capacity", label: "Engine Capacity", required: false },
-      { key: "seating_capacity", label: "Seating Capacity", required: false },
-      { key: "insurance_policy", label: "Insurance Policy", required: false },
-      { key: "registration_date", label: "Registration Date", required: false },
-      { key: "status", label: "Status", required: false },
-    ],
-  },
-  employees: {
-    name: "Employees",
-    icon: Briefcase,
-    backUrl: "/hr",
-    apiEndpoint: "/api/import-employees/process",
-    columns: [
-      { key: "first_name", label: "First Name", required: true },
-      { key: "last_name", label: "Last Name", required: true },
-      { key: "email", label: "Email", required: true },
-      { key: "phone", label: "Phone", required: true },
-      { key: "employee_id", label: "Employee ID", required: true },
-      { key: "department", label: "Department", required: false },
-      { key: "position", label: "Position", required: false },
-      { key: "hire_date", label: "Hire Date", required: false },
-      { key: "salary", label: "Salary", required: false },
-      { key: "manager", label: "Manager", required: false },
+      { key: "mileage", label: "Current Mileage", required: false },
+      { key: "fuel_consumption", label: "Fuel Consumption (L/100km)", required: false },
+      { key: "purchase_date", label: "Purchase Date", required: false },
+      { key: "purchase_cost", label: "Purchase Cost", required: false },
+      { key: "insurance_expiry", label: "Insurance Expiry", required: false },
+      { key: "license_expiry", label: "License Expiry", required: false },
+      { key: "last_service", label: "Last Service Date", required: false },
+      { key: "next_service", label: "Next Service Date", required: false },
+      { key: "assigned_to", label: "Assigned To", required: false },
+      { key: "location", label: "Location", required: false },
       { key: "status", label: "Status", required: false },
     ],
   },
@@ -111,36 +192,34 @@ const ENTITY_CONFIGS = {
 export default function UniversalImportPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { toast } = useToast()
+  const { toast } = useToast() // Declare useToast
 
-  const [entityType, setEntityType] = useState<string>("customers")
-  const [fileData, setFileData] = useState<FileData | null>(null)
-  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({})
+  const [entityType, setEntityType] = useState<EntityType>("customers")
+  const [fileData, setFileData] = useState<{ headers: string[]; rows: string[][]; filename: string } | null>(null)
+  const [columnMapping, setColumnMapping] = useState<{ [key: string]: string }>({})
   const [isLoading, setIsLoading] = useState(false)
   const [previewData, setPreviewData] = useState<any[]>([])
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    // Get entity type from URL params
-    const type = searchParams.get("type") || "customers"
-    setEntityType(type)
+  // useEffect(() => {
+  //   const type = searchParams.get("type") || "customers"
+  //   setEntityType(type as EntityType)
 
-    // Check if we have file data from the previous page
-    const storedData = sessionStorage.getItem("importFileData")
-    if (storedData) {
-      const data = JSON.parse(storedData)
-      setFileData(data)
-      // Auto-map columns based on similarity
-      autoMapColumns(data.headers, type)
-    }
-  }, [searchParams])
+  //   const storedData = sessionStorage.getItem("importFileData")
+  //   if (storedData) {
+  //     const data = JSON.parse(storedData)
+  //     setFileData(data)
+  //     autoMapColumns(data.headers, type as EntityType)
+  //   }
+  // }, [searchParams])
 
-  const currentConfig = ENTITY_CONFIGS[entityType as keyof typeof ENTITY_CONFIGS] || ENTITY_CONFIGS.customers
+  const currentConfig = ENTITY_CONFIGS[entityType] || ENTITY_CONFIGS.customers
   const IconComponent = currentConfig.icon
 
-  const autoMapColumns = (headers: string[], type: string) => {
-    const mapping: ColumnMapping = {}
-    const config = ENTITY_CONFIGS[type as keyof typeof ENTITY_CONFIGS]
+  const autoMapColumns = (headers: string[], type: EntityType) => {
+    const mapping: { [key: string]: string } = {}
+    const config = ENTITY_CONFIGS[type]
 
     if (!config) return
 
@@ -151,13 +230,11 @@ export default function UniversalImportPage() {
         const lowerColumnKey = column.key.toLowerCase()
         const lowerColumnLabel = column.label.toLowerCase()
 
-        // Direct match
         if (lowerHeader === lowerColumnKey || lowerHeader === lowerColumnLabel) {
           mapping[column.key] = header
           return
         }
 
-        // Partial matches for common patterns
         if (lowerColumnKey.includes("name") && lowerHeader.includes("name")) {
           if (lowerColumnKey.includes("first") && lowerHeader.includes("first")) {
             mapping[column.key] = header
@@ -187,7 +264,7 @@ export default function UniversalImportPage() {
     setColumnMapping(mapping)
   }
 
-  const handleEntityTypeChange = (newType: string) => {
+  const handleEntityTypeChange = (newType: EntityType) => {
     setEntityType(newType)
     setColumnMapping({})
     setPreviewData([])
@@ -226,7 +303,6 @@ export default function UniversalImportPage() {
 
     setPreviewData(preview)
 
-    // Validate required fields
     const errors: string[] = []
     const requiredFields = currentConfig.columns.filter((col) => col.required)
 
@@ -273,10 +349,7 @@ export default function UniversalImportPage() {
           description: `Successfully imported ${result.imported} ${currentConfig.name.toLowerCase()}`,
         })
 
-        // Clear session storage
         sessionStorage.removeItem("importFileData")
-
-        // Redirect to entity page
         router.push(currentConfig.backUrl)
       } else {
         const error = await response.json()
@@ -298,20 +371,129 @@ export default function UniversalImportPage() {
     const headers = currentConfig.columns.map((col) => col.label).join(",")
     const sampleRow = currentConfig.columns
       .map((col) => {
-        // Generate sample data based on entity type and column
         switch (entityType) {
           case "customers":
             switch (col.key) {
+              case "account_number":
+                return "ACC123456"
+              case "name":
+                return "John Doe"
               case "first_name":
                 return "John"
               case "last_name":
                 return "Doe"
+              case "business_name":
+                return "Example Business Ltd"
               case "email":
                 return "john.doe@example.com"
+              case "alternate_email":
+                return "john.alternate@example.com"
               case "phone":
                 return "+254700000000"
+              case "phone_primary":
+                return "+254700000001"
+              case "phone_secondary":
+                return "+254700000002"
+              case "phone_office":
+                return "+254700000003"
+              case "national_id":
+                return "12345678"
+              case "date_of_birth":
+                return "1990-01-15"
+              case "gender":
+                return "Male"
               case "customer_type":
-                return "individual"
+                return "residential"
+              case "status":
+                return "active"
+              case "physical_address":
+                return "123 Main Street, Apartment 4B"
+              case "physical_city":
+                return "Nairobi"
+              case "physical_county":
+                return "Nairobi County"
+              case "physical_postal_code":
+                return "00100"
+              case "physical_country":
+                return "Kenya"
+              case "physical_gps_coordinates":
+                return "-1.2921,36.8219"
+              case "billing_address":
+                return "PO Box 12345"
+              case "billing_city":
+                return "Nairobi"
+              case "billing_postal_code":
+                return "00100"
+              case "installation_address":
+                return "123 Main Street, Apartment 4B"
+              case "city":
+                return "Nairobi"
+              case "state":
+                return "Nairobi"
+              case "country":
+                return "Kenya"
+              case "postal_code":
+                return "00100"
+              case "gps_coordinates":
+                return "-1.2921,36.8219"
+              case "region":
+                return "Central"
+              case "emergency_contact_name":
+                return "Jane Doe"
+              case "emergency_contact_phone":
+                return "+254700000004"
+              case "emergency_contact_relationship":
+                return "Spouse"
+              case "business_type":
+                return "Retail"
+              case "business_reg_no":
+                return "BRN123456"
+              case "contact_person":
+                return "John Doe"
+              case "tax_number":
+                return "TAX123456"
+              case "vat_pin":
+                return "VAT123456"
+              case "plan":
+                return "Premium 50Mbps"
+              case "monthly_fee":
+                return "5000.00"
+              case "balance":
+                return "0.00"
+              case "connection_quality":
+                return "Excellent"
+              case "portal_login_id":
+                return "user123"
+              case "portal_username":
+                return "johndoe"
+              case "portal_password":
+                return "SecurePass123"
+              case "installation_date":
+                return "2024-01-15"
+              case "last_payment_date":
+                return "2024-12-01"
+              case "contract_end_date":
+                return "2025-12-31"
+              case "preferred_contact_method":
+                return "email"
+              case "referral_source":
+                return "Friend Referral"
+              case "sales_rep":
+                return "Jane Sales"
+              case "account_manager":
+                return "Mike Manager"
+              case "special_requirements":
+                return "Requires 24/7 support"
+              case "internal_notes":
+                return "VIP customer, handle with priority"
+              case "billing_cycle":
+                return "monthly"
+              case "auto_renewal":
+                return "true"
+              case "paperless_billing":
+                return "true"
+              case "sms_notifications":
+                return "true"
               default:
                 return ""
             }
@@ -319,44 +501,88 @@ export default function UniversalImportPage() {
             switch (col.key) {
               case "name":
                 return "Basic Home Plan"
+              case "description":
+                return "A basic home internet service plan"
               case "price":
                 return "2999"
               case "download_speed":
                 return "25"
               case "upload_speed":
                 return "10"
-              case "service_type":
-                return "residential"
+              case "data_limit":
+                return "100"
+              case "billing_cycle":
+                return "monthly"
+              case "currency":
+                return "KES"
+              case "priority_level":
+                return "standard"
+              case "fair_usage_policy":
+                return "fair"
+              case "status":
+                return "active"
+              default:
+                return ""
+            }
+          case "inventory":
+            switch (col.key) {
+              case "product_id":
+                return "PROD001"
+              case "product_name":
+                return "Wireless Router"
+              case "quantity":
+                return "100"
+              case "price_per_unit":
+                return "2000"
+              case "supplier":
+                return "Tech Supplier Inc."
+              case "category":
+                return "Networking"
+              case "reorder_level":
+                return "20"
+              case "expiry_date":
+                return "2025-12-31"
+              case "status":
+                return "active"
               default:
                 return ""
             }
           case "vehicles":
             switch (col.key) {
-              case "vehicle_number":
+              case "name":
+                return "Toyota Hiace"
+              case "registration":
                 return "KCA 123A"
-              case "make":
-                return "Toyota"
+              case "type":
+                return "van"
               case "model":
                 return "Hiace"
               case "year":
                 return "2020"
-              case "vehicle_type":
-                return "van"
-              default:
-                return ""
-            }
-          case "employees":
-            switch (col.key) {
-              case "first_name":
-                return "Jane"
-              case "last_name":
-                return "Smith"
-              case "email":
-                return "jane.smith@company.com"
-              case "phone":
-                return "+254700000001"
-              case "employee_id":
-                return "EMP001"
+              case "fuel_type":
+                return "petrol"
+              case "mileage":
+                return "50000"
+              case "fuel_consumption":
+                return "8.5"
+              case "purchase_date":
+                return "2020-01-01"
+              case "purchase_cost":
+                return "200000"
+              case "insurance_expiry":
+                return "2025-01-01"
+              case "license_expiry":
+                return "2025-01-01"
+              case "last_service":
+                return "2023-01-01"
+              case "next_service":
+                return "2023-06-01"
+              case "assigned_to":
+                return "John Doe"
+              case "location":
+                return "Nairobi"
+              case "status":
+                return "active"
               default:
                 return ""
             }
@@ -377,38 +603,114 @@ export default function UniversalImportPage() {
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const file = event.target?.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      const lines = text.split("\n").filter((line) => line.trim())
+    const fileName = file.name.toLowerCase()
 
-      if (lines.length < 2) {
-        toast({
-          title: "Invalid File",
-          description: "File must contain at least a header row and one data row",
-          variant: "destructive",
+    if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+      // Parse Excel files
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer)
+          const workbook = XLSX.read(data, { type: "array" })
+
+          // Get first sheet
+          const firstSheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[firstSheetName]
+
+          // Convert to array of arrays
+          const rawData: string[][] = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: "",
+            raw: false, // Convert all values to strings
+          })
+
+          if (rawData.length < 2) {
+            toast({
+              title: "Invalid file",
+              description: "The file must contain at least a header row and one data row",
+              variant: "destructive",
+            })
+            return
+          }
+
+          const headers = rawData[0].map((h: string) => String(h).trim()).filter((h: string) => h !== "")
+
+          const rows = rawData
+            .slice(1)
+            .filter((row: string[]) => row.some((cell: string) => cell && cell.trim() !== ""))
+            .map((row: string[]) => {
+              return headers.map((_, i) => String(row[i] || "").trim())
+            })
+
+          setFileData({
+            filename: file.name,
+            headers,
+            rows,
+          })
+
+          // Auto-map columns based on entity type
+          autoMapColumns(headers, entityType)
+
+          toast({
+            title: "File uploaded",
+            description: `Successfully loaded ${rows.length} rows from Excel file`,
+          })
+        } catch (error) {
+          console.error("[v0] Excel parsing error:", error)
+          toast({
+            title: "Error parsing Excel file",
+            description: error instanceof Error ? error.message : "Failed to parse Excel file",
+            variant: "destructive",
+          })
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      // Parse CSV files (existing logic)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target?.result as string
+        const lines = text.split("\n").filter((line) => line.trim())
+
+        if (lines.length < 2) {
+          toast({
+            title: "Invalid file",
+            description: "The file must contain at least a header row and one data row",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const headers = lines[0]
+          .split(",")
+          .map((h) => h.trim())
+          .filter((h) => h !== "")
+
+        const rows = lines.slice(1).map((line) => {
+          const values = line.split(",").map((v) => v.trim())
+          return headers.map((_, i) => values[i] || "")
         })
-        return
+
+        setFileData({
+          filename: file.name,
+          headers,
+          rows,
+        })
+
+        // Auto-map columns based on entity type
+        autoMapColumns(headers, entityType)
+
+        toast({
+          title: "File uploaded",
+          description: `Successfully loaded ${rows.length} rows from CSV file`,
+        })
       }
 
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
-      const rows = lines.slice(1).map((line) => line.split(",").map((cell) => cell.trim().replace(/"/g, "")))
-
-      const fileData = {
-        headers,
-        rows,
-        filename: file.name,
-      }
-
-      setFileData(fileData)
-      sessionStorage.setItem("importFileData", JSON.stringify(fileData))
-      autoMapColumns(headers, entityType)
+      reader.readAsText(file)
     }
-
-    reader.readAsText(file)
   }
 
   return (
@@ -452,7 +754,7 @@ export default function UniversalImportPage() {
                   className={`p-4 border rounded-lg cursor-pointer transition-colors ${
                     entityType === key ? "border-blue-500 bg-blue-50 dark:bg-blue-950" : "border-gray-200"
                   }`}
-                  onClick={() => handleEntityTypeChange(key)}
+                  onClick={() => handleEntityTypeChange(key as EntityType)}
                 >
                   <div className="flex items-center space-x-3">
                     <IconComp className="h-6 w-6" />
@@ -485,6 +787,7 @@ export default function UniversalImportPage() {
                   onChange={handleFileUpload}
                   className="hidden"
                   id="file-upload"
+                  ref={fileInputRef}
                 />
                 <Button asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
@@ -513,13 +816,12 @@ export default function UniversalImportPage() {
             <CardContent className="space-y-4">
               {currentConfig.columns.map((column) => (
                 <div key={column.key} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium">{column.label}</span>
-                    {column.required && (
-                      <Badge variant="destructive" className="text-xs">
-                        Required
-                      </Badge>
-                    )}
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium">
+                      {column.label}
+                      {column.required && <span className="text-red-500 ml-1">*</span>}
+                    </Label>
+                    {column.description && <p className="text-xs text-muted-foreground">{column.description}</p>}
                   </div>
                   <Select
                     value={columnMapping[column.key] || "none"}
@@ -530,11 +832,13 @@ export default function UniversalImportPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">-- Not mapped --</SelectItem>
-                      {fileData.headers.map((header) => (
-                        <SelectItem key={header} value={header}>
-                          {header}
-                        </SelectItem>
-                      ))}
+                      {fileData.headers
+                        .filter((header) => header && header.trim() !== "")
+                        .map((header) => (
+                          <SelectItem key={header} value={header}>
+                            {header}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -548,10 +852,10 @@ export default function UniversalImportPage() {
                 {validationErrors.length > 0 && (
                   <div className="space-y-1">
                     {validationErrors.map((error, index) => (
-                      <div key={index} className="flex items-center text-sm text-red-600">
-                        <AlertCircle className="mr-2 h-4 w-4" />
-                        {error}
-                      </div>
+                      <Alert key={index} variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
                     ))}
                   </div>
                 )}
@@ -563,39 +867,39 @@ export default function UniversalImportPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <CheckCircle className="mr-2 h-4 w-4" />
+                <Check className="mr-2 h-4 w-4" />
                 Preview (First 5 rows)
               </CardTitle>
             </CardHeader>
             <CardContent>
               {previewData.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
+                  <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                      <tr>
                         {currentConfig.columns
                           .filter((col) => columnMapping[col.key])
                           .map((col) => (
-                            <TableHead key={col.key} className="text-xs">
+                            <th key={col.key} scope="col" className="px-6 py-3">
                               {col.label}
-                            </TableHead>
+                            </th>
                           ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {previewData.map((row, index) => (
-                        <TableRow key={index}>
+                        <tr key={index} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
                           {currentConfig.columns
                             .filter((col) => columnMapping[col.key])
                             .map((col) => (
-                              <TableCell key={col.key} className="text-xs">
+                              <td key={col.key} className="px-6 py-4">
                                 {row[col.key] || "-"}
-                              </TableCell>
+                              </td>
                             ))}
-                        </TableRow>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

@@ -1,6 +1,4 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export interface Customer {
   id: number
@@ -44,6 +42,7 @@ export interface CustomerFilters {
 export class CustomerDatabase {
   static async getCustomers(filters: CustomerFilters = {}): Promise<Customer[]> {
     try {
+      const sql = await getSql()
       const { search = "", status = "", customerType = "", city = "", limit = 50, offset = 0 } = filters
 
       let query = `
@@ -108,6 +107,7 @@ export class CustomerDatabase {
 
   static async getCustomerStats(): Promise<CustomerStats> {
     try {
+      const sql = await getSql()
       const result = await sql`
         SELECT 
           COUNT(*) as total,
@@ -140,6 +140,7 @@ export class CustomerDatabase {
 
   static async getCustomerById(id: number): Promise<Customer | null> {
     try {
+      const sql = await getSql()
       const result = await sql`
         SELECT 
           c.*,
@@ -166,6 +167,7 @@ export class CustomerDatabase {
 
   static async createCustomer(customerData: Partial<Customer>): Promise<Customer | null> {
     try {
+      const sql = await getSql()
       const result = await sql`
         INSERT INTO customers (
           first_name, last_name, email, phone, status, customer_type,
@@ -189,6 +191,7 @@ export class CustomerDatabase {
 
   static async updateCustomer(id: number, customerData: Partial<Customer>): Promise<Customer | null> {
     try {
+      const sql = await getSql()
       const result = await sql`
         UPDATE customers SET
           first_name = COALESCE(${customerData.first_name}, first_name),
@@ -218,6 +221,7 @@ export class CustomerDatabase {
 
   static async deleteCustomer(id: number): Promise<boolean> {
     try {
+      const sql = await getSql()
       await sql`DELETE FROM customers WHERE id = ${id}`
       return true
     } catch (error) {
@@ -228,6 +232,7 @@ export class CustomerDatabase {
 
   static async getFilterOptions() {
     try {
+      const sql = await getSql()
       const [statuses, customerTypes, cities] = await Promise.all([
         sql`SELECT DISTINCT status FROM customers WHERE status IS NOT NULL ORDER BY status`,
         sql`SELECT DISTINCT customer_type FROM customers WHERE customer_type IS NOT NULL ORDER BY customer_type`,

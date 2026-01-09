@@ -1,20 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const transactions = await sql`
       SELECT 
         'PAY-' || p.id as transaction_id,
         p.created_at as transaction_date,
         'Accounts Receivable' as account,
-        'Payment received - ' || COALESCE(c.first_name || ' ' || c.last_name, c.business_name, 'Unknown Customer') as description,
+        'Payment received - ' || COALESCE(c.name, 'Unknown Customer') as description,
         p.amount as debit,
         0 as credit,
         p.amount as balance,
-        COALESCE(c.first_name || ' ' || c.last_name, c.business_name, 'Unknown Customer') as customer_name
+        COALESCE(c.name, 'Unknown Customer') as customer_name
       FROM payments p
       LEFT JOIN customers c ON c.id = p.customer_id
       WHERE p.status = 'completed'
@@ -25,11 +25,11 @@ export async function GET(request: NextRequest) {
         'INV-' || i.id as transaction_id,
         i.created_at as transaction_date,
         'Revenue' as account,
-        'Invoice - ' || COALESCE(c.first_name || ' ' || c.last_name, c.business_name, 'Unknown Customer') as description,
+        'Invoice - ' || COALESCE(c.name, 'Unknown Customer') as description,
         0 as debit,
         i.amount as credit,
         0 as balance,
-        COALESCE(c.first_name || ' ' || c.last_name, c.business_name, 'Unknown Customer') as customer_name
+        COALESCE(c.name, 'Unknown Customer') as customer_name
       FROM invoices i
       LEFT JOIN customers c ON c.id = i.customer_id
       

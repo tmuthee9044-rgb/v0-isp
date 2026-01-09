@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
+import sql from "sql-template-strings"
 
 function getDatabaseConnection() {
   const databaseUrl =
@@ -12,13 +13,12 @@ function getDatabaseConnection() {
     throw new Error("No database connection string found")
   }
 
-  return neon(databaseUrl)
+  return getSql()
 }
-
-const sql = getDatabaseConnection()
 
 export async function GET(request: NextRequest) {
   try {
+    const sqlClient = await getDatabaseConnection()
     const { searchParams } = new URL(request.url)
     const routerId = searchParams.get("router_id")
     const customerId = searchParams.get("customer_id")
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     if (customerId) {
       // Get available IPs based on customer's location
-      availableIPs = await sql`
+      availableIPs = await sqlClient`
         SELECT 
           ip.*,
           nd.name as router_name,
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       `
     } else if (routerId) {
       // Get available IPs for specific router
-      availableIPs = await sql`
+      availableIPs = await sqlClient`
         SELECT 
           ip.*,
           nd.name as router_name,
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       `
     } else if (locationId) {
       // Get available IPs for specific location
-      availableIPs = await sql`
+      availableIPs = await sqlClient`
         SELECT 
           ip.*,
           nd.name as router_name,
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       `
     } else {
       // Get all available IPs
-      availableIPs = await sql`
+      availableIPs = await sqlClient`
         SELECT 
           ip.*,
           nd.name as router_name,

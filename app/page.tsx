@@ -169,7 +169,6 @@ export default function Dashboard() {
           setLastUpdated(new Date())
         }
       } catch (error) {
-        console.error("[v0] Failed to fetch dashboard data:", error)
         setError("Failed to load dashboard data. Please try refreshing the page.")
       } finally {
         setLoading(false)
@@ -187,7 +186,7 @@ export default function Dashboard() {
           setLastUpdated(new Date())
         }
       } catch (error) {
-        console.error("[v0] Failed to fetch real-time KPIs:", error)
+        // Silent failure for real-time updates
       }
     }, 30000)
 
@@ -584,36 +583,6 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-red-600">Overdue: {dashboardData?.invoiceStats.count || 0}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">Bandwidth Utilization</CardTitle>
-              <Activity className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg sm:text-2xl font-bold">78%</div>
-              <Progress value={78} className="mt-2 h-2" />
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-1 space-y-1 sm:space-y-0">
-                <p className="text-xs text-muted-foreground">Peak: 89% at 8 PM</p>
-                <p className="text-xs text-muted-foreground">Avg: 65%</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs sm:text-sm font-medium">Customer Growth</CardTitle>
-              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg sm:text-2xl font-bold text-green-600">+12.5%</div>
-              <p className="text-xs sm:text-sm text-muted-foreground">This month: +342 customers</p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-green-600">New: 398</span>
-                <span className="text-xs text-red-600">Churned: 56</span>
               </div>
             </CardContent>
           </Card>

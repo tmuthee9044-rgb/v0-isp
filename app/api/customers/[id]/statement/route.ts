@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-import { jsPDF } from "jspdf"
-import autoTable from "jspdf-autotable"
 
 export const dynamic = "force-dynamic"
 
@@ -13,18 +11,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ success: false, error: "Invalid customer ID" }, { status: 400 })
     }
 
+    const body = await request.json()
+    const { startDate: requestStartDate, endDate: requestEndDate } = body
+
     console.log("[v0] Generating statement for customer:", customerId)
+    console.log("[v0] Date range:", { requestStartDate, requestEndDate })
 
     const sql = await getSql()
 
-    // Get company configuration
-    console.log("[v0] Fetching company configuration...")
-    const companyConfig = await sql`
-      SELECT * FROM system_config LIMIT 5
-    `
+    let configMap: Record<string, string> = {}
+    try {
+      const companyConfig = await sql`SELECT * FROM system_config LIMIT 10`
+      configMap = Object.fromEntries(companyConfig.map((row: any) => [row.key, row.value]))
+    } catch (err) {
+      console.log("[v0] No system_config found, using defaults")
+    }
 
-    const configMap = Object.fromEntries(companyConfig.map((row: any) => [row.key, row.value]))
-    console.log("[v0] Company config retrieved")
+    const companyInfo = {
+      name: configMap.company_name || "ISP Management System",
+      email: configMap.company_email || "support@isp.com",
+      phone: configMap.company_phone || "+254 123 456 789",
+    }
 
     // Get customer details
     const customers = await sql`
@@ -50,55 +57,172 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const customer = customers[0]
-    console.log("[v0] Customer found:", customer.business_name || `${customer.first_name} ${customer.last_name}`)
 
-    // Get statement period (last 30 days by default)
-    const endDate = new Date()
-    const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const endDate = requestEndDate ? new Date(requestEndDate) : new Date()
+    const startDate = requestStartDate
+      ? new Date(requestStartDate)
+      : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    // Get transactions for the period
-    console.log("[v0] Fetching transactions...")
+    // Format dates as YYYY-MM-DD for proper comparison
+    const startDateStr = startDate.toISOString().split("T")[0]
+    const endDateStr = endDate.toISOString().split("T")[0]
+
+    console.log("[v0] Using date range:", { start: startDateStr, end: endDateStr })
+
+    const previousTransactions = await sql`
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'invoice' THEN amount ELSE 0 END), 0) as previous_debits,
+        COALESCE(SUM(CASE WHEN type IN ('payment', 'credit_note') THEN ABS(amount) ELSE 0 END), 0) as previous_credits
+      FROM (
+        SELECT 'invoice' as type, amount, created_at::date as trans_date
+        FROM invoices
+        WHERE customer_id = ${customerId} AND created_at::date < ${startDateStr}::date
+        
+        UNION ALL
+        
+        SELECT 'credit_note' as type, amount, created_at::date as trans_date
+        FROM credit_notes
+        WHERE customer_id = ${customerId} AND created_at::date < ${startDateStr}::date
+        
+        UNION ALL
+        
+        SELECT 'payment' as type, amount, payment_date::date as trans_date
+        FROM payments
+        WHERE customer_id = ${customerId} AND payment_date::date < ${startDateStr}::date
+      ) previous
+    `
+
+    const openingBalance =
+      previousTransactions.length > 0
+        ? Number(previousTransactions[0].previous_debits || 0) - Number(previousTransactions[0].previous_credits || 0)
+        : 0
+
+    console.log("[v0] Opening balance calculation:", {
+      previous_debits: previousTransactions[0]?.previous_debits || 0,
+      previous_credits: previousTransactions[0]?.previous_credits || 0,
+      openingBalance,
+    })
+
     const transactions = await sql`
       SELECT 
+        'invoice' as type,
         id,
-        reference_number,
-        type,
-        description,
-        amount,
-        total_amount,
+        invoice_number as reference_number,
+        'Invoice #' || invoice_number as description,
+        amount as amount,
+        amount as total_amount,
         created_at,
         status,
-        due_date
-      FROM finance_documents
+        due_date,
+        created_at::date as invoice_date,
+        NULL::date as payment_date
+      FROM invoices
       WHERE customer_id = ${customerId}
-      AND created_at >= ${startDate.toISOString()}
-      AND created_at <= ${endDate.toISOString()}
+      AND created_at::date >= ${startDateStr}::date 
+      AND created_at::date <= ${endDateStr}::date
+      
+      UNION ALL
+      
+      SELECT 
+        'credit_note' as type,
+        id,
+        credit_note_number as reference_number,
+        'Credit Note: ' || COALESCE(reason, 'No reason specified') as description,
+        -1 * amount as amount,
+        amount as total_amount,
+        created_at,
+        status,
+        NULL as due_date,
+        created_at::date as invoice_date,
+        NULL::date as payment_date
+      FROM credit_notes
+      WHERE customer_id = ${customerId}
+      AND created_at::date >= ${startDateStr}::date 
+      AND created_at::date <= ${endDateStr}::date
+      
+      UNION ALL
+      
+      SELECT 
+        'payment' as type,
+        id,
+        transaction_id as reference_number,
+        'Payment via ' || COALESCE(payment_method, 'Unknown') as description,
+        -1 * amount as amount,
+        amount as total_amount,
+        payment_date as created_at,
+        status,
+        NULL as due_date,
+        NULL::date as invoice_date,
+        payment_date::date as payment_date
+      FROM payments
+      WHERE customer_id = ${customerId}
+      AND payment_date::date >= ${startDateStr}::date 
+      AND payment_date::date <= ${endDateStr}::date
+      
       ORDER BY created_at DESC
     `
 
-    console.log("[v0] Found transactions:", transactions.length)
+    console.log("[v0] Found transactions for statement:", transactions.length)
 
-    // Calculate totals
-    const openingBalance = 0
+    if (transactions.length === 0) {
+      const allCustomerDocs = await sql`
+        SELECT 'invoice' as source, COUNT(*) as count, MIN(created_at::date) as earliest, MAX(created_at::date) as latest
+        FROM invoices WHERE customer_id = ${customerId}
+        UNION ALL
+        SELECT 'payment' as source, COUNT(*) as count, MIN(payment_date::date) as earliest, MAX(payment_date::date) as latest
+        FROM payments WHERE customer_id = ${customerId}
+        UNION ALL
+        SELECT 'credit_note' as source, COUNT(*) as count, MIN(created_at::date) as earliest, MAX(created_at::date) as latest
+        FROM credit_notes WHERE customer_id = ${customerId}
+      `
+      console.log("[v0] Document counts by table:", allCustomerDocs)
+      console.log("[v0] Query date range:", { startDateStr, endDateStr })
+    }
+
+    const allDocs = await sql`
+      SELECT 
+        (SELECT COUNT(*) FROM invoices WHERE customer_id = ${customerId}) +
+        (SELECT COUNT(*) FROM credit_notes WHERE customer_id = ${customerId}) +
+        (SELECT COUNT(*) FROM payments WHERE customer_id = ${customerId}) as total
+    `
+
+    console.log("[v0] Total finance documents for customer:", allDocs[0]?.total || 0)
+
     let closingBalance = 0
     let totalDebits = 0
     let totalCredits = 0
 
     for (const transaction of transactions) {
       const amount = Number.parseFloat(transaction.amount || transaction.total_amount || "0")
+
       if (transaction.type === "invoice") {
-        totalDebits += amount
+        // Invoices increase the amount owed (debit)
+        totalDebits += Math.abs(amount)
       } else if (transaction.type === "payment") {
-        totalCredits += amount
+        // Payments reduce the amount owed (credit)
+        totalCredits += Math.abs(amount)
+      } else if (transaction.type === "credit_note") {
+        // Credit notes reduce the amount owed (credit)
+        totalCredits += Math.abs(amount)
       }
     }
 
+    // Closing balance = Opening balance + What they owe (debits) - What they paid/credited (credits)
     closingBalance = openingBalance + totalDebits - totalCredits
 
-    // Create statement record
+    console.log("[v0] Balance calculation:", {
+      openingBalance,
+      totalDebits,
+      totalCredits,
+      closingBalance,
+      transactionCount: transactions.length,
+      invoiceCount: transactions.filter((t) => t.type === "invoice").length,
+      paymentCount: transactions.filter((t) => t.type === "payment").length,
+      creditNoteCount: transactions.filter((t) => t.type === "credit_note").length,
+    })
+
     const statementNumber = `ST-${customerId}-${Date.now()}`
 
-    console.log("[v0] Creating statement record...")
     await sql`
       INSERT INTO customer_statements (
         customer_id,
@@ -114,8 +238,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       ) VALUES (
         ${customerId},
         ${statementNumber},
-        ${startDate.toISOString().split("T")[0]},
-        ${endDate.toISOString().split("T")[0]},
+        ${startDateStr},
+        ${endDateStr},
         ${new Date().toISOString().split("T")[0]},
         ${openingBalance},
         ${closingBalance},
@@ -125,34 +249,49 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       )
     `
 
-    console.log("[v0] Generating PDF...")
     const customerName = customer.business_name || `${customer.first_name} ${customer.last_name}`
 
-    const pdfBuffer = generateStatementPDF(
-      configMap,
+    const formattedTransactions = transactions.map((t: any) => {
+      const amount = Number.parseFloat(t.amount || t.total_amount || "0")
+      const transactionDate = t.payment_date || t.invoice_date || t.created_at
+
+      return {
+        date: transactionDate,
+        description:
+          t.description || `${(t.type || "Transaction").toUpperCase()} - ${t.reference_number || `REF-${t.id}`}`,
+        reference: t.reference_number || `REF-${t.id}`,
+        type: t.type || "transaction",
+        amount: amount,
+      }
+    })
+
+    console.log("[v0] Statement data:", {
       customerName,
-      customer.email || "",
-      customer.phone || "",
-      customer.address || "",
-      customer.city || "",
-      customer.account_number || "",
-      statementNumber,
-      startDate,
-      endDate,
-      transactions,
-      openingBalance,
-      closingBalance,
+      transactionCount: formattedTransactions.length,
       totalDebits,
       totalCredits,
-    )
+      closingBalance,
+    })
 
-    console.log("[v0] PDF generated successfully")
-
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="statement-${customerId}-${new Date().toISOString().split("T")[0]}.pdf"`,
+    // The frontend will handle PDF generation using jsPDF which works in the browser
+    return NextResponse.json({
+      success: true,
+      statement: {
+        statementNumber,
+        customerName,
+        email: customer.email || "No email",
+        phone: customer.phone || "No phone",
+        address: customer.address || "No address",
+        city: customer.city || "Unknown",
+        startDate: startDateStr,
+        endDate: endDateStr,
+        generatedDate: new Date().toISOString().split("T")[0],
+        openingBalance,
+        closingBalance,
+        totalDebits,
+        totalCredits,
+        transactions: formattedTransactions,
+        companyInfo,
       },
     })
   } catch (error: any) {
@@ -167,120 +306,4 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       { status: 500 },
     )
   }
-}
-
-function generateStatementPDF(
-  companyConfig: Record<string, string>,
-  customerName: string,
-  email: string,
-  phone: string,
-  address: string,
-  city: string,
-  accountNumber: string,
-  statementNumber: string,
-  startDate: Date,
-  endDate: Date,
-  transactions: any[],
-  openingBalance: number,
-  closingBalance: number,
-  totalDebits: number,
-  totalCredits: number,
-): Buffer {
-  const doc = new jsPDF()
-
-  // Company Header
-  const companyName = companyConfig.company_name || "ISP Management System"
-  const companyAddress = companyConfig.company_address || ""
-  const companyPhone = companyConfig.company_phone || ""
-  const companyEmail = companyConfig.company_email || ""
-
-  doc.setFontSize(18)
-  doc.setFont("helvetica", "bold")
-  doc.text(companyName, 105, 20, { align: "center" })
-
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
-  if (companyAddress) doc.text(companyAddress, 105, 28, { align: "center" })
-  if (companyPhone) doc.text(`Phone: ${companyPhone}`, 105, 34, { align: "center" })
-  if (companyEmail) doc.text(`Email: ${companyEmail}`, 105, 40, { align: "center" })
-
-  // Statement Title
-  doc.setFontSize(14)
-  doc.setFont("helvetica", "bold")
-  doc.text("STATEMENT OF ACCOUNT", 105, 52, { align: "center" })
-
-  // Customer Information
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "bold")
-  doc.text("Bill To:", 15, 65)
-  doc.setFont("helvetica", "normal")
-  doc.text(customerName, 15, 72)
-  if (accountNumber) doc.text(`Account: ${accountNumber}`, 15, 78)
-  if (email) doc.text(`Email: ${email}`, 15, 84)
-  if (phone) doc.text(`Phone: ${phone}`, 15, 90)
-  if (address) doc.text(`${address}, ${city}`, 15, 96)
-
-  // Statement Information
-  doc.setFont("helvetica", "bold")
-  doc.text("Statement Details:", 140, 65)
-  doc.setFont("helvetica", "normal")
-  doc.text(`Statement #: ${statementNumber}`, 140, 72)
-  doc.text(`Period: ${startDate.toLocaleDateString()}`, 140, 78)
-  doc.text(`to ${endDate.toLocaleDateString()}`, 140, 84)
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 140, 90)
-
-  // Transactions Table
-  const tableData = transactions.map((t) => {
-    const amount = Number.parseFloat(t.amount || t.total_amount || "0")
-    return [
-      new Date(t.created_at).toLocaleDateString(),
-      (t.description || "").substring(0, 30),
-      t.reference_number || "",
-      t.type === "invoice" ? `KES ${amount.toFixed(2)}` : "-",
-      t.type === "payment" ? `KES ${amount.toFixed(2)}` : "-",
-    ]
-  })
-
-  autoTable(doc, {
-    startY: 105,
-    head: [["Date", "Description", "Reference", "Debit", "Credit"]],
-    body: tableData,
-    theme: "grid",
-    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: "bold" },
-    styles: { fontSize: 9 },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      1: { cellWidth: 60 },
-      2: { cellWidth: 35 },
-      3: { cellWidth: 30, halign: "right" },
-      4: { cellWidth: 30, halign: "right" },
-    },
-  })
-
-  // Get final Y position after table
-  const finalY = (doc as any).lastAutoTable.finalY || 150
-
-  // Summary Section
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "bold")
-  doc.text("Summary:", 140, finalY + 10)
-  doc.setFont("helvetica", "normal")
-  doc.text(`Opening Balance: KES ${openingBalance.toFixed(2)}`, 140, finalY + 17)
-  doc.text(`Total Debits: KES ${totalDebits.toFixed(2)}`, 140, finalY + 24)
-  doc.text(`Total Credits: KES ${totalCredits.toFixed(2)}`, 140, finalY + 31)
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
-  doc.text(`Closing Balance: KES ${closingBalance.toFixed(2)}`, 140, finalY + 40)
-
-  // Footer
-  doc.setFontSize(9)
-  doc.setFont("helvetica", "italic")
-  doc.text("This is a computer-generated statement. Thank you for your business!", 105, finalY + 55, {
-    align: "center",
-  })
-
-  // Convert to buffer
-  const pdfOutput = doc.output("arraybuffer")
-  return Buffer.from(pdfOutput)
 }

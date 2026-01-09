@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 function getDatabaseUrl() {
   const url =
@@ -18,14 +18,14 @@ function getDatabaseUrl() {
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const ipAddress = searchParams.get("ip")
 
     if (!ipAddress) {
       return NextResponse.json({ success: false, error: "IP address parameter required" }, { status: 400 })
     }
-
-    const sql = neon(getDatabaseUrl())
 
     const [ipAllocation, customerService] = await Promise.all([
       sql`

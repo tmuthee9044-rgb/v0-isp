@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { loyaltyNotificationService } from "@/lib/loyalty-notification-service"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -12,6 +10,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!redemptionType || !pointsToRedeem || pointsToRedeem <= 0) {
       return NextResponse.json({ error: "Invalid redemption parameters" }, { status: 400 })
     }
+
+    const sql = await getSql()
 
     // Start transaction
     await sql`BEGIN`

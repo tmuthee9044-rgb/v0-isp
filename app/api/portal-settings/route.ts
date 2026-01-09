@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     console.log("[v0] Fetching portal settings from database")
 
     const settings = await sql`
@@ -60,6 +60,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     console.log("[v0] Saving portal settings")
     const settings = await request.json()
 

@@ -1,11 +1,10 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 // RADIUS Authentication API for routers
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const { username, password, nas_ip, nas_port, calling_station_id, service_type } = await request.json()
 
     if (!username || !password || !nas_ip) {
@@ -139,7 +138,7 @@ export async function POST(request: Request) {
     console.error("RADIUS authentication error:", error)
     const username = "unknown"
     const nas_ip = "unknown"
-    await logRADIUSEvent("ERROR", "auth_error", username, nas_ip, error.message)
+    await logRADIUSEvent(username, nas_ip, error.message)
 
     return NextResponse.json(
       {
@@ -155,6 +154,7 @@ export async function POST(request: Request) {
 // RADIUS Accounting API
 export async function PUT(request: Request) {
   try {
+    const sql = await getSql()
     const {
       username,
       session_id,
@@ -216,6 +216,7 @@ export async function PUT(request: Request) {
 
 async function logRADIUSEvent(level: string, eventType: string, username: string, nasIp: string, message: string) {
   try {
+    const sql = await getSql()
     await sql`
       INSERT INTO radius_logs (level, event_type, username, nas_ip, reply_message, details)
       VALUES (${level}, ${eventType}, ${username}, ${nasIp}, ${message}, ${JSON.stringify({ timestamp: new Date().toISOString() })})

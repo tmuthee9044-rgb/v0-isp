@@ -1,10 +1,10 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL)
+import { getSql } from "../lib/db.js"
 
 async function runMigration() {
   try {
     console.log("Starting purchase orders migration...")
+
+    const sql = await getSql()
 
     // Read and execute the SQL file
     const fs = await import("fs")

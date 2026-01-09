@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 
 function createDatabaseConnection() {
   const connectionString =
@@ -13,19 +13,19 @@ function createDatabaseConnection() {
     throw new Error("Database connection not available")
   }
 
-  return neon(connectionString)
+  return connectionString
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const ipAddress = searchParams.get("ip")
 
     if (!ipAddress) {
       return NextResponse.json({ error: "IP address is required" }, { status: 400 })
     }
-
-    const sql = createDatabaseConnection()
 
     const existingService = await sql`
       SELECT id, customer_id 

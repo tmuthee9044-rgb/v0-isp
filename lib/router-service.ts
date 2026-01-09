@@ -1,7 +1,5 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { testRouterConnection, logNetworkEvent } from "./network-utils"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export interface ServiceAction {
   customerId: number
@@ -25,6 +23,8 @@ export class RouterService {
    */
   static async suspendService(action: ServiceAction): Promise<RouterActionResult> {
     try {
+      const sql = await getSql()
+
       // Get router information
       const router = await this.getRouterInfo(action.routerId)
       if (!router) {
@@ -90,6 +90,8 @@ export class RouterService {
    */
   static async reactivateService(action: ServiceAction): Promise<RouterActionResult> {
     try {
+      const sql = await getSql()
+
       // Get router information
       const router = await this.getRouterInfo(action.routerId)
       if (!router) {
@@ -174,6 +176,8 @@ export class RouterService {
 
     switch (router.type) {
       case "mikrotik":
+        const sql = await getSql()
+
         // Get original service plan profile
         const [service] = await sql`
           SELECT sp.name as profile_name
@@ -242,6 +246,8 @@ export class RouterService {
 
     switch (router.type) {
       case "mikrotik":
+        const sql = await getSql()
+
         // Get original service plan profile
         const [service] = await sql`
           SELECT sp.name as profile_name
@@ -293,10 +299,11 @@ export class RouterService {
 
   // RADIUS Service Management
   private static async suspendRADIUSService(router: any, action: ServiceAction): Promise<RouterActionResult> {
-    // RADIUS suspension is handled at the database level
     const username = `customer_${action.customerId}_${action.serviceId}`
 
     try {
+      const sql = await getSql()
+
       await sql`
         UPDATE radius_users 
         SET status = 'suspended', suspended_at = NOW()
@@ -318,10 +325,11 @@ export class RouterService {
   }
 
   private static async reactivateRADIUSService(router: any, action: ServiceAction): Promise<RouterActionResult> {
-    // RADIUS reactivation is handled at the database level
     const username = `customer_${action.customerId}_${action.serviceId}`
 
     try {
+      const sql = await getSql()
+
       await sql`
         UPDATE radius_users 
         SET status = 'active', reactivated_at = NOW()
@@ -345,6 +353,8 @@ export class RouterService {
   // Helper Methods
   private static async getRouterInfo(routerId?: string): Promise<any> {
     if (!routerId) return null
+
+    const sql = await getSql()
 
     const [router] = await sql`
       SELECT * FROM network_devices 
@@ -398,6 +408,8 @@ export class RouterService {
    * Retry failed router operations
    */
   static async retryFailedOperations(): Promise<void> {
+    const sql = await getSql()
+
     const failedLogs = await sql`
       SELECT * FROM router_logs 
       WHERE status = 'retry' 

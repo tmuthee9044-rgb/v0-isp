@@ -7,7 +7,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const documentId = params.documentId
     const { document_type } = await request.json()
 
-    const sql = getSqlConnection()
+    const sql = await getSqlConnection()
 
     let documentDetails
     let deleteResult

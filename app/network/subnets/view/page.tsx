@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
+import Link from "next/link"
 import {
   ArrowLeft,
   Globe,
@@ -23,9 +24,9 @@ import {
   Filter,
   MapPin,
   Server,
+  Download,
 } from "lucide-react"
 import { toast } from "sonner"
-import Link from "next/link"
 
 interface SubnetDetail {
   id: number
@@ -57,6 +58,7 @@ interface IPAddress {
   service_id?: number
   assigned_at?: string
   last_seen?: string
+  assigned_date?: string
 }
 
 function SubnetViewContent() {
@@ -69,6 +71,10 @@ function SubnetViewContent() {
   const [generatingIPs, setGeneratingIPs] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalIPs, setTotalIPs] = useState(0)
+  const ITEMS_PER_PAGE = 100
 
   const handleGenerateIPs = async () => {
     setGeneratingIPs(true)
@@ -90,12 +96,47 @@ function SubnetViewContent() {
     }
   }
 
+  const handleDownloadReport = async () => {
+    try {
+      const response = await fetch(`/api/network/subnets/${subnetId}/report`)
+
+      if (!response.ok) {
+        toast.error("Failed to generate subnet report")
+        return
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `subnet-report-${subnet?.cidr.replace(/\//g, "-")}-${Date.now()}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success("Subnet report downloaded successfully")
+    } catch (error) {
+      console.error("Error downloading subnet report:", error)
+      toast.error("Failed to download subnet report")
+    }
+  }
+
   useEffect(() => {
     if (subnetId) {
       fetchSubnetDetails()
       fetchIPAddresses()
     }
-  }, [subnetId, statusFilter])
+  }, [subnetId, statusFilter, currentPage])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (subnetId) {
+        setCurrentPage(1)
+        fetchIPAddresses()
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
   const fetchSubnetDetails = async () => {
     try {
@@ -114,29 +155,30 @@ function SubnetViewContent() {
 
   const fetchIPAddresses = async () => {
     try {
-      let url = `/api/network/ip-addresses?subnet_id=${subnetId}`
+      let url = `/api/network/ip-addresses?subnet_id=${subnetId}&page=${currentPage}&limit=${ITEMS_PER_PAGE}`
       if (statusFilter !== "all") {
         url += `&status=${statusFilter}`
       }
-
-      console.log("[v0] Fetching IP addresses from:", url)
+      if (searchTerm) {
+        url += `&search=${encodeURIComponent(searchTerm)}`
+      }
 
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] IP addresses response:", data)
         const addresses = Array.isArray(data.addresses) ? data.addresses : Array.isArray(data) ? data : []
-        console.log("[v0] Setting IP addresses:", addresses.length)
         setIpAddresses(addresses)
+        setTotalIPs(data.total || 0)
+        setTotalPages(Math.ceil((data.total || 0) / ITEMS_PER_PAGE))
       } else {
-        console.error("[v0] Failed to fetch IP addresses, status:", response.status)
+        console.error("Failed to fetch IP addresses, status:", response.status)
         toast.error("Failed to fetch IP addresses")
-        setIpAddresses([]) // Set empty array on error
+        setIpAddresses([])
       }
     } catch (error) {
-      console.error("[v0] Error fetching IPs:", error)
+      console.error("Error fetching IPs:", error)
       toast.error("Failed to fetch IP addresses")
-      setIpAddresses([]) // Set empty array on error
+      setIpAddresses([])
     } finally {
       setLoading(false)
     }
@@ -211,20 +253,16 @@ function SubnetViewContent() {
     const prefix = Number.parseInt(prefixStr)
     const networkParts = network.split(".").map(Number)
 
-    // Calculate network address
     const hostBits = 32 - prefix
     const totalHosts = Math.pow(2, hostBits)
 
-    // Network address (first IP)
     const networkAddr = network
 
-    // Broadcast address (last IP)
     const ipParts = ip.split(".").map(Number)
     const lastOctet = networkParts[3] + totalHosts - 1
 
     const broadcastAddr = `${networkParts[0]}.${networkParts[1]}.${networkParts[2]}.${lastOctet}`
 
-    // Gateway (usually first usable IP)
     const gatewayAddr =
       subnet.gateway || `${networkParts[0]}.${networkParts[1]}.${networkParts[2]}.${networkParts[3] + 1}`
 
@@ -289,9 +327,12 @@ function SubnetViewContent() {
             <p className="text-muted-foreground mt-1">{subnet.description || "IP address pool details"}</p>
           </div>
         </div>
+        <Button onClick={handleDownloadReport} variant="default">
+          <Download className="w-4 h-4 mr-2" />
+          Download Report
+        </Button>
       </div>
 
-      {/* Subnet Overview Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -340,7 +381,6 @@ function SubnetViewContent() {
         </Card>
       </div>
 
-      {/* Subnet Details Card */}
       <Card>
         <CardHeader>
           <CardTitle>Subnet Information</CardTitle>
@@ -411,13 +451,15 @@ function SubnetViewContent() {
         </CardContent>
       </Card>
 
-      {/* IP Addresses Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>IP Addresses</CardTitle>
-              <CardDescription>All IP addresses in this subnet with allocation status</CardDescription>
+              <CardDescription>
+                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, totalIPs)} of{" "}
+                {totalIPs} IP addresses
+              </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               {subnet && subnet.total_ips_generated === 0 && (
@@ -482,37 +524,46 @@ function SubnetViewContent() {
                 <TableBody>
                   {filteredIPs.map((ip) => {
                     const isReserved = isReservedIP(ip.ip_address)
+                    const isAssigned = ip.service_id !== null && ip.service_id !== undefined
+
                     return (
-                      <TableRow key={ip.id} className={ip.status === "assigned" ? "bg-green-50" : ""}>
+                      <TableRow key={ip.id} className={isAssigned ? "bg-blue-50" : ""}>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {getStatusIcon(ip.status)}
+                            {getStatusIcon(isAssigned ? "assigned" : ip.status)}
                             <span className="font-mono font-medium">{ip.ip_address}</span>
                           </div>
                         </TableCell>
+                        <TableCell>{isAssigned ? getStatusBadge("assigned") : getStatusBadge(ip.status)}</TableCell>
                         <TableCell>
-                          {ip.status === "assigned" ? (
-                            <span className="text-sm font-medium">Yes</span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {ip.status === "assigned" && ip.customer_id ? (
+                          {isAssigned && ip.customer_id ? (
                             <Link href={`/customers/${ip.customer_id}`} className="hover:underline text-blue-600">
                               <div className="font-medium">
-                                {ip.business_name || `${ip.first_name} ${ip.last_name}`}
+                                {ip.business_name || `${ip.first_name || ""} ${ip.last_name || ""}`.trim()}
                               </div>
-                              {ip.service_id && (
-                                <div className="text-xs text-muted-foreground">Service ID: {ip.service_id}</div>
-                              )}
                             </Link>
                           ) : (
-                            <span className="text-muted-foreground">---</span>
+                            <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                        <TableCell>{ip.service_id ? <Badge variant="outline">#{ip.service_id}</Badge> : "-"}</TableCell>
-                        <TableCell>{ip.assigned_at ? new Date(ip.assigned_at).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell>
+                          {ip.service_id ? (
+                            <Badge variant="outline" className="font-mono">
+                              #{ip.service_id}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {ip.assigned_date ? (
+                            new Date(ip.assigned_date).toLocaleDateString()
+                          ) : ip.assigned_at ? (
+                            new Date(ip.assigned_at).toLocaleDateString()
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {isReserved && (
                             <Badge variant="outline" className="bg-orange-100 text-orange-800">
@@ -529,6 +580,32 @@ function SubnetViewContent() {
               {filteredIPs.length === 0 && subnet && subnet.total_ips_generated > 0 && (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">No IP addresses found matching your filters.</p>
+                </div>
+              )}
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </>

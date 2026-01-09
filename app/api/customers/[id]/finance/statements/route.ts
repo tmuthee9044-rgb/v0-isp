@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 async function getCompanySettings() {
   try {
+    const sql = await getSql()
     const settings = await sql`
       SELECT key, value 
       FROM system_config 
@@ -40,6 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const companySettings = await getCompanySettings()
 
+    const sql = await getSql()
     const [customer] = await sql`
       SELECT * FROM customers WHERE id = ${customerId}
     `

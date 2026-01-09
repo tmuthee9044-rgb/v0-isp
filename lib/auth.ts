@@ -1,9 +1,7 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import { cookies } from "next/headers"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export interface User {
   id: string
@@ -59,6 +57,7 @@ export class AuthService {
 
   static async authenticateUser(email: string, password: string): Promise<AuthSession | null> {
     try {
+      const sql = await getSql()
       const [user] = await sql`
         SELECT 
           u.id,
@@ -125,6 +124,7 @@ export class AuthService {
       const decoded = this.verifyToken(token)
       if (!decoded) return null
 
+      const sql = await getSql()
       // Verify session exists and is valid
       const [session] = await sql`
         SELECT 
@@ -168,6 +168,7 @@ export class AuthService {
 
   static async logout(token: string): Promise<void> {
     try {
+      const sql = await getSql()
       await sql`
         DELETE FROM user_sessions WHERE token = ${token}
       `

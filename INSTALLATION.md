@@ -3,10 +3,10 @@
 ## Quick Start (Recommended)
 
 ### Linux/macOS
-\`\`\`bash
+```bash
 chmod +x install.sh
 ./install.sh
-\`\`\`
+```
 
 ### Windows
 1. Right-click `install.bat` and select "Run as administrator"
@@ -28,15 +28,15 @@ chmod +x install.sh
 ### Step-by-Step Installation
 
 #### 1. Clone the Repository
-\`\`\`bash
+```bash
 git clone <repository-url>
 cd isp-management-system
-\`\`\`
+```
 
 #### 2. Install Dependencies
 
 **Linux (Ubuntu/Debian):**
-\`\`\`bash
+```bash
 # Update package list
 sudo apt update
 
@@ -52,10 +52,10 @@ sudo chmod +x /usr/local/bin/docker-compose
 # Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
-\`\`\`
+```
 
 **macOS:**
-\`\`\`bash
+```bash
 # Install Homebrew (if not installed)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
@@ -64,7 +64,7 @@ brew install --cask docker
 
 # Install Node.js
 brew install node@18
-\`\`\`
+```
 
 **Windows:**
 1. Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop)
@@ -72,29 +72,29 @@ brew install node@18
 3. Restart your computer
 
 #### 3. Configure Environment
-\`\`\`bash
+```bash
 # Copy environment template
 cp .env.example .env
 
 # Edit configuration (optional)
 nano .env
-\`\`\`
+```
 
 #### 4. Start the System
-\`\`\`bash
+```bash
 # Build and start all services
 docker-compose up -d --build
 
 # Wait for services to initialize (about 2-3 minutes)
 docker-compose logs -f
-\`\`\`
+```
 
 #### 5. Initialize Database
-\`\`\`bash
+```bash
 # Run database migrations
 docker-compose exec mysql mysql -u isp_user -pisp_password_2024 isp_system < scripts/028_create_customer_services_and_payments.sql
 # ... repeat for all script files
-\`\`\`
+```
 
 ## Access Points
 
@@ -121,42 +121,42 @@ After successful installation:
 ### Common Issues
 
 **Docker not starting:**
-\`\`\`bash
+```bash
 # Check Docker status
 sudo systemctl status docker
 
 # Start Docker service
 sudo systemctl start docker
-\`\`\`
+```
 
 **Port conflicts:**
-\`\`\`bash
+```bash
 # Check what's using port 3000
 sudo lsof -i :3000
 
 # Stop conflicting services or change ports in docker-compose.yml
-\`\`\`
+```
 
 **Database connection issues:**
-\`\`\`bash
+```bash
 # Check database logs
 docker-compose logs mysql
 
 # Restart database
 docker-compose restart mysql
-\`\`\`
+```
 
 **Permission issues (Linux):**
-\`\`\`bash
+```bash
 # Add user to docker group
 sudo usermod -aG docker $USER
 
 # Logout and login again
-\`\`\`
+```
 
 ### Logs and Monitoring
 
-\`\`\`bash
+```bash
 # View all logs
 docker-compose logs -f
 
@@ -166,7 +166,7 @@ docker-compose logs -f mysql
 
 # Check service status
 docker-compose ps
-\`\`\`
+```
 
 ## Production Deployment
 
@@ -185,14 +185,14 @@ docker-compose ps
 4. Restart nginx: `docker-compose restart nginx`
 
 ### Backup Configuration
-\`\`\`bash
+```bash
 # Database backup
 docker-compose exec mysql mysqldump -u isp_user -pisp_password_2024 isp_system > backup.sql
 
 # Full system backup
 docker-compose down
 tar -czf isp-backup-$(date +%Y%m%d).tar.gz .
-\`\`\`
+```
 
 ## Support
 
@@ -204,7 +204,7 @@ For issues and support:
 
 ## Uninstallation
 
-\`\`\`bash
+```bash
 # Stop and remove containers
 docker-compose down -v
 

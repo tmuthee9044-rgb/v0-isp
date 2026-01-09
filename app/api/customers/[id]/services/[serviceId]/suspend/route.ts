@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string; serviceId: string } }) {
   try {
+    const sql = await getSql()
     const { duration, reason } = await request.json()
     const suspendUntil = new Date(Date.now() + duration * 24 * 60 * 60 * 1000)
 

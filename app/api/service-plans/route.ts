@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET() {
+  const sql = await getSql()
+
   try {
     // Get service plans from database
     const servicePlans = await sql`
@@ -50,6 +50,15 @@ export async function GET() {
       currency: plan.currency || "KES",
     }))
 
+    // Return empty array instead of fallback plans if no active plans found
+    if (servicePlans.length === 0) {
+      return NextResponse.json({
+        success: true,
+        plans: [],
+        message: "No active service plans found. Please create service plans in /services first.",
+      })
+    }
+
     return NextResponse.json({
       success: true,
       plans: formattedPlans,
@@ -57,103 +66,13 @@ export async function GET() {
   } catch (error) {
     console.error("Error fetching service plans:", error)
 
-    // Return fallback plans if database fails
-    const fallbackPlans = [
+    return NextResponse.json(
       {
-        id: 1,
-        name: "Basic Home",
-        description: "Perfect for light browsing and email",
-        price: 2999,
-        speed: "10/5 Mbps",
-        category: "residential",
-        dataLimit: 50,
-        taxRate: 16,
-        setupFee: 500,
-        contractLength: 12,
-        billingCycle: "monthly",
-        features: [],
-        qosSettings: {},
-        fairUsagePolicy: null,
-        priorityLevel: 1,
-        currency: "KES",
+        success: false,
+        plans: [],
+        error: "Failed to load service plans from database. Please check database connection.",
       },
-      {
-        id: 2,
-        name: "Standard Home",
-        description: "Great for streaming and working from home",
-        price: 4999,
-        speed: "25/10 Mbps",
-        category: "residential",
-        dataLimit: 100,
-        taxRate: 16,
-        setupFee: 500,
-        contractLength: 12,
-        billingCycle: "monthly",
-        features: [],
-        qosSettings: {},
-        fairUsagePolicy: null,
-        priorityLevel: 2,
-        currency: "KES",
-      },
-      {
-        id: 3,
-        name: "Premium Home",
-        description: "Ideal for heavy usage and gaming",
-        price: 7999,
-        speed: "50/25 Mbps",
-        category: "residential",
-        dataLimit: 200,
-        taxRate: 16,
-        setupFee: 0,
-        contractLength: 12,
-        billingCycle: "monthly",
-        features: [],
-        qosSettings: {},
-        fairUsagePolicy: null,
-        priorityLevel: 3,
-        currency: "KES",
-      },
-      {
-        id: 4,
-        name: "Business Starter",
-        description: "Enterprise-grade connectivity for small business",
-        price: 14999,
-        speed: "100/50 Mbps",
-        category: "business",
-        dataLimit: null,
-        taxRate: 16,
-        setupFee: 0,
-        contractLength: 24,
-        billingCycle: "monthly",
-        features: [],
-        qosSettings: {},
-        fairUsagePolicy: null,
-        priorityLevel: 4,
-        currency: "KES",
-      },
-      {
-        id: 5,
-        name: "Enterprise Pro",
-        description: "Maximum performance for large enterprises",
-        price: 49999,
-        speed: "500/250 Mbps",
-        category: "enterprise",
-        dataLimit: null,
-        taxRate: 16,
-        setupFee: 0,
-        contractLength: 36,
-        billingCycle: "monthly",
-        features: [],
-        qosSettings: {},
-        fairUsagePolicy: null,
-        priorityLevel: 5,
-        currency: "KES",
-      },
-    ]
-
-    return NextResponse.json({
-      success: true,
-      plans: fallbackPlans,
-    })
+      { status: 500 },
+    )
   }
 }

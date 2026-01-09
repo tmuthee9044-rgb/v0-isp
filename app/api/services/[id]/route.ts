@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +18,7 @@ const parseFloatOrNull = (value: any): number | null => {
 // GET - Fetch single service plan
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {
@@ -27,8 +26,20 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     const result = await sql`
-      SELECT * FROM service_plans 
+      SELECT 
+        id, name, description, category, status,
+        speed_download, speed_upload, priority_level,
+        price, billing_cycle, currency, setup_fee,
+        data_limit, fup_enabled, action_after_limit,
+        bandwidth_allocation, static_ip, port_forwarding,
+        vpn_access, priority_support, device_limit,
+        concurrent_connections, contract_period,
+        promo_price, promo_duration, tax_included, tax_rate,
+        fup_speed, reset_day, exempt_hours, exempt_days, warning_threshold,
+        limit_type, created_at, updated_at
+      FROM service_plans 
       WHERE id = ${serviceId}
+      LIMIT 1
     `
 
     if (result.length === 0) {
@@ -38,28 +49,37 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const servicePlan = result[0]
     const mappedData = {
       ...servicePlan,
-      speed: `${servicePlan.download_speed || 100}/${servicePlan.upload_speed || 50}`,
-      // Provide default values for fields that don't exist in database
-      setup_fee: 0,
-      promo_price: null,
-      promo_duration: null,
-      contract_length: 12,
-      fup_config: servicePlan.fair_usage_policy
+      download_speed: servicePlan.speed_download,
+      upload_speed: servicePlan.speed_upload,
+      speed: `${servicePlan.speed_download || 100}/${servicePlan.speed_upload || 50}`,
+      setup_fee: servicePlan.setup_fee || 0,
+      promo_price: servicePlan.promo_price || null,
+      promo_duration: servicePlan.promo_duration || null,
+      contract_length: servicePlan.contract_period || 12,
+      fup_config: servicePlan.fup_enabled
         ? JSON.stringify({
             enabled: true,
             dataLimit: servicePlan.data_limit?.toString() || "",
-            limitType: "monthly",
-            actionAfterLimit: "throttle",
-            throttleSpeed: 10, // Default value since column doesn't exist
-            resetDay: "1",
-            exemptHours: [],
-            exemptDays: [],
-            warningThreshold: 80,
+            limitType: servicePlan.limit_type || "monthly",
+            actionAfterLimit: servicePlan.action_after_limit || "throttle",
+            throttleSpeed: servicePlan.fup_speed || 10,
+            resetDay: servicePlan.reset_day?.toString() || "1",
+            exemptHours: servicePlan.exempt_hours ? JSON.parse(servicePlan.exempt_hours) : [],
+            exemptDays: servicePlan.exempt_days ? JSON.parse(servicePlan.exempt_days) : [],
+            warningThreshold: servicePlan.warning_threshold || 80,
           })
         : null,
-      qos_config: servicePlan.qos_settings,
-      advanced_features: servicePlan.features,
-      restrictions: {},
+      qos_config: servicePlan.bandwidth_allocation,
+      advanced_features: {
+        static_ip: servicePlan.static_ip,
+        port_forwarding: servicePlan.port_forwarding,
+        vpn_access: servicePlan.vpn_access,
+        priority_support: servicePlan.priority_support,
+      },
+      restrictions: {
+        device_limit: servicePlan.device_limit,
+        concurrent_connections: servicePlan.concurrent_connections,
+      },
     }
 
     return NextResponse.json(mappedData)
@@ -72,6 +92,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 // PUT - Update service plan
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {
@@ -80,15 +101,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const data = await request.json()
 
-    const priorityLevelMap: { [key: string]: number } = {
-      low: 1,
-      standard: 2,
-      high: 3,
-      critical: 4,
-    }
-
-    const priorityLevelInt =
-      typeof data.priority_level === "string" ? priorityLevelMap[data.priority_level] || 2 : data.priority_level || 2
+    const priorityLevelValue = data.priority_level || "standard"
 
     const result = await sql`
       UPDATE service_plans 
@@ -97,16 +110,23 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         description = ${data.description},
         category = ${data.category},
         status = ${data.status},
-        download_speed = ${parseIntOrNull(data.download_speed) || 0},
-        upload_speed = ${parseIntOrNull(data.upload_speed) || 0},
-        priority_level = ${priorityLevelInt},
+        speed_download = ${parseIntOrNull(data.download_speed) || 0},
+        speed_upload = ${parseIntOrNull(data.upload_speed) || 0},
+        priority_level = ${priorityLevelValue},
         price = ${parseFloatOrNull(data.price) || 0},
         billing_cycle = ${data.billing_cycle || "monthly"},
         currency = ${data.currency || "KES"},
         data_limit = ${parseIntOrNull(data.data_limit)},
-        features = ${JSON.stringify(data.advanced_features || {})},
-        qos_settings = ${data.qos_config ? JSON.stringify(data.qos_config) : null},
-        fair_usage_policy = ${data.fup_enabled ? `Data limit: ${data.data_limit || "unlimited"}, Action: ${data.action_after_limit || "throttle"}` : null}
+        fup_enabled = ${data.fup_enabled || false},
+        action_after_limit = ${data.action_after_limit || "throttle"},
+        bandwidth_allocation = ${data.qos_config ? JSON.stringify(data.qos_config) : null},
+        static_ip = ${data.advanced_features?.static_ip || false},
+        port_forwarding = ${data.advanced_features?.port_forwarding || false},
+        vpn_access = ${data.advanced_features?.vpn_access || false},
+        priority_support = ${data.advanced_features?.priority_support || false},
+        device_limit = ${parseIntOrNull(data.restrictions?.device_limit)},
+        concurrent_connections = ${parseIntOrNull(data.restrictions?.concurrent_connections)},
+        updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *
     `
@@ -128,6 +148,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 // DELETE - Delete service plan
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const serviceId = Number.parseInt(params.id)
 
     if (isNaN(serviceId)) {

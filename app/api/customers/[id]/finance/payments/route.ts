@@ -1,12 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { paymentGateway } from "@/lib/payment-gateway"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { provisionRadiusUser } from "@/lib/radius-integration"
+import { provisionPPPoESecret } from "@/lib/pppoe-provisioning"
 
 async function ensureAccountBalance(customerId: number) {
   try {
+    const sql = await getSql()
     const [existingBalance] = await sql`
       SELECT id FROM account_balances WHERE customer_id = ${customerId}
     `
@@ -15,7 +16,6 @@ async function ensureAccountBalance(customerId: number) {
       await sql`
         INSERT INTO account_balances (customer_id, balance, credit_limit, status, updated_at)
         VALUES (${customerId}, 0, 0, 'active', NOW())
-        ON CONFLICT (customer_id) DO NOTHING
       `
     }
   } catch (error) {
@@ -36,6 +36,7 @@ async function applyPaymentToInvoices(
     let unpaidInvoices
 
     if (selectedInvoiceIds && selectedInvoiceIds.length > 0) {
+      const sql = await getSql()
       unpaidInvoices = await sql`
         SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
         FROM invoices 
@@ -46,6 +47,7 @@ async function applyPaymentToInvoices(
         ORDER BY due_date ASC, created_at ASC
       `
     } else {
+      const sql = await getSql()
       unpaidInvoices = await sql`
         SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
         FROM invoices 
@@ -70,6 +72,7 @@ async function applyPaymentToInvoices(
 
       console.log("[v0] Applying", applicationAmount, "to invoice", invoice.id)
 
+      const sql = await getSql()
       try {
         await sql`
           INSERT INTO payment_applications (payment_id, invoice_id, amount_applied, created_at)
@@ -106,6 +109,7 @@ async function applyPaymentToInvoices(
 
     if (remainingPayment > 0) {
       console.log("[v0] Creating credit adjustment for remaining amount:", remainingPayment)
+      const sql = await getSql()
       try {
         await sql`
           INSERT INTO financial_adjustments (
@@ -120,6 +124,7 @@ async function applyPaymentToInvoices(
       }
     }
 
+    const sql = await getSql()
     const updateResult = await sql`
       UPDATE account_balances 
       SET balance = balance + ${paymentAmount},
@@ -142,19 +147,48 @@ async function applyPaymentToInvoices(
   }
 }
 
-async function activateServicesAfterPayment(customerId: number, paymentId: number) {
+async function activateServicesAfterPayment(customerId: number, paymentId: number, paymentAmount: number) {
   try {
     console.log("[v0] Checking for services to activate after payment for customer", customerId)
 
-    // Find pending services that should be activated (status = 'pending' and not yet activated)
+    const sql = await getSql()
+
+    const unpaidInvoices = await sql`
+      SELECT id, amount, paid_amount, (amount - COALESCE(paid_amount, 0)) as remaining_balance
+      FROM invoices 
+      WHERE customer_id = ${customerId} 
+      AND status IN ('pending', 'overdue', 'partial')
+      AND (amount - COALESCE(paid_amount, 0)) > 0
+      ORDER BY due_date ASC, created_at ASC
+    `
+
+    let totalInvoiceAmount = 0
+    for (const invoice of unpaidInvoices) {
+      totalInvoiceAmount += Number.parseFloat(invoice.remaining_balance)
+    }
+
+    console.log("[v0] Total invoice amount:", totalInvoiceAmount, "Payment:", paymentAmount)
+
     const pendingServices = await sql`
-      SELECT cs.*, sp.name as service_name
+      SELECT 
+        cs.*, 
+        sp.name as service_name, 
+        sp.id as service_plan_id,
+        sp.speed_download,
+        sp.speed_upload,
+        sp.price as monthly_fee,
+        sp.billing_cycle,
+        c.email,
+        c.phone,
+        nd.customer_auth_method
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
+      JOIN customers c ON cs.customer_id = c.id
+      LEFT JOIN network_devices nd ON cs.router_id = nd.id
       WHERE cs.customer_id = ${customerId}
       AND cs.status = 'pending'
-      AND cs.activated_at IS NULL
-      AND (cs.start_date IS NULL OR cs.start_date <= CURRENT_DATE)
+      AND cs.activation_date IS NULL
+      AND (cs.installation_date IS NULL OR cs.installation_date <= CURRENT_DATE)
     `
 
     if (pendingServices.length === 0) {
@@ -166,43 +200,120 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
 
     for (const service of pendingServices) {
       try {
-        // Call the activation endpoint
-        const activationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/services/activate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            serviceId: service.id,
-            customerId: customerId,
-            paymentId: paymentId,
-          }),
-        })
+        await sql`
+          UPDATE customer_services 
+          SET status = 'active',
+              activation_date = NOW(),
+              updated_at = NOW()
+          WHERE id = ${service.id}
+        `
 
-        if (activationResponse.ok) {
-          console.log("[v0] Successfully activated service", service.id, service.service_name)
-          activatedServices.push({
-            service_id: service.id,
-            service_name: service.service_name,
-          })
+        console.log("[v0] Successfully activated service", service.id, service.service_name)
 
-          try {
-            await sql`
-              INSERT INTO system_logs (category, message, details, created_at)
-              VALUES (
-                'service_activation',
-                'Service ' || ${service.service_name} || ' automatically activated after payment',
-                jsonb_build_object(
-                  'customer_id', ${customerId},
-                  'service_id', ${service.id},
-                  'payment_id', ${paymentId}
-                ),
-                NOW()
-              )
-            `
-          } catch (error) {
-            console.log("[v0] system_logs table not available, skipping log record")
+        let pppoeResult = null
+
+        if (service.customer_auth_method === "pppoe_secrets" || service.customer_auth_method === "PPPoE Secrets") {
+          console.log("[v0] Provisioning PPPoE secret to MikroTik router")
+
+          const serviceInvoiceAmount =
+            totalInvoiceAmount > 0 ? totalInvoiceAmount : Number.parseFloat(service.monthly_fee || 0)
+
+          pppoeResult = await provisionPPPoESecret(customerId, service.id, paymentAmount, serviceInvoiceAmount)
+
+          if (!pppoeResult.success) {
+            console.error("[v0] PPPoE provisioning failed:", pppoeResult.error)
+          } else {
+            console.log(
+              "[v0] PPPoE provisioning successful:",
+              pppoeResult.username,
+              "for",
+              pppoeResult.activatedDays,
+              "days",
+            )
           }
         } else {
-          console.error("[v0] Failed to activate service", service.id)
+          console.log("[v0] Router uses", service.customer_auth_method, "- using RADIUS provisioning")
+
+          const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
+          const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
+
+          const radiusResult = await provisionRadiusUser({
+            username: username,
+            password: password,
+            customerId: customerId,
+            serviceId: service.id,
+            ipAddress: service.ip_address,
+            downloadSpeed: service.speed_download,
+            uploadSpeed: service.speed_upload,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS user provisioned successfully for", username)
+          }
+        }
+
+        activatedServices.push({
+          service_id: service.id,
+          service_name: service.service_name,
+          pppoe_username: pppoeResult?.username || null,
+          pppoe_activated_days: pppoeResult?.activatedDays || null,
+          pppoe_expiry_date: pppoeResult?.expiryDate || null,
+          authorization_method: service.customer_auth_method,
+        })
+
+        const logDetails = JSON.stringify({
+          customer_id: customerId,
+          service_id: service.id,
+          payment_id: paymentId,
+          service_plan_id: service.service_plan_id,
+          authorization_method: service.customer_auth_method,
+          pppoe_username: pppoeResult?.username || null,
+          activated_days: pppoeResult?.activatedDays || null,
+          expiry_date: pppoeResult?.expiryDate || null,
+          payment_amount: paymentAmount,
+          invoice_total: totalInvoiceAmount,
+        })
+
+        try {
+          await sql`
+            INSERT INTO system_logs (
+              level,
+              source,
+              category, 
+              message, 
+              details, 
+              created_at,
+              updated_at
+            )
+            VALUES (
+              'INFO',
+              'payment_system',
+              'service_activation',
+              ${`Service ${service.service_name} activated with payment-based provisioning`},
+              ${logDetails}::jsonb,
+              NOW(),
+              NOW()
+            )
+          `
+        } catch (logError) {
+          console.log("[v0] system_logs insert error:", logError)
+        }
+
+        try {
+          await ActivityLogger.logCustomerActivity(
+            `Service ${service.service_name} activated${pppoeResult?.activatedDays ? ` for ${pppoeResult.activatedDays} days` : ""}`,
+            customerId,
+            {
+              service_id: service.id,
+              payment_id: paymentId,
+              service_plan_id: service.service_plan_id,
+              pppoe_username: pppoeResult?.username || null,
+              activated_days: pppoeResult?.activatedDays || null,
+              expiry_date: pppoeResult?.expiryDate || null,
+            },
+          )
+        } catch (activityError) {
+          console.log("[v0] Activity logging error:", activityError)
         }
       } catch (error) {
         console.error("[v0] Error activating service", service.id, ":", error)
@@ -261,6 +372,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     }
 
+    const sql = await getSql()
     const customerResult = await sql`
       SELECT id, first_name, last_name, status FROM customers WHERE id = ${customerId}
     `
@@ -323,7 +435,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
         console.log("[v0] Cash payment completed, applications:", applicationResult.applications.length)
 
-        const activationResult = await activateServicesAfterPayment(customerId, paymentId)
+        const activationResult = await activateServicesAfterPayment(customerId, paymentId, numericAmount)
         console.log("[v0] Activated", activationResult.activated, "services after payment")
 
         await ActivityLogger.logCustomerActivity(
@@ -388,7 +500,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
         console.log("[v0] Applied payment to", applicationResult.applications.length, "invoices")
 
-        const activationResult = await activateServicesAfterPayment(customerId, paymentId)
+        const activationResult = await activateServicesAfterPayment(customerId, paymentId, numericAmount)
         console.log("[v0] Activated", activationResult.activated, "services after payment")
 
         await ActivityLogger.logCustomerActivity(
@@ -452,6 +564,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       if (paymentId) {
         try {
+          const sql = await getSql()
           await sql`
             UPDATE payments 
             SET status = 'failed'
@@ -496,7 +609,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const limit = Number.parseInt(searchParams.get("limit") || "10")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    // Get payment history
+    const sql = await getSql()
     const payments = await sql`
       SELECT 
         p.*,
@@ -514,7 +627,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       LIMIT ${limit} OFFSET ${offset}
     `
 
-    // Get total count
     const [{ count }] = await sql`
       SELECT COUNT(*) as count FROM payments WHERE customer_id = ${customerId}
     `

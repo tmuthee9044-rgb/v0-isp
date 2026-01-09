@@ -407,7 +407,7 @@ export default function CompanySettingsPage() {
                       id="trading-name"
                       name="trading_name"
                       placeholder="Trading or DBA name"
-                      defaultValue={companySettings.company_trading_name || ""}
+                      defaultValue={companySettings.company_trading_name || companySettings.trading_name || ""}
                     />
                   </div>
                   <div className="space-y-2">
@@ -568,7 +568,9 @@ export default function CompanySettingsPage() {
                             <Label className="text-sm">Primary Color</Label>
                             <Input
                               name="primary_color"
-                              defaultValue={companySettings.branding_primary_color || "#2563eb"}
+                              defaultValue={
+                                companySettings.primary_color || companySettings.branding_primary_color || "#2563eb"
+                              }
                               className="mt-1"
                             />
                           </div>
@@ -579,7 +581,9 @@ export default function CompanySettingsPage() {
                             <Label className="text-sm">Secondary Color</Label>
                             <Input
                               name="secondary_color"
-                              defaultValue={companySettings.branding_secondary_color || "#4b5563"}
+                              defaultValue={
+                                companySettings.secondary_color || companySettings.branding_secondary_color || "#4b5563"
+                              }
                               className="mt-1"
                             />
                           </div>
@@ -590,7 +594,9 @@ export default function CompanySettingsPage() {
                             <Label className="text-sm">Accent Color</Label>
                             <Input
                               name="accent_color"
-                              defaultValue={companySettings.branding_accent_color || "#16a34a"}
+                              defaultValue={
+                                companySettings.accent_color || companySettings.branding_accent_color || "#16a34a"
+                              }
                               className="mt-1"
                             />
                           </div>
@@ -753,7 +759,7 @@ export default function CompanySettingsPage() {
                         id="secondary-phone"
                         name="secondary_phone"
                         placeholder="+254 700 000 000"
-                        defaultValue={companySettings.contact_secondary_phone || ""}
+                        defaultValue={companySettings.support_phone || companySettings.contact_secondary_phone || ""}
                       />
                     </div>
                     <div className="space-y-2">
@@ -773,7 +779,7 @@ export default function CompanySettingsPage() {
                         name="support_email"
                         type="email"
                         placeholder="support@company.com"
-                        defaultValue={companySettings.contact_support_email || ""}
+                        defaultValue={companySettings.support_email || companySettings.contact_support_email || ""}
                       />
                     </div>
                   </div>
@@ -794,7 +800,7 @@ export default function CompanySettingsPage() {
                         id="social-facebook"
                         name="social_facebook"
                         placeholder="https://facebook.com/company"
-                        defaultValue={companySettings.contact_facebook || ""}
+                        defaultValue={companySettings.social_facebook || companySettings.contact_facebook || ""}
                       />
                     </div>
                     <div className="space-y-2">
@@ -803,7 +809,7 @@ export default function CompanySettingsPage() {
                         id="social-twitter"
                         name="social_twitter"
                         placeholder="https://twitter.com/company"
-                        defaultValue={companySettings.contact_twitter || ""}
+                        defaultValue={companySettings.social_twitter || companySettings.contact_twitter || ""}
                       />
                     </div>
                     <div className="space-y-2">
@@ -812,7 +818,7 @@ export default function CompanySettingsPage() {
                         id="social-linkedin"
                         name="social_linkedin"
                         placeholder="https://linkedin.com/company/company"
-                        defaultValue={companySettings.contact_linkedin || ""}
+                        defaultValue={companySettings.social_linkedin || companySettings.contact_linkedin || ""}
                       />
                     </div>
                   </div>
@@ -841,7 +847,7 @@ export default function CompanySettingsPage() {
                         id="city"
                         name="city"
                         placeholder="City"
-                        defaultValue={companySettings.contact_city || ""}
+                        defaultValue={companySettings.city || companySettings.contact_city || ""}
                       />
                     </div>
                     <div className="space-y-2">
@@ -850,7 +856,7 @@ export default function CompanySettingsPage() {
                         id="state"
                         name="state"
                         placeholder="State/County"
-                        defaultValue={companySettings.contact_state || ""}
+                        defaultValue={companySettings.state || companySettings.contact_state || ""}
                       />
                     </div>
                     <div className="space-y-2">
@@ -859,12 +865,15 @@ export default function CompanySettingsPage() {
                         id="postal-code"
                         name="postal_code"
                         placeholder="00100"
-                        defaultValue={companySettings.contact_postal_code || ""}
+                        defaultValue={companySettings.postal_code || companySettings.contact_postal_code || ""}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="country">Country *</Label>
-                      <Select name="country" defaultValue={companySettings.contact_country || "kenya"}>
+                      <Select
+                        name="country"
+                        defaultValue={companySettings.country || companySettings.contact_country || "kenya"}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select country" />
                         </SelectTrigger>

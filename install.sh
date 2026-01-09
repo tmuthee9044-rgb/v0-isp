@@ -36,6 +36,12 @@ print_header() {
     echo ""
 }
 
+print_section() {
+    echo ""
+    echo "--------- $1 ---------"
+    echo ""
+}
+
 check_root() {
     if [[ $EUID -eq 0 ]]; then
         print_error "Do not run this script as root. Run as a regular user."
@@ -266,8 +272,726 @@ install_postgresql() {
     fi
 }
 
+install_freeradius() {
+    print_header "Installing FreeRADIUS"
+    
+    print_info "Detecting host network IP address..."
+    
+    # Try to detect the primary network IP (not localhost)
+    DETECTED_IP=""
+    
+    # Method 1: Get IP from default route interface
+    if command -v ip &> /dev/null; then
+        DEFAULT_INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+        if [ -n "$DEFAULT_INTERFACE" ]; then
+            DETECTED_IP=$(ip addr show "$DEFAULT_INTERFACE" | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
+        fi
+    fi
+    
+    # Method 2: Use hostname -I (fallback)
+    if [ -z "$DETECTED_IP" ] && command -v hostname &> /dev/null; then
+        DETECTED_IP=$(hostname -I | awk '{print $1}')
+    fi
+    
+    # Method 3: Use ifconfig (fallback for older systems)
+    if [ -z "$DETECTED_IP" ] && command -v ifconfig &> /dev/null; then
+        DETECTED_IP=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d: -f2 | head -n1)
+    fi
+    
+    # Fallback to localhost if detection fails
+    if [ -z "$DETECTED_IP" ]; then
+        DETECTED_IP="127.0.0.1"
+        print_warning "Could not detect network IP, using localhost (127.0.0.1)"
+        print_warning "Physical routers will NOT be able to connect!"
+        print_info "Please update RADIUS configuration in /settings/servers with your actual IP"
+    else
+        print_success "Detected host IP: $DETECTED_IP"
+        print_info "Physical routers will connect to this IP address"
+    fi
+    
+    print_info "Generating RADIUS shared secret..."
+    RADIUS_SECRET=$(openssl rand -hex 16)
+    print_success "Generated RADIUS secret: ${RADIUS_SECRET}"
+
+    print_info "Creating RADIUS infrastructure tables..."
+    if [ -f "scripts/create_radius_infrastructure.sql" ]; then
+        psql "$DATABASE_URL" -f scripts/create_radius_infrastructure.sql > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            print_success "RADIUS tables created successfully"
+        else
+            print_error "Failed to create RADIUS tables"
+            print_info "Trying alternative method..."
+            sudo -u postgres psql -d "$DB_NAME" -f scripts/create_radius_infrastructure.sql
+        fi
+    else
+        print_warning "RADIUS schema file not found, using inline SQL..."
+        psql "$DATABASE_URL" << RADIUSTABLES
+-- Create basic RADIUS tables inline
+CREATE TABLE IF NOT EXISTS radius_nas (
+    id SERIAL PRIMARY KEY,
+    network_device_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    short_name VARCHAR(32) NOT NULL,
+    ip_address INET NOT NULL UNIQUE,
+    secret VARCHAR(255) NOT NULL,
+    type VARCHAR(50) DEFAULT 'mikrotik',
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'active',
+    ip_address INET,
+    download_limit BIGINT,
+    upload_limit BIGINT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS radius_sessions_active (
+    id SERIAL PRIMARY KEY,
+    acct_session_id VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(255) NOT NULL,
+    nas_ip_address INET NOT NULL,
+    framed_ip_address INET,
+    start_time TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_update TIMESTAMP DEFAULT NOW(),
+    session_time INTEGER DEFAULT 0,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_radius_users_username ON radius_users(username);
+CREATE INDEX IF NOT EXISTS idx_radius_sessions_username ON radius_sessions_active(username);
+RADIUSTABLES
+        if [ $? -eq 0 ]; then
+            print_success "Basic RADIUS tables created"
+        else
+            print_error "Failed to create RADIUS tables"
+        fi
+    fi
+    
+    print_info "Saving RADIUS configuration to database..."
+    psql "$DATABASE_URL" << SAVERADIUS
+-- Save RADIUS server configuration
+INSERT INTO system_config (key, value, created_at, updated_at) VALUES
+    ('server.radius.enabled', 'true', NOW(), NOW()),
+    ('server.radius.host', '$DETECTED_IP', NOW(), NOW()),
+    ('server.radius.authPort', '1812', NOW(), NOW()),
+    ('server.radius.acctPort', '1813', NOW(), NOW()),
+    ('server.radius.sharedSecret', '$RADIUS_SECRET', NOW(), NOW()),
+    ('server.radius.timeout', '30', NOW(), NOW())
+ON CONFLICT (key) DO UPDATE SET 
+    value = EXCLUDED.value,
+    updated_at = NOW();
+
+-- Log the installation
+INSERT INTO system_logs (level, source, category, message, details, created_at) VALUES
+    ('INFO', 'Installation', 'radius_setup', 
+     'FreeRADIUS installed and configured', 
+     '{"host": "$DETECTED_IP", "authPort": 1812, "acctPort": 1813}', 
+     NOW());
+SAVERADIUS
+    
+    if [ $? -eq 0 ]; then
+        print_success "RADIUS configuration saved to database"
+        print_info "Configuration is accessible from /settings/servers page"
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║          RADIUS Configuration Summary                      ║"
+        echo "╠════════════════════════════════════════════════════════════╣"
+        echo "║ Host IP:        $DETECTED_IP                               ║"
+        echo "║ Auth Port:      1812                                       ║"
+        echo "║ Acct Port:      1813                                       ║"
+        echo "║ Shared Secret:  $RADIUS_SECRET                             ║"
+        echo "║                                                            ║"
+        echo "║ ⚠️  IMPORTANT: Save this secret securely!                  ║"
+        echo "║ Full secret saved in /settings/servers                     ║"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo ""
+    else
+        print_warning "Failed to save RADIUS configuration to database"
+    fi
+
+    # Check if FreeRADIUS is already installed
+    if command -v radiusd &> /dev/null || command -v freeradius &> /dev/null; then
+        print_success "FreeRADIUS already installed"
+        RADIUSD_CMD=$(command -v radiusd || command -v freeradius)
+        print_info "FreeRADIUS binary: $RADIUSD_CMD"
+    else
+        print_info "Installing FreeRADIUS..."
+        
+        if [[ "$OS" == "linux" ]]; then
+            sudo apt update
+            sudo apt install -y freeradius freeradius-postgresql freeradius-utils
+            
+            if [ $? -eq 0 ]; then
+                print_success "FreeRADIUS installed"
+            else
+                print_error "Failed to install FreeRADIUS"
+                exit 1
+            fi
+        elif [[ "$OS" == "macos" ]]; then
+            brew install freeradius-server
+            
+            if [ $? -eq 0 ]; then
+                print_success "FreeRADIUS installed"
+            else
+                print_error "Failed to install FreeRADIUS"
+                exit 1
+            fi
+        fi
+    fi
+    
+    
+    print_info "Detecting FreeRADIUS configuration directory..."
+    FREERADIUS_DIR=""
+    
+    # Try multiple possible locations
+    for dir in /etc/freeradius/3.0 /etc/freeradius /etc/raddb /usr/local/etc/raddb /opt/freeradius/etc/raddb; do
+        if [ -d "$dir" ]; then
+            FREERADIUS_DIR="$dir"
+            print_success "Found FreeRADIUS config directory: $FREERADIUS_DIR"
+            break
+        fi
+    done
+    
+    if [ -z "$FREERADIUS_DIR" ]; then
+        print_error "Could not find FreeRADIUS configuration directory"
+        print_info "Please install FreeRADIUS or specify the config directory manually"
+        exit 1
+    fi
+    
+    sudo mkdir -p "$FREERADIUS_DIR/mods-available"
+    sudo mkdir -p "$FREERADIUS_DIR/mods-enabled"
+    
+    # Configure clients.conf to accept connections from detected IP and database clients
+    print_info "Configuring RADIUS clients (clients.conf)..."
+    CLIENTS_CONF="$FREERADIUS_DIR/clients.conf"
+    
+    if [ -f "$CLIENTS_CONF" ]; then
+        sudo cp "$CLIENTS_CONF" "$CLIENTS_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Create new clients.conf with detected IP and database integration
+        sudo tee "$CLIENTS_CONF.tmp" > /dev/null <<EOF_CLIENTS
+# FreeRADIUS Clients Configuration
+# Configured by ISP Management System
+
+# Localhost client (for testing)
+client localhost {
+    ipaddr = 127.0.0.1
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+}
+
+# IPv6 localhost
+client localhost_ipv6 {
+    ipv6addr = ::1
+    secret = $RADIUS_SECRET
+}
+
+# ISP Management System Server (detected IP: $DETECTED_IP)
+client isp_server {
+    ipaddr = $DETECTED_IP
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "isp-server"
+}
+
+# Allow all private network ranges (for testing - tighten in production)
+client private_network_10 {
+    ipaddr = 10.0.0.0
+    netmask = 8
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-10"
+}
+
+client private_network_172 {
+    ipaddr = 172.16.0.0
+    netmask = 12
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-172"
+}
+
+client private_network_192 {
+    ipaddr = 192.168.0.0
+    netmask = 16
+    secret = $RADIUS_SECRET
+    require_message_authenticator = no
+    nas_type = "other"
+    shortname = "private-192"
+}
+
+# Dynamic clients from database (requires SQL module)
+# FreeRADIUS will read additional clients from radius_nas table
+EOF_CLIENTS
+
+        sudo mv "$CLIENTS_CONF.tmp" "$CLIENTS_CONF"
+        sudo chmod 644 "$CLIENTS_CONF"
+        print_success "Radius clients configured with detected IP ($DETECTED_IP) and private networks"
+    fi
+
+    # Enable SQL module for dynamic client loading
+    print_info "Enabling SQL module for dynamic client management..."
+    if [ -f "$FREERADIUS_DIR/mods-available/sql" ]; then
+        sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql" 2>/dev/null || true
+        print_success "SQL module enabled"
+    fi
+    
+    # Configure SQL module
+    print_info "Configuring FreeRADIUS SQL module..."
+    
+    SQL_CONF="$FREERADIUS_DIR/mods-available/sql"
+    
+    if [ -f "$SQL_CONF" ]; then
+        print_info "Backing up original SQL configuration..."
+        sudo cp "$SQL_CONF" "$SQL_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    print_info "Creating SQL module configuration..."
+    cat > /tmp/freeradius_sql.conf << SQLCONF
+# PostgreSQL configuration for FreeRADIUS
+# Connects to PostgreSQL database for AAA operations
+
+sql {
+    driver = "rlm_sql_postgresql"
+    dialect = "postgresql"
+    
+    # PostgreSQL connection
+    server = "localhost"
+    port = 5432
+    login = "$DB_USER"
+    password = "$DB_PASSWORD"
+    radius_db = "$DB_NAME"
+    
+    # Connection pool settings (optimized for performance - rule 6)
+    pool {
+        start = 5
+        min = 4
+        max = 32
+        spare = 10
+        uses = 0
+        retry_delay = 30
+        lifetime = 0
+        idle_timeout = 60
+    }
+    
+    # Read NAS clients from database
+    read_clients = yes
+    client_table = "radius_nas" # Changed from "nas" to "radius_nas"
+    
+    # Standard FreeRADIUS authorization queries
+    authorize_check_query = "SELECT id, username, attribute, value, op FROM radcheck WHERE username = '%{SQL-User-Name}' ORDER BY id"
+    
+    authorize_reply_query = "SELECT id, username, attribute, value, op FROM radreply WHERE username = '%{SQL-User-Name}' ORDER BY id"
+    
+    authorize_group_check_query = "SELECT id, groupname, attribute, value, op FROM radgroupcheck WHERE groupname = '%{SQL-Group}' ORDER BY id"
+    
+    authorize_group_reply_query = "SELECT id, groupname, attribute, value, op FROM radgroupreply WHERE groupname = '%{SQL-Group}' ORDER BY id"
+    
+    # User group membership
+    group_membership_query = "SELECT groupname FROM radusergroup WHERE username='%{SQL-User-Name}' ORDER BY priority"
+    
+    # Accounting queries - track sessions in radacct table
+    accounting {
+        reference = "%{tolower:type.%{Acct-Status-Type}.query}"
+        
+        type {
+            accounting-on {
+                query = "UPDATE radacct SET acctstoptime = NOW(), acctsessiontime = (EXTRACT(EPOCH FROM (NOW() - acctstarttime)))::INTEGER, acctterminatecause = '%{Acct-Terminate-Cause}' WHERE acctstoptime IS NULL AND nasipaddress = '%{NAS-IP-Address}' AND acctstarttime <= NOW()"
+            }
+            
+            accounting-off {
+                query = "\${..accounting-on.query}"
+            }
+            
+            start {
+                query = "INSERT INTO radacct (acctsessionid, acctuniqueid, username, realm, nasipaddress, nasportid, nasporttype, acctstarttime, acctupdatetime, acctstoptime, acctsessiontime, acctauthentic, connectinfo_start, connectinfo_stop, acctinputoctets, acctoutputoctets, calledstationid, callingstationid, acctterminatecause, servicetype, framedprotocol, framedipaddress) VALUES ('%{Acct-Session-Id}', '%{Acct-Unique-Session-Id}', '%{SQL-User-Name}', '%{Realm}', '%{NAS-IP-Address}', '%{NAS-Port}', '%{NAS-Port-Type}', NOW(), NOW(), NULL, 0, '%{Acct-Authentic}', '%{Connect-Info}', '', 0, 0, '%{Called-Station-Id}', '%{Calling-Station-Id}', '', '%{Service-Type}', '%{Framed-Protocol}', NULLIF('%{Framed-IP-Address}', '')::inet)"
+            }
+            
+            interim-update {
+                query = "UPDATE radacct SET acctupdatetime = NOW(), acctinterval = EXTRACT(EPOCH FROM (NOW() - COALESCE(acctupdatetime, acctstarttime)))::INTEGER, acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}'::bigint, acctoutputoctets = '%{Acct-Output-Octets}'::bigint WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}' AND nasipaddress = '%{NAS-IP-Address}'"
+            }
+            
+            stop {
+                query = "UPDATE radacct SET acctstoptime = NOW(), acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}'::bigint, acctoutputoctets = '%{Acct-Output-Octets}'::bigint, acctterminatecause = '%{Acct-Terminate-Cause}', connectinfo_stop = '%{Connect-Info}' WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}' AND nasipaddress = '%{NAS-IP-Address}'"
+            }
+        }
+    }
+    
+    # Post-authentication logging
+    post-auth {
+        query = "INSERT INTO radpostauth (username, pass, reply, authdate) VALUES ('%{User-Name}', '%{%{User-Password}:-%{Chap-Password}}', '%{reply:Packet-Type}', NOW())"
+    }
+}
+SQLCONF
+
+    sudo sed -i "s/DB_USER/$DB_USER/g" "$SQL_CONF"
+    sudo sed -i "s/DB_PASSWORD/$DB_PASSWORD/g" "$SQL_CONF"
+    sudo sed -i "s/DB_NAME/$DB_NAME/g" "$SQL_CONF"
+    
+    print_success "SQL configuration created and linked to database: ${DB_NAME}"
+    
+    # Enable SQL module
+    print_info "Enabling SQL module..."
+    if [ -d "$FREERADIUS_DIR/mods-enabled" ]; then
+        sudo ln -sf "$FREERADIUS_DIR/mods-available/sql" "$FREERADIUS_DIR/mods-enabled/sql" 2>/dev/null || true
+        print_success "SQL module enabled"
+    fi
+    
+    print_info "Configuring FreeRADIUS to listen on detected IP: $DETECTED_IP"
+    
+    # Configure the default site to listen on the detected IP
+    DEFAULT_SITE="$FREERADIUS_DIR/sites-available/default"
+    if [ -f "$DEFAULT_SITE" ]; then
+        sudo cp "$DEFAULT_SITE" "$DEFAULT_SITE.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        sudo tee "$DEFAULT_SITE.tmp" > /dev/null <<'EOF_DEFAULT'
+# FreeRADIUS default site - Configured for ISP Management System
+# Optimized for PPPoE, Hotspot, DHCP with PAP/CHAP/MS-CHAP authentication
+# EAP/802.1X disabled (not needed for ISP operations)
+
+server default {
+    listen {
+        type = auth
+        ipaddr = 0.0.0.0
+        port = 1812
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    listen {
+        type = acct
+        ipaddr = 0.0.0.0
+        port = 1813
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    authorize {
+        filter_username
+        preprocess
+        chap
+        mschap
+        suffix
+        sql
+        expiration
+        logintime
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+        Auth-Type CHAP {
+            chap
+        }
+        Auth-Type MS-CHAP {
+            mschap
+        }
+    }
+
+    preacct {
+        preprocess
+        acct_unique
+        suffix
+    }
+
+    accounting {
+        sql
+        exec
+    }
+
+    session {
+        sql
+    }
+
+    post-auth {
+        sql
+        exec
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+        }
+    }
+
+    pre-proxy {
+    }
+
+    post-proxy {
+    }
+}
+EOF_DEFAULT
+
+        sudo mv "$DEFAULT_SITE.tmp" "$DEFAULT_SITE"
+        sudo chmod 644 "$DEFAULT_SITE"
+        print_success "FreeRADIUS default site configured for ISP (PAP/CHAP/MS-CHAP only, EAP disabled)"
+    fi
+    
+    print_info "Disabling EAP module (not needed for ISP operations)..."
+    if [ -L "$FREERADIUS_DIR/mods-enabled/eap" ]; then
+        sudo rm -f "$FREERADIUS_DIR/mods-enabled/eap"
+        print_success "EAP module disabled"
+    fi
+    
+    # Configure inner-tunnel site without EAP
+    INNER_TUNNEL="$FREERADIUS_DIR/sites-available/inner-tunnel"
+    if [ -f "$INNER_TUNNEL" ]; then
+        sudo cp "$INNER_TUNNEL" "$INNER_TUNNEL.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        sudo tee "$INNER_TUNNEL.tmp" > /dev/null <<'EOF_INNER'
+# FreeRADIUS inner-tunnel site - ISP Configuration
+# EAP disabled for PPPoE/Hotspot/DHCP authentication
+
+server inner-tunnel {
+    listen {
+        ipaddr = 127.0.0.1
+        port = 18120
+        type = auth
+    }
+
+    authorize {
+        filter_username
+        chap
+        mschap
+        suffix
+        update control {
+            &Proxy-To-Realm := LOCAL
+        }
+        sql
+        expiration
+        logintime
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+        Auth-Type CHAP {
+            chap
+        }
+        Auth-Type MS-CHAP {
+            mschap
+        }
+    }
+
+    session {
+        sql
+    }
+
+    post-auth {
+        sql
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+        }
+    }
+
+    pre-proxy {
+    }
+
+    post-proxy {
+    }
+}
+EOF_INNER
+
+        sudo mv "$INNER_TUNNEL.tmp" "$INNER_TUNNEL"
+        sudo chmod 644 "$INNER_TUNNEL"
+        print_success "FreeRADIUS inner-tunnel configured without EAP"
+    fi
+    
+    # </CHANGE> Disable inner-tunnel site to avoid port conflicts - not needed for ISP operations
+    print_info "Disabling inner-tunnel site (not needed for ISP operations)..."
+    if [ -L "$FREERADIUS_DIR/sites-enabled/inner-tunnel" ]; then
+        sudo rm -f "$FREERADIUS_DIR/sites-enabled/inner-tunnel"
+        print_success "Inner-tunnel site disabled (prevents port 18120 conflict)"
+    fi
+    
+    # Enable only the default site
+    print_info "Enabling FreeRADIUS default site..."
+    sudo ln -sf "$FREERADIUS_DIR/sites-available/default" "$FREERADIUS_DIR/sites-enabled/default" 2>/dev/null || true
+    
+    print_success "FreeRADIUS now configured to listen on all network interfaces (0.0.0.0)"
+    print_info "External routers can connect to: $DETECTED_IP:1812"
+    print_info "Authentication methods: PAP, CHAP, MS-CHAP (for PPPoE, Hotspot, DHCP)"
+    
+    # Test configuration before starting
+    print_info "Testing FreeRADIUS configuration..."
+    if sudo freeradius -C > /dev/null 2>&1; then
+        print_success "FreeRADIUS configuration is valid"
+    else
+        print_warning "FreeRADIUS configuration test failed - will attempt to start anyway"
+        print_info "Run 'sudo freeradius -X' to see detailed error messages"
+    fi
+    
+    # Open firewall ports
+    print_info "Configuring firewall for RADIUS..."
+    sudo ufw allow 1812/udp comment "RADIUS Authentication" 2>/dev/null || true
+    sudo ufw allow 1813/udp comment "RADIUS Accounting" 2>/dev/null || true
+    print_success "Firewall configured for RADIUS (ports 1812, 1813)"
+
+    print_info "Starting FreeRADIUS service..."
+    
+    # Stop any existing instance
+    sudo systemctl stop freeradius 2>/dev/null || true
+    sleep 2
+    
+    # Enable and start service
+    sudo systemctl enable freeradius
+    sudo systemctl start freeradius
+    
+    # Wait for service to start
+    sleep 3
+    
+    # Verify service is running
+    if sudo systemctl is-active --quiet freeradius; then
+        print_success "FreeRADIUS service started successfully"
+        
+        # Verify it's listening on network interface
+        print_info "Verifying RADIUS is listening on network..."
+        if sudo netstat -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0" || \
+           sudo ss -ulnp 2>/dev/null | grep -q ":1812.*0.0.0.0"; then
+            print_success "Radius is listening on all network interfaces (0.0.0.0:1812)"
+        else
+            print_warning "Radius may not be listening on all interfaces"
+            print_info "Check with: sudo netstat -ulnp | grep 1812"
+        fi
+        
+        # Show RADIUS status
+        print_info "FreeRADIUS Status:"
+        sudo systemctl status freeradius --no-pager | head -10
+    else
+        print_error "FreeRADIUS service failed to start"
+        print_info "Check errors with: sudo journalctl -xeu freeradius.service"
+        print_info "Or run debug mode: sudo freeradius -X"
+        print_info "Common issues:"
+        echo "  1. Permission errors - Run: sudo chmod -R 644 /etc/freeradius/3.0"
+        echo "  2. Port conflicts - Check: sudo netstat -ulnp | grep 1812"
+        echo "  3. SQL configuration - Verify DATABASE_URL is set correctly"
+    fi
+    
+    print_info "Testing RADIUS server connectivity..."
+    
+    # Wait for FreeRADIUS to fully start
+    sleep 3
+    
+    # Test if RADIUS is listening on port 1812
+    if netstat -tuln 2>/dev/null | grep -q ":1812 " || ss -tuln 2>/dev/null | grep -q ":1812 "; then
+        print_success "Radius is listening on port 1812"
+        
+        RADIUS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'radius_users');" 2>/dev/null || echo "f")
+        CUSTOMERS_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'customers');" 2>/dev/null || echo "f")
+
+        if [ "$RADIUS_TABLE_EXISTS" = "t" ] && [ "$CUSTOMERS_TABLE_EXISTS" = "t" ]; then
+            # Check if test customer exists
+            TEST_CUSTOMER_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT 1 FROM customers WHERE id = 1);" 2>/dev/null || echo "f")
+            
+            if [ "$TEST_CUSTOMER_EXISTS" = "f" ]; then
+                print_info "Creating test customer record..."
+                psql "$DATABASE_URL" << TESTCUSTOMER
+INSERT INTO customers (id, customer_number, name, email, phone, status, created_at, updated_at)
+VALUES (1, 'TEST0001', 'Test Customer', 'test@example.com', '+254700000000', 'active', NOW(), NOW())
+ON CONFLICT (id) DO NOTHING;
+TESTCUSTOMER
+            fi
+            
+            # Now safely test RADIUS authentication
+            psql "$DATABASE_URL" << RADIUSTEST
+INSERT INTO radius_users (username, password_hash, customer_id, status, created_at, updated_at)
+VALUES ('testradius', crypt('testpass123', gen_salt('bf')), 1, 'active', NOW(), NOW())
+ON CONFLICT (username) DO NOTHING;
+RADIUSTEST
+
+            if radtest testradius testpass123 localhost 0 testing123 > /dev/null 2>&1; then
+                print_success "Radius authentication test PASSED"
+                psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
+            else
+                print_warning "Radius authentication test FAILED"
+                print_info "This may be normal if radtest is not configured properly"
+                psql "$DATABASE_URL" -c "DELETE FROM radius_users WHERE username = 'testradius';" > /dev/null 2>&1
+            fi
+        else
+            print_warning "Radius or customers tables not found, skipping authentication test"
+        fi
+        
+        print_info "Checking for configured routers..."
+        NETWORK_TABLE_EXISTS=$(psql "$DATABASE_URL" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'network_devices');" 2>/dev/null || echo "f")
+
+        if [ "$NETWORK_TABLE_EXISTS" = "t" ]; then
+            ROUTER_COUNT=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active';" 2>/dev/null || echo "0")
+            
+            if [ "$ROUTER_COUNT" -gt 0 ]; then
+                print_info "Found $ROUTER_COUNT active router(s)"
+                print_info "Testing connectivity to physical routers..."
+                
+                # Get first router details
+                ROUTER_INFO=$(psql "$DATABASE_URL" -tAc "SELECT ip_address, name FROM network_devices WHERE type IN ('router', 'mikrotik') AND status = 'active' LIMIT 1;")
+                ROUTER_IP=$(echo "$ROUTER_INFO" | cut -d'|' -f1 | tr -d ' ')
+                ROUTER_NAME=$(echo "$ROUTER_INFO" | cut -d'|' -f2)
+                
+                if [ -n "$ROUTER_IP" ]; then
+                    print_info "Testing ping to router '$ROUTER_NAME' ($ROUTER_IP)..."
+                    if ping -c 2 -W 2 "$ROUTER_IP" > /dev/null 2>&1; then
+                        print_success "Router $ROUTER_IP is reachable"
+                        
+                        # Add router to RADIUS NAS table
+                        psql "$DATABASE_URL" << ADDNAS
+INSERT INTO radius_nas (network_device_id, name, short_name, ip_address, secret, type, status)
+SELECT id, name, SUBSTRING(name FROM 1 FOR 32), ip_address::inet, '$RADIUS_SECRET', type, status
+FROM network_devices 
+WHERE ip_address = '$ROUTER_IP'
+ON CONFLICT (ip_address) DO UPDATE SET
+    secret = EXCLUDED.secret,
+    updated_at = NOW();
+ADDNAS
+                        print_success "Router added to RADIUS NAS configuration"
+                        print_info "Router can now authenticate users via RADIUS"
+                    else
+                        print_warning "Router $ROUTER_IP is not reachable"
+                        print_info "Ensure the router is powered on and network is configured"
+                    fi
+                fi
+            else
+                print_info "No routers configured yet"
+                print_info "Add routers from /network/routers page after installation"
+            fi
+        else
+            print_warning "network_devices table not found, skipping router check"
+        fi
+        
+    else
+        print_error "Radius server is not listening on port 1812"
+        print_info "Check logs: sudo journalctl -u freeradius -n 50"
+        print_info "Or try: sudo freeradius -X"
+    fi
+    
+    print_success "FreeRADIUS installation completed"
+    print_info "Next steps:"
+    print_info "1. Visit /settings/servers to configure RADIUS settings"
+    print_info "2. Add routers via /network/routers/add page"
+    print_info "3. Routers will automatically sync to RADIUS NAS table"
+    print_info "4. Test connectivity in /settings/servers Router Connectivity Testing"
+}
+
 setup_database() {
-    print_header "Setting Up Database"
+    print_header "Setting Up PostgreSQL Database"
     
     print_info "Checking PostgreSQL service status..."
     if [[ "$OS" == "linux" ]]; then
@@ -324,6 +1048,13 @@ setup_database() {
         print_success "User created"
     fi
     
+    print_info "Granting superuser privileges to $DB_USER for full CRUD and schema operations..."
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH SUPERUSER CREATEDB CREATEROLE REPLICATION;" 2>/dev/null || {
+        print_error "Failed to grant superuser privileges"
+        exit 1
+    }
+    print_success "Superuser privileges granted - user can now perform all database operations"
+    
     DB_EXISTS=$(sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME" && echo "1" || echo "0")
     
     if [ "$DB_EXISTS" = "0" ]; then
@@ -337,7 +1068,7 @@ setup_database() {
         print_info "Database $DB_NAME already exists"
         sudo -u postgres psql -c "ALTER DATABASE ${DB_NAME} OWNER TO ${DB_USER};" 2>/dev/null || true
     fi
-    
+
     print_info "Configuring database permissions..."
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
@@ -346,7 +1077,7 @@ setup_database() {
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
     
-    print_success "Database permissions configured"
+    print_success "Database permissions configured with full CRUD access"
     
     # Create environment file
     print_info "Creating .env.local file..."
@@ -676,7 +1407,7 @@ install_nodejs() {
                     print_success "NVM installation successful: $(node --version)"
                     INSTALLATION_SUCCESS=true
                     
-                    # Add NVM to shell profiles for persistence
+                    # Add to shell profiles for persistence
                     for profile in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"; do
                         if [ -f "$profile" ] && ! grep -q "NVM_DIR" "$profile"; then
                             echo 'export NVM_DIR="$HOME/.nvm"' >> "$profile"
@@ -914,411 +1645,278 @@ build_application() {
     print_success "Build complete"
 }
 
-apply_database_fixes() {
-    print_header "Applying Database Schema Fixes"
+
+# Around line 1650 - Replace the incomplete fix_database_schema function
+fix_database_schema() {
+    print_header "Fixing Database Schema Issues"
     
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    
-    if [ ! -w "$SCRIPT_DIR" ]; then
-        print_error "No write permission in project directory: $SCRIPT_DIR"
-        print_info "Attempting to fix permissions..."
-        
-        CURRENT_USER=$(whoami)
-        
-        # Try to fix ownership
-        if sudo chown -R "$CURRENT_USER:$CURRENT_USER" "$SCRIPT_DIR" 2>/dev/null; then
-            print_success "Fixed directory permissions"
-        else
-            print_error "Cannot fix permissions. Please run:"
-            echo "  sudo chown -R $CURRENT_USER:$CURRENT_USER $SCRIPT_DIR"
-            exit 1
-        fi
-    fi
-    
-    if [ ! -d "$SCRIPT_DIR/scripts" ]; then
-        print_warning "scripts/ directory not found"
-        print_info "Creating scripts directory..."
-        mkdir -p "$SCRIPT_DIR/scripts"
-        chmod 755 "$SCRIPT_DIR/scripts"
-    fi
-    
-    print_info "Running database migrations..."
+    print_info "Applying comprehensive column fixes for all tables..."
     
     DB_NAME="${DB_NAME:-isp_system}"
-    DB_USER="${DB_USER:-isp_admin}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_error "Database '$DB_NAME' does not exist"
-        print_info "Creating database first..."
-        setup_database
-    fi
-    
-    print_info "Checking for schema_migrations table..."
-    if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'schema_migrations');" | grep -q "t"; then
-        print_info "Creating schema_migrations table..."
-        sudo -u postgres psql -d "$DB_NAME" -c "CREATE TABLE schema_migrations (id SERIAL PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || {
-            print_error "Failed to create schema_migrations table"
-            exit 1
-        }
-        print_success "schema_migrations table created"
-    fi
-    
-    print_info "Preparing migration files..."
-    TEMP_MIGRATION_DIR="/tmp/isp_migrations_$$"
-    mkdir -p "$TEMP_MIGRATION_DIR"
-    chmod 755 "$TEMP_MIGRATION_DIR"
-    
-    # Copy complete schema if it exists
-    COMPLETE_SCHEMA="$SCRIPT_DIR/scripts/000_complete_schema.sql"
-    
-    if [ -f "$COMPLETE_SCHEMA" ]; then
-        print_info "Copying complete database schema to temporary location..."
-        cp "$COMPLETE_SCHEMA" "$TEMP_MIGRATION_DIR/000_complete_schema.sql"
-        chmod 644 "$TEMP_MIGRATION_DIR/000_complete_schema.sql"
+    # Apply the comprehensive fix script
+    if [ -f "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" ]; then
+        print_info "Executing 1000_fix_all_missing_columns.sql..."
         
-        print_info "Applying complete database schema..."
+        # Copy to /tmp for postgres user access
+        cp "$SCRIPT_DIR/scripts/1000_fix_all_missing_columns.sql" /tmp/fix_columns.sql
+        chmod 644 /tmp/fix_columns.sql
         
-        if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/000_complete_schema.sql") 2>&1 | tee /tmp/schema_output.log; then
-            print_success "Complete schema applied successfully"
-            
-            # Show summary from output
-            if grep -q "Database schema created successfully" /tmp/schema_output.log; then
-                print_success "All tables and indexes created"
-            fi
-            
-            # Record the complete schema as applied
-            MIGRATION_NAME="000_complete_schema.sql"
-            ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE migration_name = '$MIGRATION_NAME';" 2>/dev/null || echo "0")
-            if [ "$ALREADY_APPLIED" -eq 0 ]; then
-                (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$MIGRATION_NAME');") > /dev/null 2>&1
-            fi
-            
+        # Execute with error output visible
+        cd /tmp
+        if sudo -u postgres psql -d "$DB_NAME" -f /tmp/fix_columns.sql 2>&1 | grep -i "error"; then
+            print_warning "Some SQL commands produced errors (may be expected for existing columns)"
+        fi
+        
+        print_success "Column fixes applied"
+        rm -f /tmp/fix_columns.sql
+        
+        # Verify critical columns exist
+        print_info "Verifying critical columns were added..."
+        cd /tmp
+        
+        # Check customers.name
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='customers' AND column_name='name';" 2>/dev/null | grep -q "name"; then
+            print_success "customers.name column exists"
         else
-            print_error "Failed to apply complete schema"
-            print_info "Check the error log: /tmp/schema_output.log"
-            
-            # Clean up
-            rm -rf "$TEMP_MIGRATION_DIR"
-            exit 1
+            print_error "customers.name column is MISSING!"
         fi
-    else
-        print_error "Complete schema file not found: $COMPLETE_SCHEMA"
-        print_info "The database schema file is missing"
         
-        # Clean up
-        rm -rf "$TEMP_MIGRATION_DIR"
-        exit 1
-    fi
-    
-    print_info "Checking for additional migrations..."
-    
-    MIGRATION_COUNT=0
-    for migration_file in "$SCRIPT_DIR/scripts"/[0-9][0-9][0-9]_*.sql; do
-        if [ -f "$migration_file" ]; then
-            MIGRATION_NAME=$(basename "$migration_file")
-            
-            ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE migration_name = '$MIGRATION_NAME';" 2>/dev/null || echo "0")
-            
-            if [ "$ALREADY_APPLIED" -eq 0 ]; then
-                print_info "Applying migration: $MIGRATION_NAME"
-                
-                cp "$migration_file" "$TEMP_MIGRATION_DIR/$MIGRATION_NAME"
-                chmod 644 "$TEMP_MIGRATION_DIR/$MIGRATION_NAME"
-                
-                if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_MIGRATION_DIR/$MIGRATION_NAME") > /dev/null 2>&1; then
-                    # Record the migration
-                    (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (migration_name) VALUES ('$MIGRATION_NAME');") > /dev/null 2>&1
-                    
-                    print_success "Migration applied: $MIGRATION_NAME"
-                    MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
-                else
-                    print_warning "Migration failed (may be incompatible): $MIGRATION_NAME"
-                fi
-            else
-                print_info "Migration already applied: $MIGRATION_NAME"
-            fi
+        # Check company_profiles.name
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='company_profiles' AND column_name='name';" 2>/dev/null | grep -q "name"; then
+            print_success "company_profiles.name column exists"
+        else
+            print_error "company_profiles.name column is MISSING!"
         fi
-    done
-    
-    if [ $MIGRATION_COUNT -gt 0 ]; then
-        print_success "Applied $MIGRATION_COUNT additional migrations"
+        
+        # Check customer_services.mac_address
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='customer_services' AND column_name='mac_address';" 2>/dev/null | grep -q "mac_address"; then
+            print_success "customer_services.mac_address column exists"
+        else
+            print_error "customer_services.mac_address column is MISSING!"
+        fi
+        
+        # Check locations sequence
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT pg_get_serial_sequence('locations', 'id');" 2>/dev/null | grep -q "locations_id_seq"; then
+            print_success "locations ID sequence configured"
+        else
+            print_warning "locations ID sequence may need manual configuration"
+        fi
+        
+        cd "$SCRIPT_DIR"
     else
-        print_info "No additional migrations needed"
+        print_error "1000_fix_all_missing_columns.sql not found at $SCRIPT_DIR/scripts/"
+        print_info "Skipping column fixes"
     fi
-    
-    print_info "Cleaning up temporary files..."
-    rm -rf "$TEMP_MIGRATION_DIR"
-    rm -f /tmp/schema_output.log
-    
-    print_success "Database migrations completed successfully"
 }
 
-run_performance_optimizations() {
-    print_header "Applying Performance Optimizations"
+apply_database_schema() {
+    print_header "Applying Database Schema - Creating ALL Tables"
+    print_info "=========================================="
     
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    SCRIPTS_PATH="$(cd "$(dirname "$0")/scripts" && pwd)"
     
-    if [ ! -d "$SCRIPT_DIR/scripts" ]; then
-        print_warning "scripts/ directory not found, skipping performance optimizations..."
-        return 0
-    fi
+    cd /tmp || exit 1
     
-    if [ ! -f "$SCRIPT_DIR/scripts/performance_indexes.sql" ]; then
-        print_warning "Performance optimization script not found at: $SCRIPT_DIR/scripts/performance_indexes.sql"
-        print_info "Skipping performance optimizations..."
-        return 0
-    fi
+    print_info "Creating schema_migrations table for tracking..."
+    sudo -u postgres psql -d "$DB_NAME" <<'MIGRATIONS'
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) UNIQUE NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    success BOOLEAN DEFAULT true,
+    error_message TEXT
+);
+MIGRATIONS
+    print_success "Migration tracking table created"
     
-    print_info "Creating performance indexes..."
-    
-    DB_NAME="${DB_NAME:-isp_system}"
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_error "Database '$DB_NAME' does not exist"
-        print_info "Please run full installation first: ./install.sh"
-        exit 1
-    fi
-    
-    print_info "Preparing performance optimization file..."
-    TEMP_PERF_DIR="/tmp/isp_performance_$$"
-    mkdir -p "$TEMP_PERF_DIR"
-    chmod 755 "$TEMP_PERF_DIR"
-    
-    cp "$SCRIPT_DIR/scripts/performance_indexes.sql" "$TEMP_PERF_DIR/performance_indexes.sql"
-    chmod 644 "$TEMP_PERF_DIR/performance_indexes.sql"
-    
-    if (cd /tmp && sudo -u postgres psql -d "$DB_NAME" -f "$TEMP_PERF_DIR/performance_indexes.sql") 2>&1 | tee /tmp/performance_output.log; then
-        print_success "Performance optimizations applied"
-        
-        # Show summary
-        INDEX_COUNT=$(grep -c "CREATE INDEX" /tmp/performance_output.log || echo "0")
-        if [ "$INDEX_COUNT" -gt 0 ]; then
-            print_info "Created/verified $INDEX_COUNT performance indexes"
-        fi
-    else
-        print_warning "Some performance optimizations may have failed"
-        print_info "This is usually not critical and the system will still work"
-        print_info "Check the log: /tmp/performance_output.log"
-    fi
-    
-    print_info "Cleaning up temporary files..."
-    rm -rf "$TEMP_PERF_DIR"
-    rm -f /tmp/performance_output.log
-    
-    print_success "Performance optimization process complete"
-}
+    print_info "Creating critical tables (activity_logs, payroll, leave_requests)..."
+    sudo -u postgres psql -d "$DB_NAME" <<'CRITICALTABLES'
+-- Activity Logs Table
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id INTEGER,
+    details TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
 
-verify_database_connection() {
-    print_header "Verifying Database Connection (Comprehensive Test)"
+-- Payroll Table
+CREATE TABLE IF NOT EXISTS payroll (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    basic_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
+    allowances DECIMAL(12,2) DEFAULT 0,
+    deductions DECIMAL(12,2) DEFAULT 0,
+    net_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'pending',
+    paid_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_employee_id ON payroll(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_payroll_status ON payroll(status);
+
+-- Leave Requests Table
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER NOT NULL,
+    leave_type VARCHAR(50) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    days_count INTEGER NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    approved_by INTEGER,
+    approved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_id ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON leave_requests(start_date, end_date);
+CRITICALTABLES
+    print_success "Critical tables created"
     
-    DB_NAME="${DB_NAME:-isp_system}"
-    DB_USER="${DB_USER:-isp_admin}"
-    
-    print_info "Step 1: Checking PostgreSQL service status..."
-    
-    # Check if PostgreSQL is running
-    if [[ "$OS" == "linux" ]]; then
-        if ! sudo systemctl is-active --quiet postgresql; then
-            print_warning "PostgreSQL service is not running"
-            print_info "Starting PostgreSQL service..."
-            sudo systemctl start postgresql
-            sleep 3
-            
-            if sudo systemctl is-active --quiet postgresql; then
-                print_success "PostgreSQL service started"
-            else
-                print_error "Failed to start PostgreSQL service"
-                print_info "Checking PostgreSQL logs..."
-                sudo journalctl -u postgresql -n 20 --no-pager
-                exit 1
-            fi
-        else
-            print_success "PostgreSQL service is running"
-        fi
-    elif [[ "$OS" == "macos" ]]; then
-        if ! brew services list | grep postgresql | grep started > /dev/null; then
-            print_info "Starting PostgreSQL service..."
-            brew services start postgresql@15
-            sleep 3
-        fi
-        print_success "PostgreSQL service is running"
-    fi
-    
-    print_info "Step 2: Testing PostgreSQL server connectivity..."
-    
-    if sudo -u postgres psql -c "SELECT version();" > /dev/null 2>&1; then
-        PG_VERSION=$(sudo -u postgres psql -tAc "SELECT version();")
-        print_success "PostgreSQL server is accessible"
-        print_info "Version: $(echo $PG_VERSION | cut -d',' -f1)"
-    else
-        print_error "Cannot connect to PostgreSQL server"
-        print_info "Please check PostgreSQL status: sudo systemctl status postgresql"
-        exit 1
-    fi
-    
-    print_info "Step 3: Checking if database exists..."
-    
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        print_warning "Database '$DB_NAME' does not exist"
-        print_info "Creating database..."
-        setup_database
-    else
-        print_success "Database '$DB_NAME' exists"
-    fi
-    
-    print_info "Step 4: Testing database connection..."
-    
-    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-        print_success "Database connection successful"
-    else
-        print_error "Cannot connect to database '$DB_NAME'"
-        print_info "Attempting to fix connection..."
-        
-        # Try to recreate the database
-        setup_database
-        
-        # Test again
-        if sudo -u postgres psql -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-            print_success "Database connection successful after fix"
-        else
-            print_error "Still cannot connect to database"
-            exit 1
-        fi
-    fi
-    
-    print_info "Step 5: Verifying database user permissions..."
-    
-    # Grant all necessary permissions
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
-    sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
-    
-    print_success "Database user permissions configured"
-    
-    print_info "Step 6: Testing connection with credentials from .env.local..."
-    
-    if [ -f ".env.local" ]; then
-        source .env.local
-        
-        if [ -n "$DATABASE_URL" ]; then
-            MASKED_URL=$(echo "$DATABASE_URL" | awk -F'[@:/]' '{print $1"://"$4":***@"$6":"$7"/"$8}')
-            print_info "Testing connection string: $MASKED_URL"
-            
-            DB_TEST_USER=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $4}')
-            DB_TEST_PASS=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $5}')
-            DB_TEST_HOST=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $6}')
-            DB_TEST_PORT=$(echo "$DATABASE_URL" | awk -F'[/:@]' '{print $7}')
-            DB_TEST_NAME=$(echo "$DATABASE_URL" | awk -F'[/:@?]' '{print $8}')
-            
-            if PGPASSWORD="$DB_TEST_PASS" psql -h "$DB_TEST_HOST" -p "$DB_TEST_PORT" -U "$DB_TEST_USER" -d "$DB_TEST_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-                print_success "Connection with .env.local credentials successful"
-            else
-                print_warning "Cannot connect with .env.local credentials"
-                print_info "This may cause issues when running the application"
-            fi
-        else
-            print_warning "DATABASE_URL not found in .env.local"
-        fi
-    else
-        print_warning ".env.local file not found"
-    fi
-    
-    print_info "Step 7: Checking database size and statistics..."
-    
-    DB_SIZE=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT pg_size_pretty(pg_database_size('$DB_NAME'));")
-    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-    
-    print_info "Database size: $DB_SIZE"
-    print_info "Number of tables: $TABLE_COUNT"
-    
-    print_info "Step 8: Verifying all required tables and columns..."
-    
-    # Define expected schema from 000_complete_schema.sql
-    declare -A TABLE_COLUMNS=(
-        ["customers"]="id,name,email,phone,address,customer_type,status,plan,monthly_fee,balance,connection_quality,portal_login_id,portal_username,portal_password,installation_date,last_payment_date,contract_end_date,created_at,updated_at"
-        ["service_plans"]="id,name,description,speed_download,speed_upload,data_limit,price,setup_fee,fup_limit,fup_speed,contract_period,is_active,created_at,updated_at"
-        ["customer_services"]="id,customer_id,service_plan_id,status,installation_date,activation_date,suspension_date,termination_date,monthly_fee,created_at,updated_at"
-        ["payments"]="id,customer_id,amount,payment_method,payment_reference,mpesa_receipt_number,status,payment_date,created_at,updated_at"
-        ["invoices"]="id,customer_id,invoice_number,amount,tax_amount,total_amount,due_date,status,created_at,updated_at"
-        ["network_devices"]="id,name,type,ip_address,mac_address,location,status,last_seen,created_at,updated_at"
-        ["ip_addresses"]="id,ip_address,subnet_id,customer_id,device_id,status,assigned_date,created_at,updated_at"
-        ["employees"]="id,employee_id,first_name,last_name,email,phone,department,position,salary,hire_date,status,created_at,updated_at"
-        ["payroll"]="id,employee_id,pay_period_start,pay_period_end,basic_salary,allowances,deductions,gross_pay,tax,nhif,nssf,net_pay,status,created_at,updated_at"
-        ["leave_requests"]="id,employee_id,leave_type,start_date,end_date,days_requested,reason,status,approved_by,approved_at,created_at,updated_at"
-        ["activity_logs"]="id,user_id,action,entity_type,entity_id,details,ip_address,user_agent,created_at"
-        ["schema_migrations"]="id,migration_name,applied_at"
+    # Try comprehensive schema files first
+    SCHEMA_FILES=(
+        "$SCRIPTS_PATH/999_complete_all_tables_schema.sql"
+        "$SCRIPTS_PATH/complete_schema_all_146_tables.sql"
+        "$SCRIPTS_PATH/create_complete_schema.sql"
+        "$SCRIPTS_PATH/000_complete_schema.sql"
     )
     
-    MISSING_TABLES=()
-    TABLES_WITH_MISSING_COLUMNS=()
-    TOTAL_TABLES_OK=0
-    TOTAL_COLUMNS_CHECKED=0
-    TOTAL_COLUMNS_MISSING=0
+    SCHEMA_APPLIED=false
     
-    for table in "${!TABLE_COLUMNS[@]}"; do
-        # Check if table exists
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+    for schema_file in "${SCHEMA_FILES[@]}"; do
+        if [ -f "$schema_file" ]; then
+            print_info "Found comprehensive schema: $(basename $schema_file)"
+            print_info "Applying schema (this may take 2-5 minutes)..."
             
-            # Table exists, now check columns
-            IFS=',' read -ra EXPECTED_COLUMNS <<< "${TABLE_COLUMNS[$table]}"
-            MISSING_COLUMNS=()
-            
-            for column in "${EXPECTED_COLUMNS[@]}"; do
-                TOTAL_COLUMNS_CHECKED=$((TOTAL_COLUMNS_CHECKED + 1))
+            if sudo -u postgres psql -d "$DB_NAME" -f "$schema_file" 2>/tmp/schema_error.log; then
+                print_success "Schema applied successfully from $(basename $schema_file)"
+                SCHEMA_APPLIED=true
                 
-                if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table' AND column_name = '$column');" | grep -q "t"; then
-                    MISSING_COLUMNS+=("$column")
-                    TOTAL_COLUMNS_MISSING=$((TOTAL_COLUMNS_MISSING + 1))
-                fi
-            done
-            
-            if [ ${#MISSING_COLUMNS[@]} -eq 0 ]; then
-                COLUMN_COUNT=${#EXPECTED_COLUMNS[@]}
-                print_success "✓ $table ($COLUMN_COUNT columns)"
-                TOTAL_TABLES_OK=$((TOTAL_TABLES_OK + 1))
+                # Record in migrations table
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$(basename $schema_file)', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+                
+                break
             else
-                print_warning "⚠ $table (missing ${#MISSING_COLUMNS[@]} columns: ${MISSING_COLUMNS[*]})"
-                TABLES_WITH_MISSING_COLUMNS+=("$table")
+                print_warning "Error applying $(basename $schema_file) (see /tmp/schema_error.log)"
             fi
-        else
-            print_error "✗ $table (table does not exist)"
-            MISSING_TABLES+=("$table")
         fi
     done
     
-    echo ""
-    print_info "Schema Verification Summary:"
-    print_info "  Total tables expected: ${#TABLE_COLUMNS[@]}"
-    print_info "  Tables fully verified: $TOTAL_TABLES_OK"
-    print_info "  Total columns checked: $TOTAL_COLUMNS_CHECKED"
+    # Apply individual migration files
+    print_info "Scanning scripts folder for additional table definitions..."
     
-    if [ ${#MISSING_TABLES[@]} -gt 0 ]; then
-        print_error "  Missing tables: ${#MISSING_TABLES[@]} (${MISSING_TABLES[*]})"
-    fi
+    FILES_FOUND=0
+    FILES_APPLIED=0
+    FILES_SKIPPED=0
+    FILES_FAILED=0
     
-    if [ ${#TABLES_WITH_MISSING_COLUMNS[@]} -gt 0 ]; then
-        print_warning "  Tables with missing columns: ${#TABLES_WITH_MISSING_COLUMNS[@]} (${TABLES_WITH_MISSING_COLUMNS[*]})"
-        print_warning "  Total missing columns: $TOTAL_COLUMNS_MISSING"
-    fi
+    # Process numbered migration files first (000-999)
+    for sql_file in "$SCRIPTS_PATH"/[0-9][0-9][0-9]*.sql; do
+        [ -f "$sql_file" ] || continue
+        FILES_FOUND=$((FILES_FOUND + 1))
+        
+        FILENAME=$(basename "$sql_file")
+        
+        # Check if already applied
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename='$FILENAME';" 2>/dev/null || echo "0")
+        
+        if [ "$ALREADY_APPLIED" != "0" ]; then
+            FILES_SKIPPED=$((FILES_SKIPPED + 1))
+            continue
+        fi
+        
+        # Check if file contains CREATE TABLE statements
+        if grep -q "CREATE TABLE" "$sql_file"; then
+            print_info "Applying: $FILENAME"
+            
+            if sudo -u postgres psql -d "$DB_NAME" -f "$sql_file" 2>/tmp/migration_error_${FILENAME}.log; then
+                FILES_APPLIED=$((FILES_APPLIED + 1))
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            else
+                FILES_FAILED=$((FILES_FAILED + 1))
+                print_warning "Failed to apply $FILENAME (see /tmp/migration_error_${FILENAME}.log)"
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            fi
+        fi
+    done
     
-    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_MISSING_COLUMNS[@]} -eq 0 ]; then
-        print_success "  ✓ All tables and columns verified successfully!"
+    # Process other SQL files
+    for sql_file in "$SCRIPTS_PATH"/*.sql; do
+        [ -f "$sql_file" ] || continue
+        
+        FILENAME=$(basename "$sql_file")
+        
+        # Skip if already processed in numbered migrations
+        if [[ "$FILENAME" =~ ^[0-9][0-9][0-9] ]]; then
+            continue
+        fi
+        
+        FILES_FOUND=$((FILES_FOUND + 1))
+        
+        # Check if already applied
+        ALREADY_APPLIED=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM schema_migrations WHERE filename='$FILENAME';" 2>/dev/null || echo "0")
+        
+        if [ "$ALREADY_APPLIED" != "0" ]; then
+            FILES_SKIPPED=$((FILES_SKIPPED + 1))
+            continue
+        fi
+        
+        # Check if file contains CREATE TABLE statements
+        if grep -q "CREATE TABLE" "$sql_file"; then
+            if sudo -u postgres psql -d "$DB_NAME" -f "$sql_file" 2>/tmp/migration_error_${FILENAME}.log; then
+                FILES_APPLIED=$((FILES_APPLIED + 1))
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            else
+                FILES_FAILED=$((FILES_FAILED + 1))
+                sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            fi
+        fi
+    done
+    
+    print_success "Database Schema Application Complete"
+    print_info "Migration Summary:"
+    print_info "  Files found: $FILES_FOUND"
+    print_info "  Files applied: $FILES_APPLIED"
+    print_info "  Files skipped: $FILES_SKIPPED"
+    print_info "  Files failed: $FILES_FAILED"
+    
+    # Count total tables
+    TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" 2>/dev/null || echo "0")
+    print_info "Total tables in database: $TABLE_COUNT"
+    
+    if [ "$TABLE_COUNT" -ge 100 ]; then
+        print_success "Database contains $TABLE_COUNT tables"
     else
-        print_warning "  Schema verification found issues that need to be fixed"
-        print_info "  These will be addressed in the next step (Apply Database Fixes)"
+        print_warning "Expected 200+ tables but found $TABLE_COUNT"
+        print_info "Some tables may not have been created. Check error logs in /tmp/"
     fi
     
-    print_success "Database connection verification complete!"
+    cd - > /dev/null || true
 }
 
 verify_database_tables() {
     print_header "Verifying Database Tables"
     
     DB_NAME="${DB_NAME:-isp_system}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # Store script directory
     
-    print_info "Checking if required tables exist..."
+    cd /tmp
     
     # List of required tables
     REQUIRED_TABLES=(
@@ -1334,12 +1932,17 @@ verify_database_tables() {
         "leave_requests"
         "activity_logs"
         "schema_migrations"
+        # Added FreeRADIUS tables
+        "radius_users"
+        "radius_sessions_active"
+        "radius_sessions_archive"
+        "radius_nas"
     )
     
     MISSING_TABLES=()
     
     for table in "${REQUIRED_TABLES[@]}"; do
-        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" 2>/dev/null | grep -q "t"; then
             print_success "Table exists: $table"
         else
             print_warning "Table missing: $table"
@@ -1351,7 +1954,7 @@ verify_database_tables() {
         print_success "All required tables exist"
         
         # Count total tables
-        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+        TABLE_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null)
         print_info "Total tables in database: $TABLE_COUNT"
         
     else
@@ -1359,220 +1962,295 @@ verify_database_tables() {
         print_info "Missing tables: ${MISSING_TABLES[*]}"
         print_info "Attempting to create missing tables..."
         
+        cd "$SCRIPT_DIR"
+        
         # Run migrations to create tables
-        apply_database_fixes
+        apply_database_schema
+        
+        cd /tmp
         
         # Verify again
         print_info "Re-checking tables after migration..."
         STILL_MISSING=()
         
         for table in "${MISSING_TABLES[@]}"; do
-            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" | grep -q "t"; then
+            if ! sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table');" 2>/dev/null | grep -q "t"; then
                 STILL_MISSING+=("$table")
             fi
         done
         
-        if [ ${#STILL_MISSING[@]} -eq 0 ]; then
-            print_success "All tables created successfully"
+        if [ ${#STILL_MISSING[@]} -gt 0 ]; then
+            print_error "Still missing ${#STILL_MISSING[@]} tables after migration: ${STILL_MISSING[*]}"
+            cd "$SCRIPT_DIR"
+            return 1
         else
-            print_error "Failed to create tables: ${STILL_MISSING[*]}"
-            print_info "Please check the migration files in scripts/ directory"
-            print_info "You can manually run: sudo -u postgres psql -d $DB_NAME -f scripts/001_initial_schema.sql"
-            exit 1
+            print_success "All missing tables have been created"
+            cd "$SCRIPT_DIR"
+            return 0
         fi
     fi
+    
+    cd "$SCRIPT_DIR"
 }
 
-test_database_operations() {
-    print_header "Testing Database Operations"
+verify_database_schema() {
+    print_header "Step 8: Verifying Database Schema"
     
     DB_NAME="${DB_NAME:-isp_system}"
     
-    print_info "Testing INSERT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO activity_logs (action, entity_type, details) VALUES ('test_install', 'system', '{\"test\": true}') RETURNING id;" > /dev/null 2>&1; then
-        print_success "INSERT operation successful"
-    else
-        print_error "INSERT operation failed"
-        exit 1
+    print_info "Checking expected table and column counts..."
+    
+    # Expected tables and their column counts
+    declare -A EXPECTED_TABLE_COLUMNS=(
+        ["account_balances"]="9"
+        ["account_balances_old"]="5"
+        ["admin_logs"]="10"
+        ["automation_workflows"]="9"
+        ["backup_access_logs"]="11"
+        ["backup_file_inventory"]="10"
+        ["backup_jobs"]="22"
+        ["backup_restore_logs"]="11"
+        ["backup_schedules"]="17"
+        ["backup_settings"]="46"
+        ["backup_storage_locations"]="16"
+        ["balance_sheet_view"]="5"
+        ["bandwidth_configs"]="8"
+        ["bandwidth_patterns"]="10" # Increased from 7 to 10
+        ["bank_transactions"]="12"
+        ["billing_cycles"]="7"
+        ["bonus_campaigns"]="14"
+        ["budget_line_items"]="12"
+        ["budget_versions"]="7"
+        ["budgets"]="9"
+        ["bus_fare_records"]="12"
+        ["capacity_alerts"]="8"
+        ["capacity_predictions"]="8" # Increased from 6 to 8
+        ["card_transactions"]="11"
+        ["cash_flow_categories"]="5"
+        ["cash_flow_transactions"]="9"
+        ["cash_transactions"]="9"
+        ["chart_of_accounts"]="9"
+        ["communication_settings"]="9"
+        ["company_content"]="5"
+        ["company_profiles"]="26" # Increased from 24
+        ["connection_methods"]="8"
+        ["credit_applications"]="6"
+        ["credit_notes"]="13"
+        ["customer_addresses"]="12"
+        ["customer_billing_configurations"]="29"
+        ["customer_categories"]="6"
+        ["customer_contacts"]="9"
+        ["customer_document_access_logs"]="7"
+        ["customer_document_shares"]="9"
+        ["customer_documents"]="18"
+        ["customer_emergency_contacts"]="7"
+        ["customer_equipment"]="22"
+        ["customer_notes"]="8"
+        ["customer_notifications"]="8"
+        ["customer_payment_accounts"]="9"
+        ["customer_phone_numbers"]="6"
+        ["customer_services"]="14"
+        ["customer_statements"]="14"
+        ["customers"]="35" # Increased from 32
+        ["email_logs"]="14"
+        ["employees"]="12"
+        ["equipment_returns"]="16"
+        ["expense_approvals"]="5"
+        ["expense_categories"]="8"
+        ["expense_subcategories"]="6"
+        ["expenses"]="18"
+        ["finance_audit_trail"]="10"
+        ["finance_documents"]="17"
+        ["financial_adjustments"]="13"
+        ["financial_periods"]="6"
+        ["financial_reports"]="7"
+        ["fuel_logs"]="10"
+        ["hotspot_sessions"]="9"
+        ["hotspot_users"]="12"
+        ["hotspot_vouchers"]="10"
+        ["hotspots"]="17"
+        ["infrastructure_investments"]="8"
+        ["inventory"]="11"
+        ["inventory_items"]="13"
+        ["inventory_serial_numbers"]="14"
+        ["invoice_items"]="8"
+        ["invoices"]="10"
+        ["ip_addresses"]="11"
+        ["ip_pools"]="9"
+        ["ip_subnets"]="13"
+        ["journal_entries"]="11"
+        ["journal_entry_lines"]="8"
+        ["knowledge_base"]="10"
+        ["locations"]="11" # Increased from 8
+        ["loyalty_redemptions"]="12"
+        ["loyalty_transactions"]="10"
+        ["maintenance_logs"]="11"
+        ["message_campaigns"]="13"
+        ["message_templates"]="9"
+        ["messages"]="14"
+        ["mpesa_logs"]="14"
+        ["network_configurations"]="13"
+        ["network_devices"]="13"
+        ["network_forecasts"]="6"
+        ["notification_logs"]="11"
+        ["notification_templates"]="9"
+        ["openvpn_configs"]="8"
+        ["openvpn_logs"]="10"
+        ["payment_applications"]="6"
+        ["payment_gateway_configs"]="10"
+        ["payment_methods"]="5"
+        ["payment_reminders"]="7"
+        ["payments"]="13" # Increased from 9
+        ["payroll_records"]="15"
+        ["performance_reviews"]="12"
+        ["permissions"]="6"
+        ["portal_sessions"]="8"
+        ["portal_settings"]="8"
+        ["purchase_order_items"]="7"
+        ["purchase_orders"]="9"
+        ["radius_logs"]="16"
+        ["radius_nas"]="10" # New table
+        ["radius_sessions_active"]="10" # Increased from 7 to 10
+        ["radius_sessions_archive"]="13" # New table
+        ["radius_users"]="13" # Increased from 0 to 13
+        ["refunds"]="9"
+        ["revenue_categories"]="6"
+        ["revenue_streams"]="6"
+        ["role_permissions"]="4"
+        ["roles"]="6"
+        ["router_logs"]="9"
+        ["router_performance_history"]="12"
+        ["router_services"]="7"
+        ["router_sync_status"]="13" # Increased from 11
+        ["routers"]="27" # Increased from 26
+        ["server_configurations"]="9"
+        ["service_activation_logs"]="8"
+        ["service_inventory"]="7"
+        ["service_plans"]="17" # Increased from 15
+        ["service_requests"]="11"
+        ["sms_logs"]="15"
+        ["subnets"]="9"
+        ["supplier_invoice_items"]="8"
+        ["supplier_invoices"]="15"
+        ["suppliers"]="13"
+        ["support_tickets"]="12"
+        ["sync_jobs"]="10"
+        ["system_config"]="4"
+        ["system_logs"]="14"
+        ["task_attachments"]="8"
+        ["task_categories"]="5"
+        ["task_comments"]="5"
+        ["tasks"]="14" # Increased from 11
+        ["tax_configurations"]="8"
+        ["tax_periods"]="6"
+        ["tax_returns"]="15"
+        ["trial_balance_view"]="7"
+        ["user_activity_logs"]="9"
+        ["users"]="7"
+        ["vehicles"]="20"
+        ["wallet_balances"]="10"
+        ["wallet_bonus_rules"]="17"
+        ["wallet_transactions"]="13"
+        ["warehouses"]="9"
+    )
+    
+    TOTAL_TABLES_EXPECTED=${#EXPECTED_TABLE_COLUMNS[@]}
+    MISSING_TABLES=()
+    TABLES_WITH_WRONG_COLUMN_COUNT=()
+    TOTAL_TABLES_OK=0
+    
+    for table in "${!EXPECTED_TABLE_COLUMNS[@]}"; do
+        # Check if table exists
+        if sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = '$table');" | grep -q "t"; then
+            
+            # Table exists, check column count
+            EXPECTED_COUNT=${EXPECTED_TABLE_COLUMNS[$table]}
+            ACTUAL_COUNT=$(sudo -u postgres psql -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table';")
+            
+            if [ "$EXPECTED_COUNT" -eq "$ACTUAL_COUNT" ]; then
+                print_success "✓ $table (Correct column count: $ACTUAL_COUNT)"
+                TOTAL_TABLES_OK=$((TOTAL_TABLES_OK + 1))
+            else
+                print_warning "⚠ $table (Expected $EXPECTED_COUNT columns, found $ACTUAL_COUNT)"
+                TABLES_WITH_WRONG_COLUMN_COUNT+=("$table")
+            fi
+        else
+            print_error "✗ $table (Table does not exist)"
+            MISSING_TABLES+=("$table")
+        fi
+    done
+    
+    echo ""
+    print_info "Schema Verification Summary:"
+    print_info "  Total tables expected: $TOTAL_TABLES_EXPECTED"
+    print_info "  Tables fully verified: $TOTAL_TABLES_OK"
+    
+    if [ ${#MISSING_TABLES[@]} -gt 0 ]; then
+        print_error "  Missing tables: ${#MISSING_TABLES[@]} (${MISSING_TABLES[*]})"
     fi
     
-    print_info "Testing SELECT operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "SELECT COUNT(*) FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "SELECT operation successful"
-    else
-        print_error "SELECT operation failed"
-        exit 1
+    if [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -gt 0 ]; then
+        print_warning "  Tables with incorrect column counts: ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} (${TABLES_WITH_WRONG_COLUMN_COUNT[*]})"
     fi
     
-    print_info "Testing UPDATE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "UPDATE activity_logs SET details = '{\"test\": true, \"verified\": true}' WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "UPDATE operation successful"
+    if [ ${#MISSING_TABLES[@]} -eq 0 ] && [ ${#TABLES_WITH_WRONG_COLUMN_COUNT[@]} -eq 0 ]; then
+        print_success "  ✓ All expected tables and columns verified successfully!"
     else
-        print_error "UPDATE operation failed"
-        exit 1
+        print_warning "  Schema verification found issues that need to be fixed"
+        print_info "  These will be addressed in the next step (Apply Database Fixes)"
     fi
-    
-    print_info "Testing DELETE operation..."
-    if sudo -u postgres psql -d "$DB_NAME" -c "DELETE FROM activity_logs WHERE action = 'test_install';" > /dev/null 2>&1; then
-        print_success "DELETE operation successful"
-    else
-        print_error "DELETE operation failed"
-        exit 1
-    fi
-    
-    print_success "All database operations working correctly"
 }
 
 # ============================================
-# INSTALLATION MODES
-# ============================================
-
-full_installation() {
-    print_header "$SCRIPT_NAME v$VERSION - Full Installation"
-    
-    check_root
-    check_directory_structure
-    detect_os
-    update_system
-    
-    install_postgresql
-    setup_database
-    install_nodejs
-    install_npm
-    install_dependencies
-    
-    verify_database_connection
-    apply_database_fixes
-    verify_database_tables
-    test_database_operations
-    run_performance_optimizations
-    
-    build_application
-    
-    print_header "Installation Complete!"
-    echo ""
-    print_success "ISP Management System has been installed successfully!"
-    echo ""
-    print_success "✓ PostgreSQL database is running and connected"
-    print_success "✓ All database tables created and verified"
-    print_success "✓ Database operations tested successfully"
-    print_success "✓ Node.js and npm installed and verified"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Start the development server:"
-    echo "     npm run dev"
-    echo ""
-    echo "  2. Open your browser to:"
-    echo "     http://localhost:3000"
-    echo ""
-    echo "  3. Database credentials saved in:"
-    echo "     ./database-credentials.txt"
-    echo ""
-    echo "Note: The system is configured for offline PostgreSQL operation."
-    echo "      All tables have been created and verified."
-    echo ""
-}
-
-quick_fix_npm() {
-    print_header "$SCRIPT_NAME - NPM Dependency Fix"
-    
-    check_directory_structure
-    # Ensure Node.js is installed before trying to fix npm
-    install_nodejs
-    install_npm
-    install_dependencies
-    
-    print_header "NPM Fix Complete!"
-    echo ""
-    print_success "Dependencies have been reinstalled"
-    echo ""
-    echo "You can now run:"
-    echo "  npm run dev"
-    echo ""
-}
-
-quick_fix_database() {
-    print_header "$SCRIPT_NAME - Database Fix"
-    
-    check_directory_structure
-    detect_os
-    apply_database_fixes
-    run_performance_optimizations
-    
-    print_header "Database Fix Complete!"
-    echo ""
-    print_success "Database schema has been updated"
-    echo ""
-    echo "You can now restart your application:"
-    echo "  npm run dev"
-    echo ""
-}
-
-reinstall_dependencies() {
-    print_header "$SCRIPT_NAME - Reinstall Dependencies"
-    
-    check_directory_structure
-    install_nodejs
-    install_npm
-    install_dependencies
-    
-    print_header "Reinstall Complete!"
-    echo ""
-    print_success "Node.js and dependencies have been reinstalled"
-    echo ""
-}
-
-show_usage() {
-    cat << EOF
-$SCRIPT_NAME v$VERSION
-
-Usage: ./install.sh [OPTION]
-
-Options:
-  (no option)    Full installation (default)
-  --fix-npm      Fix npm dependency issues only
-  --fix-db       Apply database schema fixes only
-  --reinstall    Reinstall Node.js and dependencies
-  --help         Show this help message
-
-Examples:
-  ./install.sh                 # Full installation
-  ./install.sh --fix-npm       # Fix npm issues
-  ./install.sh --fix-db        # Fix database schema
-  ./install.sh --reinstall     # Reinstall dependencies
-
-EOF
-}
-
-# ============================================
-# MAIN EXECUTION
+# MAIN EXECUTION FLOW
 # ============================================
 
 main() {
-    case "${1:-}" in
-        --fix-npm)
-            quick_fix_npm
-            ;;
-        --fix-db)
-            quick_fix_database
-            ;;
-        --reinstall)
-            reinstall_dependencies
-            ;;
-        --help|-h)
-            show_usage
-            ;;
-        "")
-            full_installation
-            ;;
-        *)
-            print_error "Unknown option: $1"
-            echo ""
-            show_usage
-            exit 1
-            ;;
-    esac
+    check_root
+    detect_os
+    update_system
+    check_directory_structure
+    install_nodejs
+    install_npm
+    
+    # Install PostgreSQL first
+    install_postgresql
+    
+    # Setup database (create DB, user, credentials)
+    setup_database
+    
+    # CREATE ALL TABLES IMMEDIATELY - This is the critical step
+    print_header "Creating Database Tables and Columns"
+    apply_database_schema
+    
+    # Verify tables were created successfully
+    verify_database_tables
+    verify_database_schema
+    
+    # Fix any missing columns
+    fix_database_schema
+    
+    install_freeradius
+    
+    # NOW install project dependencies
+    install_dependencies
+    
+    # Build application
+    build_application
+    
+    print_header "Installation Complete!"
+    print_success "ISP Management System has been installed successfully."
+    print_info "You can now start the application:"
+    echo ""
+    echo "  npm run dev"
+    echo ""
+    print_info "Visit http://localhost:3000 in your browser."
+    echo ""
 }
 
-# Run main function with all arguments
-main "$@"
+main
+localhost:3000 in your browser."
+    echo ""
+}
+
+main

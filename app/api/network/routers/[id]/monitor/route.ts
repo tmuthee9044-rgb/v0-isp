@@ -1,14 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-import { createMikroTikClient } from "@/lib/mikrotik-api"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const routerId = Number.parseInt(params.id)
 
-    console.log(`[v0] Fetching router performance data for router ${routerId}`)
+    console.log(`[v0] Fetching router performance snapshot for router ${routerId}`)
 
     const [router] = await sql`
       SELECT * FROM network_devices
@@ -19,21 +18,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ success: false, error: "Router not found" }, { status: 404 })
     }
 
-    let realtimeData = null
-    if (router.type === "mikrotik") {
-      try {
-        const mikrotik = await createMikroTikClient(routerId)
-        if (mikrotik) {
-          const resourcesResponse = await mikrotik.getSystemResources()
-          if (resourcesResponse.success) {
-            realtimeData = resourcesResponse.data
-          }
-          await mikrotik.disconnect()
-        }
-      } catch (error) {
-        console.error(`[v0] Failed to fetch real-time data:`, error)
-      }
-    }
+    const [latestSnapshot] = await sql`
+      SELECT *
+      FROM router_performance_history
+      WHERE router_id = ${routerId}
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `
 
     const performanceHistory = await sql`
       SELECT *
@@ -69,7 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         status: router.status,
         ip_address: router.ip_address,
       },
-      realtime: realtimeData,
+      snapshot: latestSnapshot || null,
       performance: performanceHistory,
       sessions: sessionStats,
       ipPool: ipStats,
@@ -81,6 +72,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
+
   try {
     const routerId = Number.parseInt(params.id)
     const performanceData = await request.json()

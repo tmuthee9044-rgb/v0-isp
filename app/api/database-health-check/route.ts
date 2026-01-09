@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import { NextResponse } from "next/server"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const healthReport = {
       connectivity: { status: "unknown", message: "", timestamp: new Date().toISOString() },
@@ -268,6 +268,7 @@ export async function GET() {
 }
 
 export async function POST() {
+  const sql = await getSql()
   try {
     // Auto-fix common issues
     const fixes = []

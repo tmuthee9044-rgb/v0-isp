@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
+
     const routerId = Number.parseInt(params.id)
 
     if (isNaN(routerId)) {
@@ -37,22 +37,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     return NextResponse.json({
       ...routerData,
-      model: config.model || null,
-      serial: config.serial || null,
       connection_type: config.connection_type || "public_ip",
-      hostname: routerData.ip_address || config.hostname || "",
-      api_port: config.api_port || 8728,
-      ssh_port: config.ssh_port || 22,
-      username: config.username || "",
-      password: config.password || "",
-      mikrotik_user: config.mikrotik_user || "",
-      trafficking_record: config.trafficking_record || "",
-      speed_control: config.speed_control || "",
-      save_visited_ips: config.save_visited_ips ?? true,
-      radius_secret: config.radius_secret || "",
-      radius_nas_ip: config.nas_ip_address || "",
-      gps_latitude: config.gps_latitude || null,
-      gps_longitude: config.gps_longitude || null,
+      password: "", // Never return passwords
+      mikrotik_user: routerData.api_username || "",
+      mikrotik_password: "", // Never return passwords
+      trafficking_record: "Traffic Flow (RouterOS V6x,V7.x)",
+      speed_control: "PCQ + Addresslist",
+      save_visited_ips: true,
+      customer_auth_method: config.customer_auth_method || "pppoe_radius",
+      radius_nas_ip: routerData.nas_ip_address || "",
+      gps_latitude: routerData.latitude || null,
+      gps_longitude: routerData.longitude || null,
     })
   } catch (error) {
     console.error("[v0] Error fetching router:", error)
@@ -62,6 +57,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
+
     const routerId = Number.parseInt(params.id)
 
     if (isNaN(routerId)) {
@@ -69,6 +66,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
+    console.log("[v0] Updating router with data:", body)
+
     const {
       name,
       type,
@@ -81,9 +80,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       password,
       mikrotik_user,
       mikrotik_password,
-      trafficking_record,
-      speed_control,
-      save_visited_ips,
+      enable_traffic_recording,
+      enable_speed_control,
+      blocking_page_url,
+      customer_auth_method,
       radius_secret,
       radius_nas_ip,
       gps_latitude,
@@ -101,7 +101,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const existingRouter = await sql`
-      SELECT id, configuration, location FROM network_devices 
+      SELECT id, configuration, location, ip_address, port, api_port, ssh_port, 
+             username, connection_method FROM network_devices 
       WHERE id = ${routerId} 
         AND (type IN ('router', 'mikrotik', 'ubiquiti', 'juniper', 'other') OR type ILIKE '%router%')
     `
@@ -113,7 +114,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     let locationName = existingRouter[0].location
     if (location_id) {
       const location = await sql`
-        SELECT name FROM locations WHERE id = ${Number.parseInt(location_id)}
+        SELECT name FROM locations WHERE id = ${Number.parseInt(location_id)} LIMIT 1
       `
       if (location.length > 0) {
         locationName = location[0].name
@@ -121,22 +122,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const existingConfig = existingRouter[0].configuration || {}
+
     const configuration = {
       ...existingConfig,
-      connection_type: connection_type || existingConfig.connection_type || "public_ip",
-      api_port: api_port || existingConfig.api_port || 8728,
-      ssh_port: ssh_port || existingConfig.ssh_port || 22,
-      username: username || existingConfig.username || "",
-      ...(password && { password }),
-      mikrotik_user: mikrotik_user || existingConfig.mikrotik_user || "",
-      ...(mikrotik_password && { mikrotik_password }),
-      trafficking_record: trafficking_record || existingConfig.trafficking_record || "",
-      speed_control: speed_control || existingConfig.speed_control || "",
-      save_visited_ips: save_visited_ips ?? existingConfig.save_visited_ips ?? true,
-      radius_secret: radius_secret || existingConfig.radius_secret || "",
-      nas_ip_address: radius_nas_ip || existingConfig.nas_ip_address || "",
-      gps_latitude: gps_latitude ?? existingConfig.gps_latitude ?? null,
-      gps_longitude: gps_longitude ?? existingConfig.gps_longitude ?? null,
+      customer_auth_method: customer_auth_method || existingConfig.customer_auth_method || "pppoe_radius",
     }
 
     const result = await sql`
@@ -144,12 +133,91 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         name = ${name},
         type = ${type},
         location = ${locationName},
-        ip_address = ${hostname || existingRouter[0].ip_address},
+        location_id = ${location_id ? Number.parseInt(location_id) : null},
+        hostname = ${hostname || existingRouter[0].ip_address},
+        api_port = ${api_port || existingRouter[0].api_port || 8728},
+        ssh_port = ${ssh_port || existingRouter[0].ssh_port || 22},
+        username = ${username || existingRouter[0].username || null},
+        password = ${password || existingRouter[0].password || null},
+        connection_method = ${connection_type || existingRouter[0].connection_method || "api"},
+        api_username = ${mikrotik_user || username || null},
+        api_password = ${mikrotik_password || password || null},
         status = ${status || "active"},
-        configuration = ${JSON.stringify(configuration)}
+        radius_secret = ${radius_secret || null},
+        nas_ip_address = ${radius_nas_ip || null},
+        customer_auth_method = ${customer_auth_method || "pppoe_radius"},
+        latitude = ${gps_latitude ?? null},
+        longitude = ${gps_longitude ?? null},
+        enable_traffic_recording = ${enable_traffic_recording ?? false},
+        enable_speed_control = ${enable_speed_control ?? false},
+        blocking_page_url = ${blocking_page_url || null},
+        configuration = ${JSON.stringify(configuration)},
+        updated_at = NOW()
       WHERE id = ${routerId}
       RETURNING *
-    `
+    `(async () => {
+      try {
+        const asyncSql = await getSql()
+
+        if (radius_secret) {
+          const nasIp = radius_nas_ip || hostname || existingRouter[0].ip_address
+          const shortname = name.replace(/\s+/g, "_").toLowerCase()
+
+          await asyncSql`
+            INSERT INTO nas (
+              nasname, shortname, type, ports, secret, server, community, description
+            ) VALUES (
+              ${nasIp}, ${shortname}, 'other', 1812, ${radius_secret},
+              ${hostname || existingRouter[0].ip_address}, 'public',
+              ${`Router: ${name} (${type})`}
+            )
+            ON CONFLICT (nasname) 
+            DO UPDATE SET
+              secret = EXCLUDED.secret,
+              shortname = EXCLUDED.shortname,
+              description = EXCLUDED.description
+          `
+        }
+
+        if (type === "mikrotik" && result[0]) {
+          await asyncSql`
+            INSERT INTO provisioning_queue (
+              action, entity_type, entity_id, configuration, status, created_at
+            ) VALUES (
+              'update_router_config', 'router', ${routerId},
+              ${JSON.stringify({
+                host: hostname || result[0].ip_address,
+                port: api_port || 8728,
+                username: mikrotik_user || username,
+                customer_auth_method,
+                enable_traffic_recording,
+                enable_speed_control,
+                radius_nas_ip,
+                radius_secret,
+                blocking_page_url,
+              })},
+              'pending', NOW()
+            )
+          `
+        }
+
+        await asyncSql`
+          INSERT INTO activity_logs (
+            action, entity_type, entity_id, details, created_at
+          ) VALUES (
+            'update', 'router', ${routerId}, 
+            ${JSON.stringify({
+              name,
+              radius_enabled: !!radius_secret,
+              nas_ip: radius_nas_ip || "not set",
+            })}, 
+            NOW()
+          )
+        `
+      } catch (asyncError) {
+        console.error("[v0] Error in async operations:", asyncError)
+      }
+    })()
 
     return NextResponse.json(result[0])
   } catch (error) {
@@ -160,30 +228,60 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const routerId = Number.parseInt(params.id)
+
+    console.log("[v0] Attempting to delete router with ID:", routerId)
 
     if (isNaN(routerId)) {
       return NextResponse.json({ message: "Invalid router ID. ID must be a number." }, { status: 400 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const cascade = searchParams.get("cascade") === "true"
+
     const subnetDependencies = await sql`
       SELECT COUNT(*) as subnet_count FROM ip_subnets WHERE router_id = ${routerId}
     `
 
-    const serviceDependencies = await sql`
-      SELECT COUNT(*) as service_count FROM customer_services WHERE device_id = ${routerId}
-    `
-
     const subnetCount = Number(subnetDependencies[0].subnet_count)
-    const serviceCount = Number(serviceDependencies[0].service_count)
 
-    if (subnetCount > 0 || serviceCount > 0) {
+    console.log("[v0] Router dependencies:", { subnetCount, cascade })
+
+    if (cascade) {
+      const deletedItems: string[] = []
+
+      if (subnetCount > 0) {
+        await sql`DELETE FROM ip_subnets WHERE router_id = ${routerId}`
+        deletedItems.push(`${subnetCount} subnet(s)`)
+        console.log(`[v0] Cascade deleted ${subnetCount} subnets`)
+      }
+
+      console.log("[v0] Cascade delete completed:", deletedItems)
+    } else if (subnetCount > 0) {
       return NextResponse.json(
         {
-          message: `Cannot delete router with associated resources. Found ${subnetCount} subnet(s) and ${serviceCount} service(s).`,
+          message: `Cannot delete router with ${subnetCount} associated subnet(s). Please remove these dependencies first or use cascade delete.`,
         },
         { status: 400 },
       )
+    }
+
+    try {
+      const routerData = await sql`
+        SELECT ip_address, nas_ip_address FROM network_devices WHERE id = ${routerId}
+      `
+
+      if (routerData.length > 0) {
+        const nasIp = routerData[0].nas_ip_address || routerData[0].ip_address
+
+        await sql`
+          DELETE FROM nas WHERE nasname = ${nasIp}
+        `
+        console.log("[v0] Deleted router from FreeRADIUS nas table")
+      }
+    } catch (error) {
+      console.log("[v0] No nas entry to delete or table doesn't exist:", error)
     }
 
     const result = await sql`
@@ -193,13 +291,37 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       RETURNING *
     `
 
+    console.log("[v0] Delete result:", result)
+
     if (result.length === 0) {
       return NextResponse.json({ message: "Router not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ message: "Router deleted successfully" })
+    const activityDetails = JSON.stringify({
+      name: result[0].name || "Unknown Router",
+      ip_address: result[0].ip_address || "Unknown IP",
+      cascade_delete: cascade,
+      subnets_deleted: cascade ? subnetCount : 0,
+    })
+
+    await sql`
+      INSERT INTO activity_logs (
+        action, entity_type, entity_id, details, created_at
+      ) VALUES (
+        'delete', 'router', ${routerId}, 
+        ${activityDetails}, 
+        NOW()
+      )
+    `
+
+    console.log("[v0] Router deleted successfully:", routerId)
+
+    return NextResponse.json({
+      message: cascade ? `Router and ${subnetCount} subnet(s) deleted successfully.` : "Router deleted successfully",
+      success: true,
+    })
   } catch (error) {
-    console.error("Error deleting router:", error)
+    console.error("[v0] Error deleting router:", error)
     return NextResponse.json(
       {
         message: "Failed to delete router",

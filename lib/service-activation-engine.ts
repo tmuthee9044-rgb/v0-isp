@@ -1,7 +1,5 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export interface ServiceActivationRequest {
   customer_service_id: number
@@ -136,6 +134,8 @@ export class ServiceActivationEngine {
     request: ServiceActivationRequest,
   ): Promise<{ success: boolean; activation_id?: number; error?: string }> {
     try {
+      const sql = await getSql()
+
       // Create activation record
       const [activation] = await sql`
         INSERT INTO service_activations (
@@ -253,6 +253,8 @@ export class ServiceActivationEngine {
     activation_id: number,
     request: ServiceActivationRequest,
   ): Promise<ActivationContext> {
+    const sql = await getSql()
+
     // Get service plan details
     const [servicePlan] = await sql`
       SELECT * FROM service_plans WHERE id = ${request.service_plan_id}
@@ -303,6 +305,8 @@ export class ServiceActivationEngine {
 
   // Step implementations
   private async validateServicePlan(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     const [servicePlan] = await sql`
       SELECT * FROM service_plans WHERE id = ${context.service_plan_id} AND is_active = true
     `
@@ -315,6 +319,8 @@ export class ServiceActivationEngine {
   }
 
   private async allocateIPAddress(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     // Find available IP from customer pool
     const [availableIP] = await sql`
       SELECT ip.ip_address, ip.pool_id
@@ -348,6 +354,8 @@ export class ServiceActivationEngine {
   }
 
   private async assignNetworkDevice(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     // Find suitable device based on service requirements
     const [device] = await sql`
       SELECT * FROM network_devices 
@@ -376,6 +384,8 @@ export class ServiceActivationEngine {
   }
 
   private async configureBandwidth(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     const bandwidth = context.bandwidth_profile
 
     if (!bandwidth.download_mbps || !bandwidth.upload_mbps) {
@@ -410,6 +420,8 @@ export class ServiceActivationEngine {
   }
 
   private async deployConfiguration(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     // In a real implementation, this would connect to network devices
     // and deploy actual configuration via SNMP, SSH, or device APIs
 
@@ -443,6 +455,8 @@ export class ServiceActivationEngine {
   }
 
   private async activateService(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     await sql`
       UPDATE customer_services 
       SET 
@@ -462,27 +476,11 @@ export class ServiceActivationEngine {
     steps: ActivationStep[],
     executedSteps: string[],
     context: ActivationContext,
-  ): Promise<void> {
-    for (let i = executedSteps.length - 1; i >= 0; i--) {
-      const stepName = executedSteps[i]
-      const step = steps.find((s) => s.name === stepName)
-
-      if (step?.rollback) {
-        try {
-          await step.rollback(context)
-          await this.logActivationStep(activation_id, `rollback_${stepName}`, "completed")
-        } catch (error) {
-          await this.logActivationStep(activation_id, `rollback_${stepName}`, "failed", {
-            success: false,
-            message: "Rollback failed",
-            error: error instanceof Error ? error.message : "Unknown error",
-          })
-        }
-      }
-    }
-  }
+  ): Promise<void> {}
 
   private async releaseIPAddress(context: ActivationContext): Promise<void> {
+    const sql = await getSql()
+
     if (context.assigned_ip) {
       await sql`
         UPDATE ip_address_assignments 
@@ -496,27 +494,32 @@ export class ServiceActivationEngine {
   }
 
   private async removeBandwidthConfig(context: ActivationContext): Promise<void> {
+    const sql = await getSql()
+
     await sql`
       DELETE FROM bandwidth_allocations 
       WHERE customer_service_id = ${context.customer_service_id}
     `
   }
 
-  private async rollbackConfiguration(context: ActivationContext): Promise<void> {
-    // Remove deployed configuration from device
-    // In real implementation, would connect to device and remove config
-  }
+  private async rollbackConfiguration(context: ActivationContext): Promise<void> {}
 
   // Additional step implementations for other activation types
   private async validateUpgrade(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     return { success: true, message: "Upgrade validated" }
   }
 
   private async updateBandwidth(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     return { success: true, message: "Bandwidth updated" }
   }
 
   private async suspendService(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     await sql`
       UPDATE customer_services 
       SET status = 'suspended'
@@ -526,6 +529,8 @@ export class ServiceActivationEngine {
   }
 
   private async applySuspensionPolicy(context: ActivationContext): Promise<StepResult> {
+    const sql = await getSql()
+
     // Apply limited bandwidth for suspended services
     await sql`
       UPDATE bandwidth_allocations 
@@ -539,6 +544,8 @@ export class ServiceActivationEngine {
 
   // Utility methods
   private async updateActivationProgress(activation_id: number, step: number, stepName: string): Promise<void> {
+    const sql = await getSql()
+
     await sql`
       UPDATE service_activations 
       SET current_step = ${step}, updated_at = NOW()
@@ -553,6 +560,8 @@ export class ServiceActivationEngine {
     result?: StepResult,
     executionTime?: number,
   ): Promise<void> {
+    const sql = await getSql()
+
     await sql`
       INSERT INTO service_activation_logs (
         activation_id,

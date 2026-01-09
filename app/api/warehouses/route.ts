@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
 // Get all warehouses with inventory summary
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const warehouses = await sql`
       SELECT 
@@ -17,14 +17,18 @@ export async function GET() {
 
     const warehouseData = warehouses.map((warehouse: any) => ({
       id: warehouse.id,
-      warehouse_code: warehouse.code, // Map 'code' to 'warehouse_code' for frontend compatibility
+      warehouse_code: warehouse.code,
+      code: warehouse.code,
       name: warehouse.name,
-      location: warehouse.location,
+      location: warehouse.address, // Map 'address' to 'location' for frontend
       contact_person: warehouse.contact_person,
-      phone: warehouse.phone,
+      phone: warehouse.phone_number, // Map 'phone_number' to 'phone' for frontend
       email: warehouse.email,
+      status: warehouse.status || "active",
       total_items: 0,
       total_stock: 0,
+      total_reserved: 0,
+      available_stock: 0,
       total_value: 0,
       low_stock_items: 0,
       created_at: warehouse.created_at,
@@ -49,6 +53,8 @@ export async function GET() {
 
 // Create new warehouse
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const data = await request.json()
 
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO warehouses (
-        code, name, location, contact_person, phone, email
+        code, name, address, contact_person, phone_number, email
       ) VALUES (
         ${warehouseCode}, ${data.name}, ${data.location || null},
         ${data.contact_person || null}, ${data.phone || null}, ${data.email || null}

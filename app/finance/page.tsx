@@ -527,19 +527,13 @@ export default function FinancePage() {
   const fetchAuditLogs = async () => {
     setAuditLogsLoading(true)
     try {
-      console.log("[v0] Fetching audit logs from /api/finance/audit-logs?limit=50")
       const response = await fetch("/api/finance/audit-logs?limit=50")
-      console.log("[v0] Audit logs response status:", response.status)
 
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Audit logs data received:", data)
-        console.log("[v0] Number of logs:", data.logs?.length || 0)
         setAuditLogs(data.logs || [])
         setActivitySummary(data.activitySummary || { today: 0, thisWeek: 0, thisMonth: 0 })
       } else {
-        const errorText = await response.text()
-        console.error("[v0] Failed to fetch audit logs - Status:", response.status, "Error:", errorText)
         toast({
           title: "Error",
           description: `Failed to fetch audit logs: ${response.status}`,
@@ -547,7 +541,7 @@ export default function FinancePage() {
         })
       }
     } catch (error) {
-      console.error("[v0] Error fetching audit logs:", error)
+      console.error("Error fetching audit logs:", error)
       toast({
         title: "Error",
         description: "Failed to fetch audit logs - Network error",
@@ -923,39 +917,28 @@ export default function FinancePage() {
 
     try {
       setLoadingInvoices(true)
-      console.log("[v0] Fetching pending invoices for supplier:", supplierName)
 
-      // Find supplier by company name
       const supplier = suppliers.find((s) => s.company_name === supplierName)
       if (!supplier) {
-        console.log("[v0] Supplier not found:", supplierName)
         setPendingInvoices([])
         return
       }
 
-      console.log("[v0] Found supplier ID:", supplier.id)
-
-      // Fetch invoices for this supplier
       const response = await fetch(`/api/suppliers/${supplier.id}/invoices`)
       if (!response.ok) {
         throw new Error("Failed to fetch supplier invoices")
       }
 
       const data = await response.json()
-      console.log("[v0] Fetched invoices:", data)
 
-      // Filter for pending/unpaid invoices
       const pending = (data.invoices || []).filter(
         (inv: any) => inv.status === "UNPAID" || inv.status === "PARTIALLY_PAID" || inv.status === "OVERDUE",
       )
 
-      console.log("[v0] Pending invoices:", pending)
       setPendingInvoices(pending)
 
-      // Auto-select first invoice if only one exists
       if (pending.length === 1) {
         setSelectedInvoiceId(pending[0].id.toString())
-        // Auto-fill amount from invoice
         setExpenseForm((prev) => ({
           ...prev,
           amount: (pending[0].total_amount - (pending[0].paid_amount || 0)).toString(),
@@ -964,7 +947,7 @@ export default function FinancePage() {
         }))
       }
     } catch (error) {
-      console.error("[v0] Error fetching pending invoices:", error)
+      console.error("Error fetching pending invoices:", error)
       setPendingInvoices([])
     } finally {
       setLoadingInvoices(false)
@@ -987,22 +970,6 @@ export default function FinancePage() {
 
   const handleCreateExpense = async () => {
     try {
-      console.log("[v0] Creating expense with data:", expenseForm)
-      console.log("[v0] Expense form details:", {
-        category_id: expenseForm.category_id,
-        category_id_type: typeof expenseForm.category_id,
-        category_id_parsed: Number.parseInt(expenseForm.category_id),
-        expense_date: expenseForm.expense_date,
-        expense_date_type: typeof expenseForm.expense_date,
-        amount: expenseForm.amount,
-        description: expenseForm.description,
-        vendor: expenseForm.vendor,
-        payment_method: expenseForm.payment_method,
-        status: expenseForm.status,
-        notes: expenseForm.notes,
-        supplier_invoice_id: expenseForm.supplier_invoice_id,
-      })
-
       // Validate required fields
       if (!expenseForm.category_id || !expenseForm.amount || !expenseForm.description) {
         toast({
@@ -1025,8 +992,6 @@ export default function FinancePage() {
         supplier_invoice_id: expenseForm.supplier_invoice_id ? Number.parseInt(expenseForm.supplier_invoice_id) : null,
       }
 
-      console.log("[v0] Request body being sent to API:", requestBody)
-
       const response = await fetch("/api/finance/expenses", {
         method: "POST",
         headers: {
@@ -1035,17 +1000,10 @@ export default function FinancePage() {
         body: JSON.stringify(requestBody),
       })
 
-      console.log("[v0] API Response status:", response.status)
-      console.log("[v0] API Response headers:", Object.fromEntries(response.headers.entries()))
-
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("[v0] API Error response:", errorData)
         throw new Error(errorData.error || "Failed to create expense")
       }
-
-      const result = await response.json()
-      console.log("[v0] Expense created successfully:", result)
 
       toast({
         title: "Expense Created",
@@ -1070,7 +1028,7 @@ export default function FinancePage() {
       fetchExpenses() // Refresh the expenses list
       setIsExpenseModalOpen(false)
     } catch (error) {
-      console.error("[v0] Error creating expense:", error)
+      console.error("Error creating expense:", error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to create expense. Please try again.",
@@ -1444,28 +1402,50 @@ export default function FinancePage() {
 
           {/* Main Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-12 lg:w-auto lg:inline-flex">
-                {" "}
-                {/* */}
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="revenue">Revenue</TabsTrigger>
-                <TabsTrigger value="expenses">Expenses</TabsTrigger>
-                <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
-                <TabsTrigger value="taxes">Taxes</TabsTrigger>
-                <TabsTrigger value="budget">Budget</TabsTrigger>
-                <TabsTrigger value="ledger">Ledger</TabsTrigger>
-                <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
-                <TabsTrigger value="balancesheet">Balance Sheet</TabsTrigger>
-                <TabsTrigger value="trialbalance">Trial Balance</TabsTrigger>
-                <TabsTrigger value="profitloss">Profit & Loss</TabsTrigger> {/* */}
-                <TabsTrigger value="audit">Audit</TabsTrigger>
+            <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+              <TabsList className="inline-flex flex-nowrap min-w-full sm:min-w-0 w-max sm:w-auto gap-1 sm:gap-2">
+                <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="revenue" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Revenue
+                </TabsTrigger>
+                <TabsTrigger value="expenses" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Expenses
+                </TabsTrigger>
+                <TabsTrigger value="invoicing" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Invoicing
+                </TabsTrigger>
+                <TabsTrigger value="taxes" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Taxes
+                </TabsTrigger>
+                <TabsTrigger value="budget" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Budget
+                </TabsTrigger>
+                <TabsTrigger value="ledger" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Ledger
+                </TabsTrigger>
+                <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Cash Flow
+                </TabsTrigger>
+                <TabsTrigger value="balancesheet" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Balance Sheet
+                </TabsTrigger>
+                <TabsTrigger value="trialbalance" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Trial Balance
+                </TabsTrigger>
+                <TabsTrigger value="profitloss" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Profit & Loss
+                </TabsTrigger>
+                <TabsTrigger value="audit" className="text-xs sm:text-sm px-2 sm:px-3">
+                  Audit
+                </TabsTrigger>
               </TabsList>
             </div>
 
             {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Breakdown */}
                 <Card>
                   <CardHeader>
@@ -1592,8 +1572,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Revenue Tab */}
-            <TabsContent value="revenue" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="revenue" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Growth Metrics */}
                 <Card>
                   <CardHeader>
@@ -1715,7 +1695,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Revenue Breakdown */}
                 <Card>
                   <CardHeader>
@@ -1827,7 +1807,7 @@ export default function FinancePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Expense Categories */}
                 <Card>
                   <CardHeader>
@@ -2001,7 +1981,7 @@ export default function FinancePage() {
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
+                                    <MoreHorizontal className="h-4 w-8" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -2041,8 +2021,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Invoicing Tab */}
-            <TabsContent value="invoicing" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <TabsContent value="invoicing" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 {/* Invoice Summary */}
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -2287,7 +2267,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Taxes Tab */}
-            <TabsContent value="taxes" className="space-y-6">
+            <TabsContent value="taxes" className="space-y-4 sm:space-y-6">
               {/* Tax Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
@@ -2543,8 +2523,8 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Budget Tab */}
-            <TabsContent value="budget" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TabsContent value="budget" className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Budget Overview */}
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -2664,7 +2644,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* General Ledger Tab */}
-            <TabsContent value="ledger" className="space-y-6">
+            <TabsContent value="ledger" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">General Ledger</h3>
@@ -2738,7 +2718,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Account Balances</CardTitle>
@@ -2852,7 +2832,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Cash Flow Tab */}
-            <TabsContent value="cashflow" className="space-y-6">
+            <TabsContent value="cashflow" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Cash Flow Analysis</h3>
@@ -2872,7 +2852,7 @@ export default function FinancePage() {
 
               {cashFlowData ? (
                 <>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-green-600">Cash Inflows</CardTitle>
@@ -3007,7 +2987,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Add Profit & Loss TabsContent before the Audit tab */}
-            <TabsContent value="profitloss" className="space-y-4">
+            <TabsContent value="profitloss" className="space-y-4 sm:space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Profit & Loss Statement</CardTitle>
@@ -3150,7 +3130,7 @@ export default function FinancePage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="balancesheet" className="space-y-6">
+            <TabsContent value="balancesheet" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Balance Sheet</h3>
@@ -3171,7 +3151,7 @@ export default function FinancePage() {
               </div>
 
               {balanceSheetData ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                   {/* Assets */}
                   <Card>
                     <CardHeader>
@@ -3322,7 +3302,7 @@ export default function FinancePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="trialbalance" className="space-y-6">
+            <TabsContent value="trialbalance" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Trial Balance</h3>
@@ -3410,7 +3390,7 @@ export default function FinancePage() {
             </TabsContent>
 
             {/* Audit Logs Tab */}
-            <TabsContent value="audit" className="space-y-6">
+            <TabsContent value="audit" className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Finance Audit Trail</h3>
@@ -3499,7 +3479,7 @@ export default function FinancePage() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Activity Summary</CardTitle>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -41,111 +41,67 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
 
-  const tasks = [
-    {
-      id: 1,
-      title: "Network Infrastructure Upgrade",
-      description: "Upgrade core network switches in main data center",
-      assignedTo: "John Smith",
-      assignedBy: "Network Manager",
-      department: "Technical",
-      category: "Infrastructure",
-      priority: "high",
-      status: "in_progress",
-      progress: 65,
-      dueDate: "2024-02-15",
-      createdDate: "2024-01-10",
-      estimatedHours: 40,
-      actualHours: 26,
-      tags: ["network", "infrastructure", "critical"],
-    },
-    {
-      id: 2,
-      title: "Customer Support Training",
-      description: "Conduct training session on new ticketing system",
-      assignedTo: "Sarah Johnson",
-      assignedBy: "HR Manager",
-      department: "Support",
-      category: "Training",
-      priority: "medium",
-      status: "pending",
-      progress: 0,
-      dueDate: "2024-02-20",
-      createdDate: "2024-01-15",
-      estimatedHours: 16,
-      actualHours: 0,
-      tags: ["training", "support", "system"],
-    },
-    {
-      id: 3,
-      title: "Monthly Sales Report",
-      description: "Prepare comprehensive sales analysis for January",
-      assignedTo: "Mike Wilson",
-      assignedBy: "Sales Director",
-      department: "Sales",
-      category: "Reporting",
-      priority: "high",
-      status: "completed",
-      progress: 100,
-      dueDate: "2024-02-01",
-      createdDate: "2024-01-25",
-      estimatedHours: 8,
-      actualHours: 10,
-      tags: ["sales", "report", "analysis"],
-    },
-    {
-      id: 4,
-      title: "Security Audit",
-      description: "Conduct quarterly security assessment of all systems",
-      assignedTo: "Grace Wanjiku",
-      assignedBy: "IT Manager",
-      department: "IT",
-      category: "Security",
-      priority: "high",
-      status: "overdue",
-      progress: 30,
-      dueDate: "2024-01-30",
-      createdDate: "2024-01-05",
-      estimatedHours: 32,
-      actualHours: 12,
-      tags: ["security", "audit", "compliance"],
-    },
-    {
-      id: 5,
-      title: "Customer Onboarding Process",
-      description: "Streamline new customer registration workflow",
-      assignedTo: "David Kimani",
-      assignedBy: "Operations Manager",
-      department: "Operations",
-      category: "Process Improvement",
-      priority: "medium",
-      status: "in_progress",
-      progress: 45,
-      dueDate: "2024-02-25",
-      createdDate: "2024-01-20",
-      estimatedHours: 24,
-      actualHours: 11,
-      tags: ["process", "customer", "workflow"],
-    },
-  ]
+  const [tasks, setTasks] = useState<any[]>([])
+  const [taskStats, setTaskStats] = useState<any>({
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    overdue: 0,
+    avgCompletionTime: 0,
+    onTimeCompletion: 0,
+  })
+  const [departmentStats, setDepartmentStats] = useState<any[]>([])
+  const [employeePerformance, setEmployeePerformance] = useState<any[]>([])
+  const [performanceTrends, setPerformanceTrends] = useState<any>({})
+  const [categoryStats, setCategoryStats] = useState<any[]>([])
+  const [priorityStats, setPriorityStats] = useState<any[]>([])
+  const [workloadStats, setWorkloadStats] = useState<any[]>([])
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [monthlySummary, setMonthlySummary] = useState<any>({})
+  const [loading, setLoading] = useState(true)
 
-  const taskStats = {
-    total: 45,
-    pending: 12,
-    inProgress: 18,
-    completed: 13,
-    overdue: 2,
-    avgCompletionTime: 5.2,
-    onTimeCompletion: 87,
-  }
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true)
 
-  const departmentStats = [
-    { department: "Technical", total: 15, completed: 8, inProgress: 5, overdue: 2 },
-    { department: "Support", total: 12, completed: 9, inProgress: 3, overdue: 0 },
-    { department: "Sales", total: 8, completed: 6, inProgress: 2, overdue: 0 },
-    { department: "Operations", total: 6, completed: 4, inProgress: 2, overdue: 0 },
-    { department: "HR", total: 4, completed: 3, inProgress: 1, overdue: 0 },
-  ]
+        const tasksRes = await fetch("/api/tasks")
+        const tasksData = await tasksRes.json()
+        setTasks(tasksData.tasks || [])
+
+        const statsRes = await fetch("/api/tasks/stats")
+        const statsData = await statsRes.json()
+        setTaskStats(statsData.stats || {})
+        setDepartmentStats(statsData.department_stats || [])
+
+        const perfRes = await fetch("/api/tasks/performance")
+        const perfData = await perfRes.json()
+        setEmployeePerformance(perfData.employee_performance || [])
+        setPerformanceTrends(perfData.performance_trends || {})
+
+        const analyticsRes = await fetch("/api/tasks/analytics")
+        const analyticsData = await analyticsRes.json()
+        setCategoryStats(analyticsData.category_stats || [])
+        setPriorityStats(analyticsData.priority_stats || [])
+        setWorkloadStats(analyticsData.workload_stats || [])
+
+        const activityRes = await fetch("/api/tasks/activity")
+        const activityData = await activityRes.json()
+        setRecentActivity(activityData.recent_activity || [])
+
+        const reportsRes = await fetch("/api/tasks/reports")
+        const reportsData = await reportsRes.json()
+        setMonthlySummary(reportsData.monthly_summary || {})
+      } catch (error) {
+        console.error("[v0] Error fetching tasks data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
@@ -293,22 +249,30 @@ export default function TasksPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm">Monthly Sales Report completed by Mike Wilson</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm">Network Infrastructure Upgrade 65% complete</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                    <span className="text-sm">Customer Support Training assigned to Sarah Johnson</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span className="text-sm">Security Audit is overdue - needs attention</span>
-                  </div>
+                  {recentActivity.slice(0, 4).map((activity) => (
+                    <div key={activity.id} className="flex items-center space-x-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          activity.activity_type === "completed"
+                            ? "bg-green-500"
+                            : activity.activity_type === "in_progress"
+                              ? "bg-blue-500"
+                              : activity.activity_type === "overdue"
+                                ? "bg-red-500"
+                                : "bg-yellow-500"
+                        }`}
+                      ></div>
+                      <span className="text-sm">
+                        {activity.activity_type === "completed"
+                          ? `${activity.title} completed by ${activity.assigned_to_name}`
+                          : activity.activity_type === "in_progress"
+                            ? `${activity.title} ${activity.progress}% complete`
+                            : activity.activity_type === "overdue"
+                              ? `${activity.title} is overdue - needs attention`
+                              : `${activity.title} assigned to ${activity.assigned_to_name}`}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -444,8 +408,10 @@ export default function TasksPage() {
                 <Award className="h-4 w-4 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">Sarah J.</div>
-                <p className="text-xs text-muted-foreground">95% completion rate</p>
+                <div className="text-2xl font-bold">{employeePerformance[0]?.name || "N/A"}</div>
+                <p className="text-xs text-muted-foreground">
+                  {employeePerformance[0]?.completion_rate || 0}% completion rate
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -454,7 +420,10 @@ export default function TasksPage() {
                 <TrendingUp className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">8.7/10</div>
+                <div className="text-2xl font-bold">
+                  {performanceTrends.completion_rate ? (performanceTrends.completion_rate / 10).toFixed(1) : "0.0"}
+                  /10
+                </div>
                 <p className="text-xs text-muted-foreground">Team average</p>
               </CardContent>
             </Card>
@@ -468,14 +437,8 @@ export default function TasksPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[
-                    { name: "Sarah Johnson", score: 95, tasks: 12, onTime: 100 },
-                    { name: "John Smith", score: 92, tasks: 15, onTime: 93 },
-                    { name: "Mike Wilson", score: 88, tasks: 8, onTime: 87 },
-                    { name: "Grace Wanjiku", score: 85, tasks: 10, onTime: 80 },
-                    { name: "David Kimani", score: 82, tasks: 6, onTime: 83 },
-                  ].map((employee, index) => (
-                    <div key={employee.name} className="flex items-center justify-between">
+                  {employeePerformance.map((employee, index) => (
+                    <div key={employee.id} className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
                           {index + 1}
@@ -483,12 +446,12 @@ export default function TasksPage() {
                         <div>
                           <div className="font-medium">{employee.name}</div>
                           <div className="text-sm text-muted-foreground">
-                            {employee.tasks} tasks, {employee.onTime}% on time
+                            {employee.task_count} tasks, {employee.on_time_rate}% on time
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium">{employee.score}%</div>
+                        <div className="font-medium">{employee.completion_rate}%</div>
                         <div className="text-sm text-muted-foreground">Score</div>
                       </div>
                     </div>
@@ -507,29 +470,29 @@ export default function TasksPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Task Completion Rate</span>
                     <div className="flex items-center space-x-2">
-                      <Progress value={87} className="w-20 h-2" />
-                      <span className="text-sm">87%</span>
+                      <Progress value={performanceTrends.completion_rate || 0} className="w-20 h-2" />
+                      <span className="text-sm">{performanceTrends.completion_rate || 0}%</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Quality Score</span>
                     <div className="flex items-center space-x-2">
-                      <Progress value={92} className="w-20 h-2" />
-                      <span className="text-sm">92%</span>
+                      <Progress value={performanceTrends.quality_score || 0} className="w-20 h-2" />
+                      <span className="text-sm">{performanceTrends.quality_score || 0}%</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">On-Time Delivery</span>
                     <div className="flex items-center space-x-2">
-                      <Progress value={85} className="w-20 h-2" />
-                      <span className="text-sm">85%</span>
+                      <Progress value={performanceTrends.on_time_delivery || 0} className="w-20 h-2" />
+                      <span className="text-sm">{performanceTrends.on_time_delivery || 0}%</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Team Collaboration</span>
                     <div className="flex items-center space-x-2">
-                      <Progress value={90} className="w-20 h-2" />
-                      <span className="text-sm">90%</span>
+                      <Progress value={performanceTrends.team_collaboration || 0} className="w-20 h-2" />
+                      <span className="text-sm">{performanceTrends.team_collaboration || 0}%</span>
                     </div>
                   </div>
                 </div>
@@ -547,26 +510,12 @@ export default function TasksPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Infrastructure</span>
-                    <span className="text-sm font-medium">35%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Training</span>
-                    <span className="text-sm font-medium">20%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Reporting</span>
-                    <span className="text-sm font-medium">15%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Security</span>
-                    <span className="text-sm font-medium">15%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Process Improvement</span>
-                    <span className="text-sm font-medium">15%</span>
-                  </div>
+                  {categoryStats.map((cat) => (
+                    <div key={cat.category} className="flex items-center justify-between">
+                      <span className="text-sm">{cat.category}</span>
+                      <span className="text-sm font-medium">{cat.percentage}%</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -578,18 +527,12 @@ export default function TasksPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">High Priority</span>
-                    <span className="text-sm font-medium">40%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Medium Priority</span>
-                    <span className="text-sm font-medium">45%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Low Priority</span>
-                    <span className="text-sm font-medium">15%</span>
-                  </div>
+                  {priorityStats.map((priority) => (
+                    <div key={priority.priority} className="flex items-center justify-between">
+                      <span className="text-sm capitalize">{priority.priority} Priority</span>
+                      <span className="text-sm font-medium">{priority.percentage}%</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -601,22 +544,12 @@ export default function TasksPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">John Smith</span>
-                    <span className="text-sm font-medium">15 tasks</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Sarah Johnson</span>
-                    <span className="text-sm font-medium">12 tasks</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Grace Wanjiku</span>
-                    <span className="text-sm font-medium">10 tasks</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Mike Wilson</span>
-                    <span className="text-sm font-medium">8 tasks</span>
-                  </div>
+                  {workloadStats.map((employee) => (
+                    <div key={employee.id} className="flex items-center justify-between">
+                      <span className="text-sm">{employee.name}</span>
+                      <span className="text-sm font-medium">{employee.task_count} tasks</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -642,29 +575,31 @@ export default function TasksPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Monthly Summary</CardTitle>
-                <CardDescription>January 2024 performance overview</CardDescription>
+                <CardDescription>
+                  {new Date().toLocaleString("default", { month: "long", year: "numeric" })} performance overview
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Tasks Created</span>
-                    <span className="text-sm">23</span>
+                    <span className="text-sm">{monthlySummary.tasks_created || 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Tasks Completed</span>
-                    <span className="text-sm">18</span>
+                    <span className="text-sm">{monthlySummary.tasks_completed || 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Average Completion Time</span>
-                    <span className="text-sm">5.2 days</span>
+                    <span className="text-sm">{monthlySummary.avg_completion_days || 0} days</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">On-Time Completion Rate</span>
-                    <span className="text-sm">87%</span>
+                    <span className="text-sm">{monthlySummary.on_time_rate || 0}%</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Team Productivity Score</span>
-                    <span className="text-sm">8.7/10</span>
+                    <span className="text-sm font-medium">Average Progress</span>
+                    <span className="text-sm">{monthlySummary.avg_progress || 0}%</span>
                   </div>
                 </div>
               </CardContent>

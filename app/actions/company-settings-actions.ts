@@ -1,13 +1,10 @@
 "use server"
-
-import { neon } from "@neondatabase/serverless"
 import { revalidatePath } from "next/cache"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function getCompanySettings() {
   try {
-    console.log("[v0] Fetching company settings from database")
+    const sql = await getSql()
 
     const companyProfile = await sql`
       SELECT * FROM company_profiles 
@@ -23,8 +20,6 @@ export async function getCompanySettings() {
       ORDER BY key
     `
 
-    console.log(`[v0] Found company profile and ${systemSettings.length} system settings`)
-
     // Convert system settings array to object
     const settingsObject: Record<string, any> = {}
     systemSettings.forEach((setting: any) => {
@@ -39,27 +34,33 @@ export async function getCompanySettings() {
       const profile = companyProfile[0]
       return {
         // Company profile fields
-        company_name: profile.company_name,
-        company_trading_name: profile.company_name,
+        company_name: profile.name,
+        company_trading_name: profile.trading_name,
         company_registration_number: profile.registration_number,
         company_tax_number: profile.tax_number,
         company_description: profile.description,
         company_industry: profile.industry,
-        company_founded_year: profile.established_date
-          ? new Date(profile.established_date).getFullYear().toString()
-          : null,
-        primary_phone: profile.phone,
-        primary_email: profile.email,
+        company_size: profile.company_size,
+        company_founded_year: profile.founded_year?.toString(),
+        primary_phone: profile.main_phone,
+        primary_email: profile.main_email,
         website: profile.website,
-        street_address: profile.address,
-        logo_url: profile.logo_url,
-        localization_language: profile.default_language,
+        street_address: profile.physical_address,
+        contact_city: profile.city,
+        contact_state: profile.state,
+        localization_language: profile.language,
         localization_currency: profile.currency,
         localization_timezone: profile.timezone,
         localization_date_format: profile.date_format,
         localization_time_format: profile.time_format,
-        localization_number_format: profile.number_format,
-        localization_week_start: profile.week_start,
+        logo_url: profile.logo,
+        social_facebook: profile.social_facebook,
+        social_twitter: profile.social_twitter,
+        social_linkedin: profile.social_linkedin,
+        primary_color: profile.primary_color,
+        secondary_color: profile.secondary_color,
+        accent_color: profile.accent_color,
+        number_format: profile.number_format,
         company_prefix: profile.company_prefix,
         tax_system: profile.tax_system,
         tax_rate: profile.tax_rate,
@@ -77,155 +78,192 @@ export async function getCompanySettings() {
 
 export async function updateCompanySettings(formData: FormData) {
   try {
-    console.log("[v0] Form data received:", Object.fromEntries(formData.entries()))
-
     const companyName = formData.get("company_name") as string
+    const tradingName = formData.get("trading_name") as string
     const registrationNumber = formData.get("registration_number") as string
     const taxNumber = formData.get("tax_number") as string
     const description = formData.get("description") as string
     const industry = formData.get("industry") as string
+    const companySize = formData.get("company_size") as string
     const foundedYear = formData.get("founded_year") as string
-    const phone = formData.get("primary_phone") as string
-    const email = formData.get("primary_email") as string
-    const website = formData.get("website") as string
-    const address = formData.get("street_address") as string
 
+    // Branding color fields
+    const primaryColor = formData.get("primary_color") as string
+    const secondaryColor = formData.get("secondary_color") as string
+    const accentColor = formData.get("accent_color") as string
+
+    // Contact information
+    const primaryPhone = formData.get("primary_phone") as string
+    const secondaryPhone = formData.get("secondary_phone") as string
+    const primaryEmail = formData.get("primary_email") as string
+    const supportEmail = formData.get("support_email") as string
+    const website = formData.get("website") as string
+    // Social media fields
+    const socialFacebook = formData.get("social_facebook") as string
+    const socialTwitter = formData.get("social_twitter") as string
+    const socialLinkedin = formData.get("social_linkedin") as string
+
+    // Address information
+    const streetAddress = formData.get("street_address") as string
+    const city = formData.get("city") as string
+    const state = formData.get("state") as string // Added state field
+    const postalCode = formData.get("postal_code") as string
+    const country = formData.get("country") as string
+
+    // Localization
     const defaultLanguage = formData.get("default_language") as string
     const currency = formData.get("currency") as string
     const timezone = formData.get("timezone") as string
     const dateFormat = formData.get("date_format") as string
     const timeFormat = formData.get("time_format") as string
-    const numberFormat = formData.get("number_format") as string
+    const decimalSeparator = formData.get("decimal_separator") as string
+    const thousandSeparator = formData.get("thousand_separator") as string
+    const currencyPosition = formData.get("currency_position") as string
+    const fiscalYearStart = formData.get("fiscal_year_start") as string
     const weekStart = formData.get("week_start") as string
-    const companyPrefix = formData.get("company_prefix") as string
+    const numberFormat = formData.get("number_format") as string // Added number_format field
+    const companyPrefix = formData.get("company_prefix") as string // Added company_prefix field
+
+    // Tax configuration fields
     const taxSystem = formData.get("tax_system") as string
     const taxRate = formData.get("tax_rate") as string
 
-    console.log("[v0] Company name value:", companyName, "Type:", typeof companyName)
-
     if (!companyName || companyName.trim() === "" || companyName === "null" || companyName === "undefined") {
-      console.log("[v0] Company name validation failed")
       return { success: false, message: "Company name is required and cannot be empty" }
     }
 
+    const sql = await getSql()
+
     // Check if company profile exists
-    const existingProfile = await sql`
-      SELECT id FROM company_profiles 
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `
+    let existingProfile
+    try {
+      existingProfile = await sql`
+        SELECT id FROM company_profiles 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `
+    } catch (queryError: any) {
+      if (queryError.code === "42703" || queryError.code === "42P01") {
+        return {
+          success: false,
+          message: "Database schema is missing. Please run the database setup scripts.",
+        }
+      }
+      existingProfile = []
+    }
 
-    console.log("[v0] Existing profile found:", existingProfile.length > 0)
-
-    if (existingProfile.length > 0) {
-      console.log("[v0] Updating existing profile with company name:", companyName.trim())
-
+    if (existingProfile && existingProfile.length > 0 && existingProfile[0]?.id) {
       try {
-        const updateResult = await sql`
+        await sql`
           UPDATE company_profiles 
           SET 
-            company_name = ${companyName.trim()},
+            name = ${companyName.trim()},
+            trading_name = ${tradingName || null},
             registration_number = ${registrationNumber || null},
             tax_number = ${taxNumber || null},
             description = ${description || null},
             industry = ${industry || null},
-            established_date = ${foundedYear ? `${foundedYear}-01-01` : null},
-            phone = ${phone || null},
-            email = ${email || null},
+            company_size = ${companySize || null},
+            founded_year = ${foundedYear ? Number.parseInt(foundedYear) : null},
+            primary_color = ${primaryColor || "#3b82f6"},
+            secondary_color = ${secondaryColor || "#64748b"},
+            accent_color = ${accentColor || "#16a34a"},
+            physical_address = ${streetAddress || null},
+            city = ${city || null},
+            state = ${state || null},
+            country = ${country || null},
+            postal_code = ${postalCode || null},
+            timezone = ${timezone || "Africa/Nairobi"},
+            main_phone = ${primaryPhone || null},
+            support_phone = ${secondaryPhone || null},
+            main_email = ${primaryEmail || null},
+            support_email = ${supportEmail || null},
             website = ${website || null},
-            address = ${address || null},
-            default_language = ${defaultLanguage || "en"},
-            currency = ${currency || "kes"},
-            timezone = ${timezone || "eat"},
+            social_facebook = ${socialFacebook || null},
+            social_twitter = ${socialTwitter || null},
+            social_linkedin = ${socialLinkedin || null},
+            language = ${defaultLanguage || "en"},
+            currency = ${currency || "KES"},
             date_format = ${dateFormat || "dd/mm/yyyy"},
             time_format = ${timeFormat || "24h"},
-            number_format = ${numberFormat || "comma"},
+            decimal_separator = ${decimalSeparator || "."},
+            thousand_separator = ${thousandSeparator || ","},
+            currency_position = ${currencyPosition || "before"},
+            fiscal_year_start = ${fiscalYearStart || "january"},
             week_start = ${weekStart || "monday"},
+            number_format = ${numberFormat || "comma"},
             company_prefix = ${companyPrefix || null},
             tax_system = ${taxSystem || "vat"},
-            tax_rate = ${taxRate ? Number(taxRate) : 16},
+            tax_rate = ${taxRate ? Number.parseFloat(taxRate) : 16.0},
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ${existingProfile[0].id}
           RETURNING id
         `
-        console.log("[v0] Profile updated successfully, ID:", updateResult[0]?.id)
-      } catch (updateError) {
-        console.error("[v0] Error updating profile:", updateError)
-        throw updateError
+
+        console.log("[v0] Company profile updated successfully")
+      } catch (updateError: any) {
+        console.error("[v0] Update error:", updateError)
+        if (updateError.code === "42703") {
+          return {
+            success: false,
+            message: `Missing column: ${updateError.message}. Please run database migrations.`,
+          }
+        }
+        return {
+          success: false,
+          message: `Failed to update: ${updateError.message}`,
+        }
       }
     } else {
-      console.log("[v0] Creating new profile with company name:", companyName.trim())
-
       try {
-        const insertResult = await sql`
+        await sql`
           INSERT INTO company_profiles (
-            company_name, registration_number, tax_number, description, 
-            industry, established_date, phone, email, website, address,
-            default_language, currency, timezone, date_format, time_format,
-            number_format, week_start, company_prefix, tax_system, tax_rate,
+            name, trading_name, registration_number, tax_number, description, 
+            industry, company_size, founded_year, 
+            primary_color, secondary_color, accent_color,
+            physical_address, city, state, country, postal_code,
+            timezone, main_phone, support_phone, main_email, support_email, website,
+            social_facebook, social_twitter, social_linkedin,
+            language, currency, date_format, time_format, decimal_separator, thousand_separator,
+            currency_position, fiscal_year_start, week_start, number_format, company_prefix,
+            tax_system, tax_rate,
             created_at, updated_at
           ) VALUES (
-            ${companyName.trim()}, ${registrationNumber || null}, ${taxNumber || null}, ${description || null},
-            ${industry || null}, ${foundedYear ? `${foundedYear}-01-01` : null}, 
-            ${phone || null}, ${email || null}, ${website || null}, ${address || null},
-            ${defaultLanguage || "en"}, ${currency || "kes"}, ${timezone || "eat"},
-            ${dateFormat || "dd/mm/yyyy"}, ${timeFormat || "24h"}, ${numberFormat || "comma"},
-            ${weekStart || "monday"}, ${companyPrefix || null}, ${taxSystem || "vat"}, ${taxRate ? Number(taxRate) : 16},
+            ${companyName.trim()}, ${tradingName || null}, ${registrationNumber || null}, 
+            ${taxNumber || null}, ${description || null}, ${industry || null}, 
+            ${companySize || null}, ${foundedYear ? Number.parseInt(foundedYear) : null},
+            ${primaryColor || "#3b82f6"}, ${secondaryColor || "#64748b"}, ${accentColor || "#16a34a"},
+            ${streetAddress || null}, ${city || null}, ${state || null}, ${country || null}, ${postalCode || null},
+            ${timezone || "Africa/Nairobi"}, ${primaryPhone || null}, ${secondaryPhone || null},
+            ${primaryEmail || null}, ${supportEmail || null}, ${website || null},
+            ${socialFacebook || null}, ${socialTwitter || null}, ${socialLinkedin || null},
+            ${defaultLanguage || "en"}, ${currency || "KES"}, ${dateFormat || "dd/mm/yyyy"},
+            ${timeFormat || "24h"}, ${decimalSeparator || "."}, ${thousandSeparator || ","},
+            ${currencyPosition || "before"}, ${fiscalYearStart || "january"}, 
+            ${weekStart || "monday"}, ${numberFormat || "comma"}, ${companyPrefix || null},
+            ${taxSystem || "vat"}, ${taxRate ? Number.parseFloat(taxRate) : 16.0},
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
           )
           RETURNING id
         `
-        console.log("[v0] Profile created successfully, ID:", insertResult[0]?.id)
-      } catch (insertError) {
-        console.error("[v0] Error creating profile:", insertError)
-        throw insertError
-      }
-    }
 
-    console.log("[v0] Updating system_config settings...")
-
-    const settings = [
-      // Basic Info (additional fields not in company_profiles)
-      { key: "company_trading_name", value: formData.get("trading_name") as string },
-      { key: "company_size", value: formData.get("company_size") as string },
-
-      // Branding
-      { key: "branding_primary_color", value: formData.get("primary_color") as string },
-      { key: "branding_secondary_color", value: formData.get("secondary_color") as string },
-      { key: "branding_accent_color", value: formData.get("accent_color") as string },
-
-      // Contact Info (additional fields)
-      { key: "contact_secondary_phone", value: formData.get("secondary_phone") as string },
-      { key: "contact_support_email", value: formData.get("support_email") as string },
-      { key: "contact_facebook", value: formData.get("social_facebook") as string },
-      { key: "contact_twitter", value: formData.get("social_twitter") as string },
-      { key: "contact_linkedin", value: formData.get("social_linkedin") as string },
-      { key: "contact_city", value: formData.get("city") as string },
-      { key: "contact_state", value: formData.get("state") as string },
-      { key: "contact_postal_code", value: formData.get("postal_code") as string },
-      { key: "contact_country", value: formData.get("country") as string },
-    ]
-
-    // Update or insert each setting
-    for (const setting of settings) {
-      if (setting.value) {
-        try {
-          await sql`
-            INSERT INTO system_config (key, value, created_at) 
-            VALUES (${setting.key}, ${setting.value}, CURRENT_TIMESTAMP)
-            ON CONFLICT (key) 
-            DO UPDATE SET value = ${setting.value}, created_at = CURRENT_TIMESTAMP
-          `
-        } catch (settingError) {
-          console.error(`[v0] Error updating setting ${setting.key}:`, settingError)
-          // Continue with other settings even if one fails
+        console.log("[v0] Company profile created successfully")
+      } catch (insertError: any) {
+        console.error("[v0] Insert error:", insertError)
+        if (insertError.code === "42703") {
+          return {
+            success: false,
+            message: `Missing column: ${insertError.message}. Please run database migrations.`,
+          }
+        }
+        return {
+          success: false,
+          message: `Failed to create: ${insertError.message}`,
         }
       }
     }
 
-    console.log("[v0] All settings updated successfully, revalidating path...")
     revalidatePath("/settings/company")
-    console.log("[v0] Path revalidated, returning success response")
 
     return { success: true, message: "Company settings updated successfully" }
   } catch (error) {
@@ -237,6 +275,7 @@ export async function updateCompanySettings(formData: FormData) {
 
 export async function getContentData(type: "terms" | "privacy") {
   try {
+    const sql = await getSql()
     const result = await sql`
       SELECT value FROM system_config 
       WHERE key = ${`content_${type}`}
@@ -255,6 +294,7 @@ export async function getContentData(type: "terms" | "privacy") {
 
 export async function updateContentData(type: "terms" | "privacy", content: any) {
   try {
+    const sql = await getSql()
     const contentWithTimestamp = {
       ...content,
       lastUpdated: new Date().toLocaleDateString(),
@@ -280,19 +320,15 @@ export async function updateContentData(type: "terms" | "privacy", content: any)
 
 export async function uploadFile(formData: FormData, type: "logo" | "favicon" | "template") {
   try {
-    // This would integrate with your file storage solution (e.g., Vercel Blob, AWS S3)
-    // For now, we'll simulate the upload and store the file path in system_config
-
     const file = formData.get("file") as File
     if (!file) {
       return { success: false, message: "No file provided" }
     }
 
-    // Simulate file upload - in production, upload to your storage service
     const fileName = `${type}_${Date.now()}_${file.name}`
     const filePath = `/uploads/${fileName}`
 
-    // Store file path in system_config
+    const sql = await getSql()
     await sql`
       INSERT INTO system_config (key, value, created_at) 
       VALUES (${`file_${type}`}, ${filePath}, CURRENT_TIMESTAMP)

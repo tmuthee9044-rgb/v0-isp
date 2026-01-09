@@ -1,30 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sqlInstance = await getSql()
+
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
-    let dateFilter = sql``
+    let query
     if (startDate && endDate) {
-      dateFilter = sql`WHERE e.expense_date >= ${startDate} AND e.expense_date <= ${endDate}`
+      query = sqlInstance`
+        SELECT 
+          e.*,
+          ec.name as category_name,
+          ec.color as category_color
+        FROM expenses e
+        LEFT JOIN expense_categories ec ON e.category_id = ec.id
+        WHERE e.expense_date >= ${startDate} AND e.expense_date <= ${endDate}
+        ORDER BY e.expense_date DESC
+        LIMIT 50
+      `
+    } else {
+      query = sqlInstance`
+        SELECT 
+          e.*,
+          ec.name as category_name,
+          ec.color as category_color
+        FROM expenses e
+        LEFT JOIN expense_categories ec ON e.category_id = ec.id
+        ORDER BY e.expense_date DESC
+        LIMIT 50
+      `
     }
 
-    const expenses = await sql`
-      SELECT 
-        e.*,
-        ec.name as category_name,
-        ec.color as category_color
-      FROM expenses e
-      LEFT JOIN expense_categories ec ON e.category_id = ec.id
-      ${dateFilter}
-      ORDER BY e.expense_date DESC
-      LIMIT 50
-    `
+    const expenses = await query
 
     return NextResponse.json({ expenses })
   } catch (error) {
@@ -35,8 +46,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sqlInstance = await getSql()
+
     const requestData = await request.json()
-    console.log("[v0] Received expense creation request:", requestData)
 
     const {
       category_id,
@@ -51,44 +63,11 @@ export async function POST(request: NextRequest) {
       supplier_invoice_id,
     } = requestData
 
-    console.log("[v0] Validating expense data:", {
-      category_id,
-      category_id_type: typeof category_id,
-      amount,
-      amount_type: typeof amount,
-      description,
-      expense_date,
-      expense_date_type: typeof expense_date,
-      payment_method,
-      status,
-      vendor,
-      notes,
-      supplier_invoice_id,
-    })
-
     if (!category_id || !amount || !description) {
-      console.error("[v0] Validation failed - missing required fields:", {
-        category_id: !!category_id,
-        amount: !!amount,
-        description: !!description,
-      })
       return NextResponse.json({ error: "Category, amount, and description are required" }, { status: 400 })
     }
 
-    const insertData = {
-      category_id,
-      amount,
-      description,
-      vendor: vendor || "",
-      expense_date: expense_date || new Date().toISOString().split("T")[0],
-      payment_method: payment_method || "bank",
-      status: status || "paid",
-      notes: notes || "",
-      receipt_url: receipt_url || null,
-    }
-    console.log("[v0] Data being inserted into database:", insertData)
-
-    const [expense] = await sql`
+    const [expense] = await sqlInstance`
       INSERT INTO expenses (
         category_id, 
         amount, 
@@ -114,14 +93,9 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `
 
-    console.log("[v0] Expense successfully inserted into database:", expense)
-
     if (supplier_invoice_id && status === "paid") {
-      console.log("[v0] Updating supplier invoice payment status for invoice ID:", supplier_invoice_id)
-
       try {
-        // Get current invoice details
-        const [invoice] = await sql`
+        const [invoice] = await sqlInstance`
           SELECT * FROM supplier_invoices WHERE id = ${supplier_invoice_id}
         `
 
@@ -129,7 +103,6 @@ export async function POST(request: NextRequest) {
           const newPaidAmount = Number(invoice.paid_amount || 0) + Number(amount)
           const totalAmount = Number(invoice.total_amount)
 
-          // Determine new status
           let newStatus = "UNPAID"
           if (newPaidAmount >= totalAmount) {
             newStatus = "PAID"
@@ -137,17 +110,7 @@ export async function POST(request: NextRequest) {
             newStatus = "PARTIALLY_PAID"
           }
 
-          console.log("[v0] Updating invoice:", {
-            invoice_id: supplier_invoice_id,
-            old_paid_amount: invoice.paid_amount,
-            payment_amount: amount,
-            new_paid_amount: newPaidAmount,
-            total_amount: totalAmount,
-            new_status: newStatus,
-          })
-
-          // Update the invoice
-          await sql`
+          await sqlInstance`
             UPDATE supplier_invoices
             SET 
               paid_amount = ${newPaidAmount},
@@ -156,9 +119,7 @@ export async function POST(request: NextRequest) {
             WHERE id = ${supplier_invoice_id}
           `
 
-          console.log("[v0] Supplier invoice updated successfully")
-
-          await sql`
+          await sqlInstance`
             INSERT INTO admin_logs (
               action,
               resource_type,
@@ -183,18 +144,15 @@ export async function POST(request: NextRequest) {
               NOW()
             )
           `
-
-          console.log("[v0] Payment activity logged to admin_logs")
         }
       } catch (invoiceError) {
-        console.error("[v0] Error updating supplier invoice:", invoiceError)
-        // Don't fail the expense creation if invoice update fails
+        console.error("Error updating supplier invoice:", invoiceError)
       }
     }
 
     return NextResponse.json({ expense })
   } catch (error) {
-    console.error("[v0] Error creating expense:", error)
+    console.error("Error creating expense:", error)
     return NextResponse.json({ error: "Failed to create expense" }, { status: 500 })
   }
 }

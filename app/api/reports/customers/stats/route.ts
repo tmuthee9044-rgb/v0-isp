@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function GET() {
+  const sql = await getSql()
+
   try {
     const totalResult = await sql`SELECT COUNT(*) as count FROM customers`
     const activeResult = await sql`SELECT COUNT(*) as count FROM customers WHERE status = 'active'`

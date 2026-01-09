@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
+
     const customerId = Number.parseInt(params.id)
 
     const adjustments = await sql`
@@ -29,6 +29,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
+
     const customerId = Number.parseInt(params.id)
     const { adjustment_type, amount, reason, reference_number, invoice_id, auto_apply } = await request.json()
 
@@ -61,7 +63,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 async function applyCreditToInvoices(customerId: number, creditAmount: number, adjustmentId: number) {
-  // Get open invoices ordered by due date (FIFO)
+  const sql = await getSql()
+
   const openInvoices = await sql`
     SELECT * FROM invoices 
     WHERE customer_id = ${customerId} 
@@ -77,7 +80,6 @@ async function applyCreditToInvoices(customerId: number, creditAmount: number, a
     const invoiceBalance = invoice.amount - (invoice.paid_amount || 0)
     const applicationAmount = Math.min(remainingCredit, invoiceBalance)
 
-    // Create credit application record
     await sql`
       INSERT INTO credit_applications (
         customer_id, invoice_id, adjustment_id, amount_applied, created_at
@@ -85,7 +87,6 @@ async function applyCreditToInvoices(customerId: number, creditAmount: number, a
       VALUES (${customerId}, ${invoice.id}, ${adjustmentId}, ${applicationAmount}, NOW())
     `
 
-    // Update invoice paid amount and status
     const newPaidAmount = (invoice.paid_amount || 0) + applicationAmount
     const newStatus = newPaidAmount >= invoice.amount ? "paid" : "partial"
 
@@ -100,6 +101,8 @@ async function applyCreditToInvoices(customerId: number, creditAmount: number, a
 }
 
 async function updateCustomerBalance(customerId: number) {
+  const sql = await getSql()
+
   const balanceResult = await sql`
     SELECT 
       COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.amount ELSE 0 END), 0) as total_payments,

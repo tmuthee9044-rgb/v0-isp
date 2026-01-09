@@ -1,6 +1,6 @@
 "use server"
 
-import { sql } from "@vercel/postgres"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 
 export interface LogEntry {
@@ -28,6 +28,8 @@ export interface LogFilters {
 // Get system logs with filtering
 export async function getSystemLogs(filters: LogFilters = {}) {
   try {
+    const sql = await getSql()
+
     let query = `
       SELECT 
         id::text,
@@ -90,8 +92,8 @@ export async function getSystemLogs(filters: LogFilters = {}) {
       params.push(filters.offset)
     }
 
-    const result = await sql.query(query, params)
-    return { success: true, data: result.rows as LogEntry[] }
+    const result = await sql.unsafe(query, params)
+    return { success: true, data: result as LogEntry[] }
   } catch (error) {
     console.error("Error fetching system logs:", error)
     return { success: false, error: "Failed to fetch system logs" }
@@ -246,8 +248,9 @@ export async function getLogsByCategory(category: string, filters: LogFilters = 
       params.push(filters.limit)
     }
 
-    const result = await sql.query(query, params)
-    return { success: true, data: result.rows as LogEntry[] }
+    const sql = await getSql()
+    const result = await sql.unsafe(query, params)
+    return { success: true, data: result as LogEntry[] }
   } catch (error) {
     console.error(`Error fetching ${category} logs:`, error)
     return { success: false, error: `Failed to fetch ${category} logs` }
@@ -257,6 +260,7 @@ export async function getLogsByCategory(category: string, filters: LogFilters = 
 // Get log statistics
 export async function getLogStatistics() {
   try {
+    const sql = await getSql()
     const result = await sql`
       SELECT 
         COUNT(*) as total_logs,
@@ -284,6 +288,7 @@ export async function getLogStatistics() {
 // Get critical events
 export async function getCriticalEvents(limit = 50) {
   try {
+    const sql = await getSql()
     const result = await sql`
       SELECT * FROM critical_events
       ORDER BY timestamp DESC
@@ -308,6 +313,7 @@ export async function logSystemEvent(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO system_logs (level, source, category, message, ip_address, user_id, details)
       VALUES (${level}, ${source}, ${category}, ${message}, ${ipAddress}, ${userId}, ${JSON.stringify(details)})
@@ -333,6 +339,7 @@ export async function logOpenVPNEvent(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO openvpn_logs (level, event_type, client_ip, vpn_ip, user_id, session_id, details)
       VALUES (${level}, ${eventType}, ${clientIp}, ${vpnIp}, ${userId}, ${sessionId}, ${JSON.stringify(details)})
@@ -359,6 +366,7 @@ export async function logRADIUSEvent(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO radius_logs (level, event_type, username, client_ip, nas_ip, session_id, reply_message, details)
       VALUES (${level}, ${eventType}, ${username}, ${clientIp}, ${nasIp}, ${sessionId}, ${replyMessage}, ${JSON.stringify(details)})
@@ -387,6 +395,7 @@ export async function logMpesaTransaction(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO mpesa_logs (level, event_type, transaction_id, mpesa_receipt_number, phone_number, amount, customer_id, result_code, result_desc, details)
       VALUES (${level}, ${eventType}, ${transactionId}, ${mpesaReceiptNumber}, ${phoneNumber}, ${amount}, ${customerId}, ${resultCode}, ${resultDesc}, ${JSON.stringify(details)})
@@ -416,6 +425,7 @@ export async function logRouterEvent(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO router_logs (level, device_id, device_name, device_ip, event_type, message, cpu_usage, memory_usage, bandwidth_usage, alert_threshold_exceeded, details)
       VALUES (${level}, ${deviceId}, ${deviceName}, ${deviceIp}, ${eventType}, ${message}, ${cpuUsage}, ${memoryUsage}, ${bandwidthUsage}, ${alertThresholdExceeded}, ${JSON.stringify(details)})
@@ -445,6 +455,7 @@ export async function logAdminActivity(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO admin_logs (level, admin_user_id, admin_username, action, target_type, target_id, ip_address, user_agent, session_id, changes_made, details)
       VALUES (${level}, ${adminUserId}, ${adminUsername}, ${action}, ${targetType}, ${targetId}, ${ipAddress}, ${userAgent}, ${sessionId}, ${JSON.stringify(changesMade)}, ${JSON.stringify(details)})
@@ -472,6 +483,7 @@ export async function logUserActivity(
   details?: any,
 ) {
   try {
+    const sql = await getSql()
     const result = await sql`
       INSERT INTO user_activity_logs (level, user_id, username, activity_type, page_accessed, ip_address, user_agent, session_id, details)
       VALUES (${level}, ${userId}, ${username}, ${activityType}, ${pageAccessed}, ${ipAddress}, ${userAgent}, ${sessionId}, ${JSON.stringify(details)})
@@ -489,6 +501,7 @@ export async function logUserActivity(
 // Clean up old logs
 export async function cleanupOldLogs(retentionDays = 90) {
   try {
+    const sql = await getSql()
     const result = await sql`SELECT cleanup_old_logs(${retentionDays})`
 
     revalidatePath("/logs")

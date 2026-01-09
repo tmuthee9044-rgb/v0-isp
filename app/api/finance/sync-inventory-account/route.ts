@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     console.log("[v0] Syncing inventory account")
 
     // Get total inventory value

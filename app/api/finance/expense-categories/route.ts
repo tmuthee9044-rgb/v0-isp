@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET() {
   try {
+    const sql = await getSql()
+
     const categories = await sql`
       SELECT 
         id,
@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: "Category name is required" }, { status: 400 })
     }
+
+    const sql = await getSql()
 
     const existing = await sql`
       SELECT id FROM expense_categories WHERE name = ${name}

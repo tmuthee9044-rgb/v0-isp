@@ -1,30 +1,129 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
+import {
+  provisionRadiusUser,
+  suspendRadiusUser,
+  deprovisionRadiusUser,
+  syncServicePlanToRadius,
+} from "@/lib/radius-integration"
+import { allocateIPByLocation } from "@/lib/location-ip-allocation"
 
-const sql = neon(process.env.DATABASE_URL!)
+async function ensureSequenceExists(sql: any) {
+  try {
+    // Check if sequence exists
+    const sequenceExists = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_sequences 
+        WHERE schemaname = 'public' 
+        AND sequencename = 'customer_services_id_seq'
+      ) as exists
+    `
+
+    if (!sequenceExists[0]?.exists) {
+      console.log("[v0] Creating customer_services_id_seq sequence...")
+
+      // Get max id
+      const maxId = await sql`SELECT COALESCE(MAX(id), 0) as max_id FROM customer_services`
+      const nextId = (maxId[0]?.max_id || 0) + 1
+
+      // Create sequence
+      await sql`CREATE SEQUENCE IF NOT EXISTS customer_services_id_seq START WITH ${nextId}`
+
+      // Set default
+      await sql`ALTER TABLE customer_services ALTER COLUMN id SET DEFAULT nextval('customer_services_id_seq')`
+
+      console.log("[v0] Sequence created successfully with start value:", nextId)
+    }
+  } catch (error) {
+    console.error("[v0] Error ensuring sequence exists:", error)
+    throw error // Re-throw to prevent INSERT from proceeding
+  }
+}
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
+
+    await ensureSequenceExists(sql)
+
     const serviceData = await request.json()
 
     console.log("[v0] Received service data:", serviceData)
 
     const servicePlanId = serviceData.service_plan_id || serviceData.plan
-    const ipAddress = serviceData.ip_address || serviceData.ipAddress
+    let ipAddress = serviceData.ip_address || serviceData.ipAddress
     const connectionType = serviceData.connection_type || serviceData.connectionType || "fiber"
-    const deviceId = serviceData.device_id || serviceData.deviceId || null
+    const macAddress = serviceData.mac_address || serviceData.device_id || null
+    const deviceId = macAddress // For backwards compatibility with device_id column
+
+    const pppoeEnabled = serviceData.pppoe_enabled === "on" || serviceData.pppoe_enabled === true
+    const pppoeUsername = serviceData.pppoe_username || null
+    const pppoePassword = serviceData.pppoe_password || null
+
+    console.log("[v0] PPPoE settings:", { pppoeEnabled, pppoeUsername, hasPassword: !!pppoePassword })
+
+    if (!ipAddress || ipAddress === "auto") {
+      const allocationResult = await allocateIPByLocation(Number.parseInt(customerId))
+
+      if (!allocationResult.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: allocationResult.error || "Failed to allocate IP address based on location",
+          },
+          { status: 400 },
+        )
+      }
+
+      ipAddress = allocationResult.ip_address
+      console.log(`[v0] Auto-allocated IP ${ipAddress} based on customer location`)
+    }
+
+    if (ipAddress && ipAddress !== "auto") {
+      const existingIpAssignment = await sql`
+        SELECT cs.id, sp.name as service_name
+        FROM customer_services cs
+        LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.customer_id = ${customerId} 
+        AND cs.ip_address = ${ipAddress}
+        AND cs.status IN ('active', 'pending', 'suspended')
+        LIMIT 1
+      `
+
+      if (existingIpAssignment.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `This IP address (${ipAddress}) is already assigned to another service: ${existingIpAssignment[0].service_name || "Unknown Service"}`,
+          },
+          { status: 400 },
+        )
+      }
+    }
 
     const [servicePlan] = await sql`
-      SELECT price, name FROM service_plans WHERE id = ${servicePlanId}
+      SELECT id, price, name, download_speed, upload_speed FROM service_plans WHERE id = ${servicePlanId}
     `
 
     if (!servicePlan) {
-      console.error("[v0] Service plan not found:", servicePlanId)
+      // Get count of available plans for better error message
+      const availablePlans = await sql`
+        SELECT id, name FROM service_plans WHERE status = 'active' ORDER BY price ASC
+      `
+
+      console.error(
+        "[v0] Service plan not found. Requested ID:",
+        servicePlanId,
+        "Available plans:",
+        availablePlans.length,
+      )
+
       return NextResponse.json(
         {
           success: false,
-          error: "Service plan not found",
+          error: `Invalid service plan selected. Please select a valid service plan. (Requested: ${servicePlanId}, Available: ${availablePlans.length} plans)`,
+          availablePlans: availablePlans.map((p) => ({ id: p.id, name: p.name })),
         },
         { status: 404 },
       )
@@ -38,7 +137,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       INSERT INTO customer_services (
         customer_id, service_plan_id, status, monthly_fee, 
         start_date, end_date, ip_address, device_id, 
-        connection_type, config_id, created_at
+        connection_type, config_id, mac_address, lock_to_mac,
+        pppoe_username, pppoe_password, auto_renew, location_id,
+        created_at
       ) VALUES (
         ${customerId}, 
         ${servicePlanId}, 
@@ -50,11 +151,141 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${deviceId}, 
         ${connectionType},
         ${serviceData.config_id || null},
+        ${macAddress},
+        ${serviceData.lock_to_mac === "on" || serviceData.lock_to_mac === true},
+        ${pppoeUsername},
+        ${pppoePassword},
+        ${serviceData.auto_renew === "on" || serviceData.auto_renew === true},
+        ${serviceData.location_id || null},
         NOW()
       ) RETURNING *
     `
 
     console.log("[v0] Service added successfully:", result[0])
+
+    if (result[0].status === "active") {
+      const [customer] = await sql`
+        SELECT username, first_name, last_name, email FROM customers WHERE id = ${customerId}
+      `
+
+      if (customer) {
+        const radiusUsername = pppoeEnabled && pppoeUsername ? pppoeUsername : customer.username
+        const radiusPassword =
+          pppoeEnabled && pppoePassword
+            ? pppoePassword
+            : `${customer.first_name?.toLowerCase() || "user"}${Math.floor(Math.random() * 10000)}`
+
+        console.log("[v0] Provisioning RADIUS with username:", radiusUsername)
+        console.log("[v0] Using PPPoE credentials:", {
+          pppoeEnabled,
+          hasUsername: !!pppoeUsername,
+          hasPassword: !!pppoePassword,
+        })
+
+        if (pppoeEnabled && pppoeUsername && pppoePassword) {
+          await sql`
+            UPDATE customer_services
+            SET pppoe_username = ${pppoeUsername}, pppoe_password = ${pppoePassword}
+            WHERE id = ${result[0].id}
+          `
+          console.log("[v0] Saved PPPoE credentials to customer_services table")
+        }
+
+        let routerAuthMethod = "pppoe_radius" // default
+
+        if (ipAddress && ipAddress !== "auto") {
+          const routerCheck = await sql`
+            SELECT nd.customer_auth_method
+            FROM ip_addresses ia
+            JOIN network_devices nd ON nd.id = ia.router_id
+            WHERE ia.ip_address = ${ipAddress}
+            LIMIT 1
+          `
+
+          if (routerCheck.length > 0) {
+            routerAuthMethod = routerCheck[0].customer_auth_method || "pppoe_radius"
+            console.log(`[v0] Router auth method detected: ${routerAuthMethod}`)
+          }
+        }
+
+        // Only provision to RADIUS if router uses RADIUS authentication
+        if (routerAuthMethod === "pppoe_radius" || routerAuthMethod === "dhcp_lease") {
+          console.log("[v0] Router uses RADIUS - provisioning user to FreeRADIUS")
+
+          const radiusResult = await provisionRadiusUser({
+            username: radiusUsername,
+            password: radiusPassword,
+            customerId: Number.parseInt(customerId),
+            serviceId: result[0].id,
+            ipAddress: ipAddress !== "auto" ? ipAddress : undefined,
+            downloadSpeed: servicePlan.download_speed,
+            uploadSpeed: servicePlan.upload_speed,
+          })
+
+          if (radiusResult.success) {
+            console.log(
+              "[v0] RADIUS user provisioned successfully to FreeRADIUS tables (radcheck/radreply) for physical router authentication",
+            )
+
+            // Log activity per rule 3
+            await sql`
+              INSERT INTO activity_logs (action, entity_type, entity_id, details, created_at)
+              VALUES (
+                'create', 'customer_service', ${result[0].id},
+                ${JSON.stringify({
+                  customer_id: customerId,
+                  service_id: result[0].id,
+                  radius_username: radiusUsername,
+                  pppoe_enabled: pppoeEnabled,
+                  auth_method: routerAuthMethod,
+                  speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
+                  ip_address: ipAddress,
+                })},
+                CURRENT_TIMESTAMP
+              )
+            `
+          } else {
+            console.error("[v0] Failed to provision RADIUS user:", radiusResult.error)
+            // Don't fail the whole operation, but log the error
+            await sql`
+              INSERT INTO system_logs (level, category, source, message, details, created_at)
+              VALUES (
+                'ERROR', 'radius', 'provisioning',
+                'Failed to provision RADIUS user for customer service',
+                ${JSON.stringify({
+                  customer_id: customerId,
+                  service_id: result[0].id,
+                  error: radiusResult.error,
+                })},
+                CURRENT_TIMESTAMP
+              )
+            `
+          }
+        } else if (routerAuthMethod === "pppoe_secrets") {
+          console.log("[v0] Router uses PPPoE Secrets - skipping RADIUS provisioning")
+          console.log("[v0] Credentials will be written directly to router when service is activated")
+
+          // Log activity per rule 3
+          await sql`
+            INSERT INTO activity_logs (action, entity_type, entity_id, details, created_at)
+            VALUES (
+              'create', 'customer_service', ${result[0].id},
+              ${JSON.stringify({
+                customer_id: customerId,
+                service_id: result[0].id,
+                pppoe_username: pppoeUsername,
+                pppoe_enabled: pppoeEnabled,
+                auth_method: "pppoe_secrets",
+                note: "Credentials stored locally on router, not in RADIUS",
+                speeds: `${servicePlan.download_speed}/${servicePlan.upload_speed}Mbps`,
+                ip_address: ipAddress,
+              })},
+              CURRENT_TIMESTAMP
+            )
+          `
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, service: result[0] })
   } catch (error) {
@@ -72,13 +303,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
 
     const services = await sql`
       SELECT 
-        cs.*,
+        cs.id,
+        cs.customer_id,
+        cs.service_plan_id,
+        cs.status,
+        cs.monthly_fee,
+        cs.start_date,
+        cs.end_date,
+        cs.ip_address,
+        cs.device_id,
+        cs.connection_type,
+        cs.created_at,
+        cs.pppoe_username,
+        cs.lock_to_mac,
+        cs.auto_renew,
         sp.name as service_name,
-        sp.description as service_description,
+        sp.service_type,
         sp.download_speed,
         sp.upload_speed,
         sp.data_limit
@@ -97,8 +342,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
     const { serviceId, action, ...updateData } = await request.json()
+
+    const pppoeUsername = updateData.pppoe_username || null
+    const pppoePassword = updateData.pppoe_password || null
+    const pppoeEnabled = updateData.pppoe_enabled === "on" || updateData.pppoe_enabled === true
+    const macAddress = updateData.mac_address || updateData.device_id || null
+    const deviceId = macAddress // For backwards compatibility with device_id column
 
     let result
 
@@ -109,6 +361,21 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         WHERE id = ${serviceId} AND customer_id = ${customerId}
         RETURNING *
       `
+
+      const [customer] = await sql`
+        SELECT username FROM customers WHERE id = ${customerId}
+      `
+
+      if (customer?.username) {
+        const radiusResult = await suspendRadiusUser({
+          customerId: Number.parseInt(customerId),
+          serviceId: Number.parseInt(serviceId),
+          username: customer.username,
+          reason: "Service suspended by admin",
+        })
+
+        console.log("[v0] RADIUS user suspended:", radiusResult)
+      }
     } else if (action === "reactivate") {
       result = await sql`
         UPDATE customer_services 
@@ -116,6 +383,34 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         WHERE id = ${serviceId} AND customer_id = ${customerId}
         RETURNING *
       `
+
+      const [customer] = await sql`
+        SELECT username FROM customers WHERE id = ${customerId}
+      `
+
+      const [service] = await sql`
+        SELECT cs.*, sp.download_speed, sp.upload_speed
+        FROM customer_services cs
+        JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.id = ${serviceId}
+      `
+
+      if (customer?.username && service) {
+        const username = pppoeUsername || customer.username
+        const password = pppoePassword || `${customer.username}${Math.floor(Math.random() * 10000)}`
+
+        const radiusResult = await provisionRadiusUser({
+          username,
+          password,
+          customerId: Number.parseInt(customerId),
+          serviceId: Number.parseInt(serviceId),
+          ipAddress: service.ip_address !== "auto" ? service.ip_address : undefined,
+          downloadSpeed: service.download_speed,
+          uploadSpeed: service.upload_speed,
+        })
+
+        console.log("[v0] RADIUS user reactivated with credentials:", radiusResult)
+      }
     } else {
       const allowedFields = [
         "service_plan_id",
@@ -127,12 +422,24 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         "device_id",
         "connection_type",
         "config_id",
+        "pppoe_username",
+        "pppoe_password",
+        "lock_to_mac",
+        "auto_renew",
+        "mac_address",
+        "location_id",
       ]
       const updateFields = []
       const updateValues = []
 
       Object.entries(updateData).forEach(([key, value]) => {
-        if (value !== undefined && allowedFields.includes(key)) {
+        if (
+          value !== undefined &&
+          allowedFields.includes(key) &&
+          key !== "pppoe_username" &&
+          key !== "pppoe_password" &&
+          key !== "pppoe_enabled"
+        ) {
           updateFields.push(`${key} = $${updateValues.length + 1}`)
           updateValues.push(value)
         }
@@ -147,6 +454,61 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           RETURNING *
         `
       }
+
+      if (pppoeEnabled && (pppoeUsername || pppoePassword || updateData.service_plan_id)) {
+        const [customer] = await sql`
+          SELECT username FROM customers WHERE id = ${customerId}
+        `
+
+        const [service] = await sql`
+          SELECT cs.*, sp.download_speed, sp.upload_speed
+          FROM customer_services cs
+          JOIN service_plans sp ON cs.service_plan_id = sp.id
+          WHERE cs.id = ${serviceId}
+        `
+
+        if (customer && service) {
+          console.log("[v0] Service updated, syncing PPPoE credentials to RADIUS...")
+
+          const username = pppoeUsername || customer.username
+          const password = pppoePassword || `${customer.username}${Math.floor(Math.random() * 10000)}`
+
+          const radiusResult = await provisionRadiusUser({
+            username,
+            password,
+            customerId: Number.parseInt(customerId),
+            serviceId: Number.parseInt(serviceId),
+            ipAddress: service.ip_address !== "auto" ? service.ip_address : undefined,
+            downloadSpeed: service.download_speed,
+            uploadSpeed: service.upload_speed,
+          })
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS credentials updated successfully for:", username)
+          } else {
+            console.error("[v0] Failed to update RADIUS credentials:", radiusResult.error)
+          }
+        }
+      } else if (updateData.service_plan_id) {
+        const [customer] = await sql`
+          SELECT username FROM customers WHERE id = ${customerId}
+        `
+
+        if (customer?.username) {
+          console.log("[v0] Service plan changed, syncing speeds to RADIUS...")
+          const radiusResult = await syncServicePlanToRadius(
+            Number.parseInt(customerId),
+            updateData.service_plan_id,
+            customer.username,
+          )
+
+          if (radiusResult.success) {
+            console.log("[v0] RADIUS speeds updated successfully for:", customer.username)
+          } else {
+            console.error("[v0] Failed to sync RADIUS speeds:", radiusResult.error)
+          }
+        }
+      }
     }
 
     return NextResponse.json({ success: true, service: result?.[0] })
@@ -158,6 +520,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const customerId = params.id
     const { searchParams } = new URL(request.url)
     const serviceId = searchParams.get("serviceId")
@@ -167,9 +530,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const serviceDetails = await sql`
-      SELECT cs.*, sp.name as service_name, sp.price as service_price
+      SELECT cs.*, sp.name as service_name, sp.price as service_price, c.username
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+      LEFT JOIN customers c ON c.id = cs.customer_id
       WHERE cs.id = ${serviceId} AND cs.customer_id = ${customerId}
     `
 
@@ -178,6 +542,17 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const service = serviceDetails[0]
+
+    if (service.username) {
+      const radiusResult = await deprovisionRadiusUser({
+        customerId: Number.parseInt(customerId),
+        serviceId: Number.parseInt(serviceId),
+        username: service.username,
+        reason: "Service deleted",
+      })
+
+      console.log("[v0] RADIUS user deprovisioned:", radiusResult)
+    }
 
     const creditNoteResult = await sql`
       INSERT INTO invoices (

@@ -4,9 +4,9 @@
 
 **This single command installs EVERYTHING automatically:**
 
-\`\`\`bash
+```bash
 chmod +x install.sh && ./install.sh
-\`\`\`
+```
 
 ### What This Command Does Automatically:
 
@@ -28,20 +28,20 @@ chmod +x install.sh && ./install.sh
 The installation script automatically handles all database operations:
 
 ### 1. PostgreSQL Installation
-\`\`\`bash
+```bash
 # Automatically installs PostgreSQL 15+
 sudo apt install postgresql postgresql-contrib
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
-\`\`\`
+```
 
 ### 2. Database Creation
-\`\`\`bash
+```bash
 # Creates database and user with secure random password
 CREATE DATABASE isp_system;
 CREATE USER isp_admin WITH PASSWORD 'auto-generated-secure-password';
 GRANT ALL PRIVILEGES ON DATABASE isp_system TO isp_admin;
-\`\`\`
+```
 
 ### 3. Table Creation
 The script runs all SQL migration files in the `scripts/` directory:
@@ -52,11 +52,11 @@ The script runs all SQL migration files in the `scripts/` directory:
 
 ### 4. Connection Configuration
 Automatically generates `.env.local` with:
-\`\`\`env
+```env
 DATABASE_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 POSTGRES_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 # ... and all other required connection strings
-\`\`\`
+```
 
 **You don't need to do ANY of this manually!**
 
@@ -69,12 +69,12 @@ POSTGRES_URL="postgresql://isp_admin:password@localhost:5432/isp_system"
 Your database credentials are automatically saved in:
 
 **`database-credentials.txt`** (created by installer):
-\`\`\`
+```
 Database Name: isp_system
 Database User: isp_admin
 Database Password: [auto-generated secure password]
 Connection String: postgresql://isp_admin:password@localhost:5432/isp_system
-\`\`\`
+```
 
 **`.env.local`** (created by installer):
 - Contains all database connection strings
@@ -85,7 +85,7 @@ Connection String: postgresql://isp_admin:password@localhost:5432/isp_system
 
 ### Verify Database Setup
 
-\`\`\`bash
+```bash
 # Check PostgreSQL is running
 sudo systemctl status postgresql
 
@@ -97,17 +97,17 @@ sudo -u postgres psql -d isp_system -c "\dt"
 
 # Count tables (should be 50+)
 sudo -u postgres psql -d isp_system -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"
-\`\`\`
+```
 
 ### Start the System
 
-\`\`\`bash
+```bash
 # Development mode (with hot reload)
 npm run dev
 
 # Production mode (optimized)
 npm run build && npm start
-\`\`\`
+```
 
 ### Access the System
 
@@ -122,29 +122,29 @@ npm run build && npm start
 ### Problem: "Database connection failed"
 
 **Check PostgreSQL is running:**
-\`\`\`bash
+```bash
 sudo systemctl status postgresql
 sudo systemctl start postgresql  # If not running
-\`\`\`
+```
 
 **Test database connection:**
-\`\`\`bash
+```bash
 # Using credentials from database-credentials.txt
 psql -U isp_admin -d isp_system -h localhost
 
 # Or as postgres user
 sudo -u postgres psql -d isp_system
-\`\`\`
+```
 
 **Check .env.local exists:**
-\`\`\`bash
+```bash
 cat .env.local | grep DATABASE_URL
-\`\`\`
+```
 
 ### Problem: "No tables found"
 
 **Run migrations manually:**
-\`\`\`bash
+```bash
 # Navigate to project directory
 cd isp-system
 
@@ -155,12 +155,12 @@ done
 
 # Verify tables created
 sudo -u postgres psql -d isp_system -c "\dt"
-\`\`\`
+```
 
 ### Problem: "Permission denied for database"
 
 **Grant permissions:**
-\`\`\`bash
+```bash
 sudo -u postgres psql << EOF
 \c isp_system
 GRANT ALL ON SCHEMA public TO isp_admin;
@@ -168,12 +168,12 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO isp_admin;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO isp_admin;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO isp_admin;
 EOF
-\`\`\`
+```
 
 ### Problem: "Database already exists"
 
 **The installer will drop and recreate it. To manually reset:**
-\`\`\`bash
+```bash
 sudo -u postgres psql << EOF
 DROP DATABASE IF EXISTS isp_system;
 DROP USER IF EXISTS isp_admin;
@@ -181,12 +181,12 @@ EOF
 
 # Then run install.sh again
 ./install.sh
-\`\`\`
+```
 
 ### Problem: "PostgreSQL not installed"
 
 **Install manually:**
-\`\`\`bash
+```bash
 # Ubuntu/Debian
 sudo apt update
 sudo apt install -y postgresql postgresql-contrib
@@ -196,7 +196,7 @@ sudo systemctl enable postgresql
 # Verify installation
 psql --version
 sudo systemctl status postgresql
-\`\`\`
+```
 
 ---
 
@@ -206,16 +206,16 @@ If automatic installation fails, you can set up the database manually:
 
 ### Step 1: Install PostgreSQL
 
-\`\`\`bash
+```bash
 sudo apt update
 sudo apt install -y postgresql postgresql-contrib
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
-\`\`\`
+```
 
 ### Step 2: Create Database and User
 
-\`\`\`bash
+```bash
 sudo -u postgres psql << EOF
 CREATE DATABASE isp_system;
 CREATE USER isp_admin WITH PASSWORD 'your_secure_password';
@@ -228,21 +228,21 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO isp_admin;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO isp_admin;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO isp_admin;
 EOF
-\`\`\`
+```
 
 ### Step 3: Run Migration Scripts
 
-\`\`\`bash
+```bash
 # Run all SQL scripts in order
 for script in scripts/*.sql; do
   echo "Running: $script"
   sudo -u postgres psql -d isp_system -f "$script"
 done
-\`\`\`
+```
 
 ### Step 4: Create .env.local
 
-\`\`\`bash
+```bash
 cat > .env.local << EOF
 DATABASE_URL="postgresql://isp_admin:your_secure_password@localhost:5432/isp_system"
 POSTGRES_URL="postgresql://isp_admin:your_secure_password@localhost:5432/isp_system"
@@ -263,11 +263,11 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 JWT_SECRET="$(openssl rand -base64 32)"
 CRON_SECRET="$(openssl rand -base64 32)"
 EOF
-\`\`\`
+```
 
 ### Step 5: Verify Setup
 
-\`\`\`bash
+```bash
 # Test database connection
 psql -U isp_admin -d isp_system -h localhost -c "SELECT version();"
 
@@ -276,14 +276,14 @@ psql -U isp_admin -d isp_system -h localhost -c "\dt"
 
 # Count tables (should be 50+)
 psql -U isp_admin -d isp_system -h localhost -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"
-\`\`\`
+```
 
 ### Step 6: Install Dependencies and Run
 
-\`\`\`bash
+```bash
 npm install --legacy-peer-deps
 npm run dev
-\`\`\`
+```
 
 ---
 
@@ -348,33 +348,33 @@ The installation automatically implements:
 ### Production Security Recommendations:
 
 1. **Change Default Passwords:**
-   \`\`\`bash
+   ```bash
    sudo -u postgres psql -c "ALTER USER isp_admin WITH PASSWORD 'new_strong_password';"
    # Update .env.local with new password
-   \`\`\`
+   ```
 
 2. **Enable SSL Connections:**
-   \`\`\`bash
+   ```bash
    # Edit postgresql.conf
    sudo nano /etc/postgresql/15/main/postgresql.conf
    # Set: ssl = on
    sudo systemctl restart postgresql
-   \`\`\`
+   ```
 
 3. **Configure Firewall:**
-   \`\`\`bash
+   ```bash
    # Only allow local connections
    sudo ufw allow from 127.0.0.1 to any port 5432
-   \`\`\`
+   ```
 
 4. **Regular Backups:**
-   \`\`\`bash
+   ```bash
    # Backup database
    pg_dump -U isp_admin -d isp_system > backup_$(date +%Y%m%d).sql
    
    # Restore database
    psql -U isp_admin -d isp_system < backup_20250101.sql
-   \`\`\`
+   ```
 
 ---
 
@@ -393,10 +393,10 @@ The installation automatically implements:
 
 Run the system health check to verify everything:
 
-\`\`\`bash
+```bash
 chmod +x check-system.sh
 ./check-system.sh
-\`\`\`
+```
 
 This checks:
 - ✓ PostgreSQL installed and running

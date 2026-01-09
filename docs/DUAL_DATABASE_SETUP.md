@@ -46,13 +46,13 @@ The system automatically detects which environment it's running in:
 
 The local PostgreSQL database uses these static credentials:
 
-\`\`\`
+```
 Host: 127.0.0.1
 Port: 5432
 Database: isp_system
 Username: isp_admin
 Password: SecurePass123!
-\`\`\`
+```
 
 You can override these by setting environment variables:
 - `POSTGRES_HOST`
@@ -98,35 +98,35 @@ This satisfies requirement #3: "any activity carried out is logged"
 1. **Install PostgreSQL**:
    
    **Ubuntu/Debian:**
-   \`\`\`bash
+   ```bash
    sudo apt update
    sudo apt install postgresql postgresql-contrib
-   \`\`\`
+   ```
    
    **macOS:**
-   \`\`\`bash
+   ```bash
    brew install postgresql@15
    brew services start postgresql@15
-   \`\`\`
+   ```
    
    **Windows:**
    Download from [postgresql.org](https://www.postgresql.org/download/windows/)
 
 2. **Create Database and User**:
-   \`\`\`bash
+   ```bash
    # Connect to PostgreSQL
    sudo -u postgres psql
-   \`\`\`
+   ```
    
-   \`\`\`sql
+   ```sql
    CREATE DATABASE isp_system;
    CREATE USER isp_admin WITH PASSWORD 'SecurePass123!';
    GRANT ALL PRIVILEGES ON DATABASE isp_system TO isp_admin;
    \q
-   \`\`\`
+   ```
 
 3. **Create `.env.local` file**:
-   \`\`\`env
+   ```env
    NODE_ENV=development
    
    POSTGRES_HOST=127.0.0.1
@@ -134,57 +134,57 @@ This satisfies requirement #3: "any activity carried out is logged"
    POSTGRES_DATABASE=isp_system
    POSTGRES_USER=isp_admin
    POSTGRES_PASSWORD=SecurePass123!
-   \`\`\`
+   ```
 
 4. **Run Database Migrations**:
-   \`\`\`bash
+   ```bash
    # The system will automatically detect and use local PostgreSQL
    npm run dev
-   \`\`\`
+   ```
 
 5. **Verify Connection**:
    Check console logs for:
-   \`\`\`
+   ```
    ✅ Connected to PostgreSQL (Local) database.
-   \`\`\`
+   ```
    
    Or visit: `http://localhost:3000/api/database/health`
 
 ### For Neon Serverless (Production/Cloud)
 
 1. **Create `.env.production` file**:
-   \`\`\`env
+   ```env
    NODE_ENV=production
    
    # Neon Serverless Database (with SSL required)
    DATABASE_URL=postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/dbname?sslmode=require
    POSTGRES_URL=postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/dbname?sslmode=require
-   \`\`\`
+   ```
 
 2. **Deploy Application**:
-   \`\`\`bash
+   ```bash
    # The system will automatically detect production environment
    # and prioritize Neon connection
    npm run build
    npm start
-   \`\`\`
+   ```
 
 3. **Verify Connection**:
    Check console logs for:
-   \`\`\`
+   ```
    ✅ Connected to Neon Serverless database.
-   \`\`\`
+   ```
 
 ## Monitoring
 
 ### Health Check Endpoint
 
-\`\`\`bash
+```bash
 GET /api/database/health
-\`\`\`
+```
 
 **Response:**
-\`\`\`json
+```json
 {
   "status": "healthy",
   "database": {
@@ -209,13 +209,13 @@ GET /api/database/health
     }
   ]
 }
-\`\`\`
+```
 
 ### Console Logs
 
 The system provides detailed logging for all database operations:
 
-\`\`\`
+```
 [DB 2025-01-29T10:30:00.000Z] DETECTION_START: {
   "attempt": 1,
   "environment": "local",
@@ -241,14 +241,14 @@ The system provides detailed logging for all database operations:
   "rows": 10,
   "database": "PostgreSQL"
 }
-\`\`\`
+```
 
 ## Troubleshooting
 
 ### Local PostgreSQL Not Connecting
 
 1. **Check if PostgreSQL is running**:
-   \`\`\`bash
+   ```bash
    # Linux
    sudo systemctl status postgresql
    
@@ -257,24 +257,24 @@ The system provides detailed logging for all database operations:
    
    # Test connection
    pg_isready -h 127.0.0.1 -p 5432
-   \`\`\`
+   ```
 
 2. **Verify credentials**:
-   \`\`\`bash
+   ```bash
    psql -h 127.0.0.1 -U isp_admin -d isp_system
    # Enter password: SecurePass123!
-   \`\`\`
+   ```
 
 3. **Check PostgreSQL configuration** (`pg_hba.conf`):
-   \`\`\`
+   ```
    # Add this line for local connections with password
    host    all    all    127.0.0.1/32    md5
-   \`\`\`
+   ```
    
    Then restart PostgreSQL:
-   \`\`\`bash
+   ```bash
    sudo systemctl restart postgresql
-   \`\`\`
+   ```
 
 4. **Check logs**:
    Look for `[DB]` entries in console output showing connection attempts
@@ -282,25 +282,25 @@ The system provides detailed logging for all database operations:
 ### Neon Connection Issues
 
 1. **Verify DATABASE_URL format**:
-   \`\`\`
+   ```
    postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/database?sslmode=require
-   \`\`\`
+   ```
    
    ⚠️ **Important**: Must include `?sslmode=require`
 
 2. **Test connection manually**:
-   \`\`\`bash
+   ```bash
    psql "postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/database?sslmode=require"
-   \`\`\`
+   ```
 
 3. **Check environment variables**:
    Ensure `DATABASE_URL` is set in your deployment platform (Vercel, Render, etc.)
 
 4. **Review retry logs**:
    The system will show retry attempts:
-   \`\`\`
+   ```
    [DB] RETRY_ATTEMPT: { "attempt": 1, "maxRetries": 3, "nextRetryIn": "1000ms" }
-   \`\`\`
+   ```
 
 ### Slow Query Performance
 
@@ -309,16 +309,16 @@ The system provides detailed logging for all database operations:
 
 2. **Monitor query times**:
    All queries log their duration:
-   \`\`\`
+   ```
    [DB] QUERY_SUCCESS: { "duration": "1250ms", "rows": 100 }
-   \`\`\`
+   ```
    
    Queries >1000ms may need optimization
 
 3. **Check database health**:
-   \`\`\`bash
+   ```bash
    curl http://localhost:3000/api/database/health
-   \`\`\`
+   ```
 
 4. **Review health metrics**:
    - Average response time should be <100ms for local, <300ms for Neon
@@ -328,7 +328,7 @@ The system provides detailed logging for all database operations:
 
 To force a specific database type for testing:
 
-\`\`\`typescript
+```typescript
 import { neon } from '@/lib/db'
 
 // Force Neon
@@ -336,29 +336,29 @@ const sql = neon('postgresql://...@ep-xxx.us-east-1.aws.neon.tech/...?sslmode=re
 
 // Force Local
 const sql = neon('postgresql://isp_admin:SecurePass123!@127.0.0.1:5432/isp_system')
-\`\`\`
+```
 
 ## Migration Between Databases
 
 The system seamlessly switches between databases. To migrate data:
 
 1. **Export from current database**:
-   \`\`\`bash
+   ```bash
    # From Neon
    pg_dump "postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/db?sslmode=require" > backup.sql
    
    # From Local
    pg_dump -h 127.0.0.1 -U isp_admin isp_system > backup.sql
-   \`\`\`
+   ```
 
 2. **Import to new database**:
-   \`\`\`bash
+   ```bash
    # To Neon
    psql "postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/db?sslmode=require" < backup.sql
    
    # To Local
    psql -h 127.0.0.1 -U isp_admin isp_system < backup.sql
-   \`\`\`
+   ```
 
 3. **Update environment variables**:
    Change `DATABASE_URL` to point to new database
@@ -403,27 +403,27 @@ The system seamlessly switches between databases. To migrate data:
 
 ### Required for Local PostgreSQL
 
-\`\`\`env
+```env
 POSTGRES_HOST=127.0.0.1
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=isp_system
 POSTGRES_USER=isp_admin
 POSTGRES_PASSWORD=SecurePass123!
-\`\`\`
+```
 
 ### Required for Neon Serverless
 
-\`\`\`env
+```env
 DATABASE_URL=postgresql://user:password@host/database?sslmode=require
-\`\`\`
+```
 
 ### Optional
 
-\`\`\`env
+```env
 NODE_ENV=development|production
 POSTGRES_URL=<alternative connection string>
 POSTGRES_PRISMA_URL=<prisma-specific connection string>
-\`\`\`
+```
 
 ## Support
 

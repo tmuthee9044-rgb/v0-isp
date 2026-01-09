@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 // Get stock adjustments
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const warehouseId = searchParams.get("warehouse_id")
     const itemId = searchParams.get("item_id")
@@ -97,6 +96,7 @@ export async function GET(request: NextRequest) {
 // Create stock adjustment
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const contentType = request.headers.get("content-type")
     if (!contentType || !contentType.includes("application/json")) {
       return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 400 })

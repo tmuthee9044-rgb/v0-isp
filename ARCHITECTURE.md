@@ -12,11 +12,11 @@ We implemented a **permanent architectural solution** using Next.js webpack modu
 #### How It Works
 
 1. **Webpack Alias Configuration** (`next.config.mjs`)
-   \`\`\`javascript
+   ```javascript
    config.resolve.alias = {
      '@neondatabase/serverless': path.resolve(__dirname, 'lib/neon-wrapper.ts'),
    }
-   \`\`\`
+   ```
    - All imports to `@neondatabase/serverless` are automatically redirected to our wrapper
    - No code changes needed in 200+ files
    - Works transparently at build time
@@ -36,7 +36,7 @@ We implemented a **permanent architectural solution** using Next.js webpack modu
 
 ### Database Connection Flow
 
-\`\`\`
+```
 Application Code
     ↓
 import { neon } from '@neondatabase/serverless'
@@ -49,28 +49,28 @@ Check DATABASE_URL
     ↓
 ├─ localhost? → Use pg driver (offline PostgreSQL)
 └─ cloud URL? → Use @neondatabase/serverless (Neon)
-\`\`\`
+```
 
 ### Environment Variables
 
 **Local PostgreSQL (Offline)**
-\`\`\`bash
+```bash
 DATABASE_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
-\`\`\`
+```
 
 **Cloud Database (Neon)**
-\`\`\`bash
+```bash
 DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require
-\`\`\`
+```
 
 The wrapper automatically detects which driver to use based on the URL.
 
 ### Testing the Connection
 
 Run the database test script:
-\`\`\`bash
+```bash
 bash scripts/test-database-connection.sh
-\`\`\`
+```
 
 This verifies:
 - PostgreSQL service is running
@@ -84,22 +84,22 @@ This verifies:
 If you still see Neon connection errors:
 
 1. **Check DATABASE_URL**
-   \`\`\`bash
+   ```bash
    cat .env.local | grep DATABASE_URL
-   \`\`\`
+   ```
    Should show `localhost` or `127.0.0.1`, not a Neon URL
 
 2. **Restart the dev server**
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
    The webpack alias only applies after restart
 
 3. **Clear Next.js cache**
-   \`\`\`bash
+   ```bash
    rm -rf .next
    npm run dev
-   \`\`\`
+   ```
 
 4. **Verify the wrapper is being used**
    Check console logs for: `[v0] Using local PostgreSQL connection (pg driver)`

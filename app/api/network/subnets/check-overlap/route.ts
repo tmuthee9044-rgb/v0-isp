@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 function validateCIDR(cidr: string): { valid: boolean; error?: string; correctedCIDR?: string } {
   const cidrRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/
@@ -51,6 +49,8 @@ function validateCIDR(cidr: string): { valid: boolean; error?: string; corrected
 }
 
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const { cidr, excludeId } = await request.json()
 

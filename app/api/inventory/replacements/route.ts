@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 // Equipment replacement workflow
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const data = await request.json()
     const { customer_id, old_equipment_id, new_inventory_item_id, replacement_reason, performed_by = 1 } = data
 
@@ -167,6 +166,7 @@ export async function POST(request: NextRequest) {
 // Get replacement history
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const customerId = searchParams.get("customer_id")
 

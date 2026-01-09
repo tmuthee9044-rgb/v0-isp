@@ -26,7 +26,8 @@ BEGIN
         INSERT INTO finance_audit_trail (
             table_name, 
             record_id, 
-            action, 
+            action,
+            action_type,
             old_values, 
             user_id, 
             ip_address, 
@@ -35,7 +36,8 @@ BEGIN
         VALUES (
             TG_TABLE_NAME, 
             OLD.id, 
-            'DELETE', 
+            'DELETE',
+            'DELETE',
             row_to_json(OLD), 
             v_user_id, 
             v_ip_address, 
@@ -46,7 +48,8 @@ BEGIN
         INSERT INTO finance_audit_trail (
             table_name, 
             record_id, 
-            action, 
+            action,
+            action_type,
             old_values, 
             new_values, 
             user_id, 
@@ -56,7 +59,8 @@ BEGIN
         VALUES (
             TG_TABLE_NAME, 
             NEW.id, 
-            'UPDATE', 
+            'UPDATE',
+            'UPDATE',
             row_to_json(OLD), 
             row_to_json(NEW), 
             v_user_id, 
@@ -68,7 +72,8 @@ BEGIN
         INSERT INTO finance_audit_trail (
             table_name, 
             record_id, 
-            action, 
+            action,
+            action_type,
             new_values, 
             user_id, 
             ip_address, 
@@ -77,7 +82,8 @@ BEGIN
         VALUES (
             TG_TABLE_NAME, 
             NEW.id, 
-            'INSERT', 
+            'INSERT',
+            'INSERT',
             row_to_json(NEW), 
             v_user_id, 
             v_ip_address, 

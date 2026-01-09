@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const body = await request.json()
     const {
       name,
@@ -59,6 +58,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    const sql = await getSql()
     const campaigns = await sql`
       SELECT * FROM loyalty_campaigns
       ORDER BY created_at DESC

@@ -7,7 +7,7 @@ export async function GET() {
 
     const settings = await sql`
       SELECT 
-        default_language as localization_language,
+        language as localization_language,
         currency as localization_currency,
         timezone as localization_timezone,
         date_format as localization_date_format,

@@ -1,6 +1,6 @@
 "use server"
 
-import { sql } from "@vercel/postgres"
+import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import type { Task, TaskComment, TaskAttachment } from "@/types/tasks"
 
@@ -10,6 +10,8 @@ export async function createTask(formData: FormData): Promise<{
   taskId?: number
 }> {
   try {
+    const sql = await getSql()
+
     const title = formData.get("title") as string
     const description = formData.get("description") as string
     const assignedTo = formData.get("assignedTo") as string
@@ -41,7 +43,7 @@ export async function createTask(formData: FormData): Promise<{
     return {
       success: true,
       message: "Task created successfully",
-      taskId: result.rows[0].id,
+      taskId: result[0].id,
     }
   } catch (error) {
     console.error("Error creating task:", error)
@@ -60,6 +62,8 @@ export async function updateTask(
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     const updateFields = []
     const values = []
     let paramIndex = 1
@@ -90,7 +94,7 @@ export async function updateTask(
       WHERE id = $${paramIndex}
     `
 
-    await sql.query(query, values)
+    await sql.unsafe(query, values)
 
     revalidatePath("/tasks")
     revalidatePath("/tasks/my-tasks")
@@ -119,6 +123,8 @@ export async function updateTaskProgress(
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     // Update task progress
     await sql`
       UPDATE tasks 
@@ -163,6 +169,8 @@ export async function assignTask(
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     await sql`
       UPDATE tasks 
       SET 
@@ -209,6 +217,8 @@ export async function addTaskComment(
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     await sql`
       INSERT INTO task_comments (task_id, author, message)
       VALUES (${taskId}, ${author}, ${message})
@@ -241,6 +251,8 @@ export async function getTasks(filters?: {
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     let query = `
       SELECT 
         t.*,
@@ -306,6 +318,8 @@ export async function getTaskById(taskId: number): Promise<{
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     // Get task details
     const taskResult = await sql`
       SELECT t.*, tc.name as category_name, tc.color as category_color
@@ -361,6 +375,8 @@ export async function deleteTask(taskId: number): Promise<{
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     await sql`DELETE FROM tasks WHERE id = ${taskId}`
 
     revalidatePath("/tasks")
@@ -388,6 +404,8 @@ export async function getTaskPerformanceMetrics(
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     let query = `
       SELECT * FROM task_performance_metrics
       WHERE 1=1
@@ -430,6 +448,8 @@ export async function calculateMonthlyPerformance(period: string): Promise<{
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     // Get all employees who had tasks in the period
     const employeesResult = await sql`
       SELECT DISTINCT assigned_to_id, assigned_to
@@ -464,6 +484,8 @@ export async function getTaskCategories(): Promise<{
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     const result = await sql`
       SELECT * FROM task_categories 
       ORDER BY name ASC
@@ -491,6 +513,8 @@ export async function getTaskNotifications(
   error?: string
 }> {
   try {
+    const sql = await getSql()
+
     let query = `
       SELECT tn.*, t.title as task_title
       FROM task_notifications tn
@@ -524,6 +548,8 @@ export async function markNotificationAsRead(notificationId: number): Promise<{
   message: string
 }> {
   try {
+    const sql = await getSql()
+
     await sql`
       UPDATE task_notifications 
       SET read = true 

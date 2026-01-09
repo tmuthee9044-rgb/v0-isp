@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/database"
 import { paymentGateway } from "@/lib/payment-gateway"
 
-const sql = neon(process.env.DATABASE_URL!)
-
 export async function POST(request: NextRequest) {
+  const sql = await getSql()
+
   try {
     const data = await request.json()
     const { hotspot_id, package_id, payment_method, phone_number, email, amount, time_limit, data_limit } = data
@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function generateVoucher(hotspot_id: number, time_limit: number, data_limit: number, payment_id: string) {
+  const sql = await getSql()
+
   const code = generateVoucherCode()
   const expiryDate = new Date()
   expiryDate.setDate(expiryDate.getDate() + 7) // Valid for 7 days

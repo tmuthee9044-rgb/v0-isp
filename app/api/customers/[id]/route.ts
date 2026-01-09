@@ -1,6 +1,35 @@
 import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
+async function ensureSequenceExists(sql: any) {
+  try {
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_phone_numbers_id_seq') THEN
+          CREATE SEQUENCE customer_phone_numbers_id_seq;
+          ALTER TABLE customer_phone_numbers ALTER COLUMN id SET DEFAULT nextval('customer_phone_numbers_id_seq');
+          SELECT setval('customer_phone_numbers_id_seq', COALESCE((SELECT MAX(id) FROM customer_phone_numbers), 0) + 1, false);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_emergency_contacts_id_seq') THEN
+          CREATE SEQUENCE customer_emergency_contacts_id_seq;
+          ALTER TABLE customer_emergency_contacts ALTER COLUMN id SET DEFAULT nextval('customer_emergency_contacts_id_seq');
+          SELECT setval('customer_emergency_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_emergency_contacts), 0) + 1, false);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_contacts_id_seq') THEN
+          CREATE SEQUENCE customer_contacts_id_seq;
+          ALTER TABLE customer_contacts ALTER COLUMN id SET DEFAULT nextval('customer_contacts_id_seq');
+          SELECT setval('customer_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_contacts), 0) + 1, false);
+        END IF;
+      END $$;
+    `
+  } catch (error) {
+    console.error("Error ensuring sequences exist:", error)
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
@@ -18,57 +47,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     const customerResult = await sql`
       SELECT 
-        c.*,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cpn.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'number', cpn.phone_number,
-                'type', cpn.type,
-                'isPrimary', cpn.is_primary
-              )
-            END
-          ) FILTER (WHERE cpn.id IS NOT NULL), 
-          '[]'::json
-        ) as phone_numbers,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cec.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'name', cec.name,
-                'phone', cec.phone,
-                'email', cec.email,
-                'relationship', cec.relationship
-              )
-            END
-          ) FILTER (WHERE cec.id IS NOT NULL),
-          '[]'::json
-        ) as emergency_contacts,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cs.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'id', cs.id,
-                'service_plan_id', cs.service_plan_id,
-                'status', cs.status,
-                'start_date', cs.start_date,
-                'plan_name', sp.name,
-                'price', sp.price,
-                'upload_speed', sp.upload_speed,
-                'download_speed', sp.download_speed,
-                'data_limit', sp.data_limit
-              )
-            END
-          ) FILTER (WHERE cs.id IS NOT NULL),
-          '[]'::json
-        ) as services
-      FROM customers c
-      LEFT JOIN customer_phone_numbers cpn ON c.id = cpn.customer_id
-      LEFT JOIN customer_emergency_contacts cec ON c.id = cec.customer_id
-      LEFT JOIN customer_services cs ON c.id = cs.customer_id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      WHERE c.id = ${customerId}
-      GROUP BY c.id
+        id, account_number, first_name, last_name, email, phone,
+        address, city, state, postal_code, country, business_name,
+        customer_type, status, created_at, balance, portal_username
+      FROM customers 
+      WHERE id = ${customerId}
     `
 
     if (customerResult.length === 0) {
@@ -81,24 +64,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
       )
     }
 
-    const customer = customerResult[0]
-
-    // Get available inventory items (separate query as it's not customer-specific)
-    const inventoryResult = await sql`
-      SELECT 
-        ii.*,
-        ii.name as item_name,
-        ii.category,
-        ii.unit_cost as price
-      FROM inventory_items ii
-      WHERE ii.status = 'available'
-      ORDER BY ii.name
-    `
-
     return NextResponse.json({
       success: true,
-      ...customer,
-      inventory_items: inventoryResult,
+      ...customerResult[0],
     })
   } catch (error) {
     console.error("Database error:", error)
@@ -170,6 +138,8 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
+    await ensureSequenceExists(sql)
+
     const customerId = Number.parseInt(params.id)
 
     if (isNaN(customerId)) {
@@ -214,6 +184,12 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }
     }
 
+    const parseIntOrNull = (value: any, fallback: any = null) => {
+      if (value === "" || value === null || value === undefined) return fallback
+      const parsed = Number.parseInt(value)
+      return isNaN(parsed) ? fallback : parsed
+    }
+
     const result = await sql`
       UPDATE customers 
       SET 
@@ -221,6 +197,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         last_name = ${updateData.last_name || existingCustomer[0].last_name || ""},
         email = ${updateData.email || existingCustomer[0].email},
         phone = ${updateData.phone_primary || updateData.phone || existingCustomer[0].phone},
+        phone_secondary = ${updateData.phone_secondary || existingCustomer[0].phone_secondary || ""},
+        phone_office = ${updateData.phone_office || existingCustomer[0].phone_office || ""},
         id_number = ${updateData.national_id || updateData.id_number || existingCustomer[0].id_number || null},
         status = ${updateData.status || existingCustomer[0].status},
         address = ${updateData.physical_address || updateData.address || existingCustomer[0].address || ""},
@@ -230,6 +208,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         state = ${updateData.physical_county || updateData.state || existingCustomer[0].state || ""},
         country = ${updateData.country || existingCustomer[0].country || "Kenya"},
         postal_code = ${updateData.physical_postal_code || updateData.postal_code || existingCustomer[0].postal_code || ""},
+        billing_city = ${updateData.billing_city || existingCustomer[0].billing_city || ""},
+        billing_county = ${updateData.billing_county || existingCustomer[0].billing_county || ""},
+        billing_postal_code = ${updateData.billing_postal_code || existingCustomer[0].billing_postal_code || ""},
         gps_coordinates = ${
           updateData.physical_gps_coordinates ||
           updateData.gps_coordinates ||
@@ -238,25 +219,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
             : existingCustomer[0].gps_coordinates || "")
         },
         business_name = ${updateData.name || updateData.business_name || existingCustomer[0].business_name || ""},
-        business_type = ${updateData.business_type || updateData.business_reg_no || existingCustomer[0].business_type || ""},
+        business_type = ${updateData.business_type || existingCustomer[0].business_type || ""},
+        business_reg_no = ${updateData.business_reg_no || existingCustomer[0].business_reg_no || ""},
         tax_number = ${updateData.vat_pin || updateData.tax_id || updateData.tax_number || existingCustomer[0].tax_number || ""},
+        contact_person = ${updateData.contact_person || existingCustomer[0].contact_person || ""},
+        industry = ${updateData.industry || existingCustomer[0].industry || ""},
+        company_size = ${updateData.company_size || existingCustomer[0].company_size || ""},
+        school_type = ${updateData.school_type || existingCustomer[0].school_type || ""},
+        student_count = ${parseIntOrNull(updateData.student_count, existingCustomer[0].student_count)},
+        staff_count = ${parseIntOrNull(updateData.staff_count, existingCustomer[0].staff_count)},
+        location_id = ${parseIntOrNull(updateData.location_id, existingCustomer[0].location_id)},
         portal_username = ${updateData.portal_username || existingCustomer[0].portal_username || ""},
         portal_password = ${updateData.portal_password || existingCustomer[0].portal_password || ""},
         preferred_contact_method = ${updateData.preferred_contact_method || existingCustomer[0].preferred_contact_method || "email"},
         referral_source = ${updateData.referral_source || existingCustomer[0].referral_source || ""},
-        service_preferences = ${
-          updateData.special_requirements ||
-          updateData.internal_notes ||
-          updateData.sales_rep ||
-          updateData.account_manager
-            ? JSON.stringify({
-                special_requirements: updateData.special_requirements,
-                internal_notes: updateData.internal_notes,
-                sales_rep: updateData.sales_rep,
-                account_manager: updateData.account_manager,
-              })
-            : existingCustomer[0].service_preferences || null
-        },
+        sales_rep = ${updateData.sales_rep || existingCustomer[0].sales_rep || ""},
+        account_manager = ${updateData.account_manager || existingCustomer[0].account_manager || ""},
+        special_requirements = ${updateData.special_requirements || existingCustomer[0].special_requirements || ""},
+        internal_notes = ${updateData.internal_notes || existingCustomer[0].internal_notes || ""},
         customer_type = ${updateData.customer_type || existingCustomer[0].customer_type || "individual"},
         account_number = ${updateData.account_number || existingCustomer[0].account_number || ""},
         assigned_staff_id = ${updateData.assigned_staff_id || existingCustomer[0].assigned_staff_id || null},

@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { ActivityLogger } from "@/lib/activity-logger"
 import { exec } from "child_process"
 import { promisify } from "util"
 
-const sql = neon(process.env.DATABASE_URL!)
 const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const sql = await getSql()
   try {
     const customerId = Number.parseInt(params.id)
     const { ip_address } = await request.json()

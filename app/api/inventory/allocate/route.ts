@@ -1,11 +1,10 @@
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 // Automatic Equipment Allocation API
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
     const { customer_id, service_plan_id, equipment_requirements, allocation_type = "automatic" } = await request.json()
 
     if (!customer_id) {
@@ -199,6 +198,7 @@ export async function POST(request: Request) {
 // Get allocation recommendations
 export async function GET(request: Request) {
   try {
+    const sql = await getSql()
     const { searchParams } = new URL(request.url)
     const customerId = searchParams.get("customer_id")
     const planId = searchParams.get("plan_id")

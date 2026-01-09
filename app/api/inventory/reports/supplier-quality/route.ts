@@ -1,17 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
 
     console.log("[v0] Fetching supplier quality report:", { startDate, endDate })
 
-    // Get supplier quality metrics
+    const dateFilter =
+      startDate && endDate ? sql`AND er.return_date >= ${startDate} AND er.return_date <= ${endDate}` : sql``
+
     const supplierQuality = await sql`
       SELECT 
         s.id as supplier_id,
@@ -34,8 +36,7 @@ export async function GET(request: NextRequest) {
         MAX(er.return_date) as last_return_date
       FROM suppliers s
       LEFT JOIN inventory_items ii ON ii.supplier_id = s.id
-      LEFT JOIN equipment_returns er ON er.supplier_id = s.id
-        ${startDate && endDate ? sql`AND er.return_date BETWEEN ${startDate}::date AND ${endDate}::date` : sql``}
+      LEFT JOIN equipment_returns er ON er.supplier_id = s.id ${dateFilter}
       GROUP BY s.id, s.company_name, s.contact_name, s.email, s.phone
       HAVING COUNT(DISTINCT ii.id) > 0
       ORDER BY fault_rate ASC NULLS LAST, total_returns DESC

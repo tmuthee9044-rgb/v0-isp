@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
     console.log("[v0] Fetching roles with permissions...")
 
     // Fetch all roles with their permission counts
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
           SELECT p.id, p.module, p.permission_key, p.permission_name, p.description
           FROM permissions p
           INNER JOIN role_permissions rp ON p.id = rp.permission_id
-          WHERE rp.role_id = ${role.id}
+          WHERE rp.role_id = ${Number(role.id)}
           ORDER BY p.module, p.permission_name
         `
 
@@ -57,6 +56,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = await getSql()
     const body = await request.json()
     const { name, description, permissions } = body
 

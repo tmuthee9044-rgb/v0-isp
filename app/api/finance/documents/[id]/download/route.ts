@@ -1,18 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const documentId = params.id
 
     // Try to fetch from invoices first
     const invoice = await sql`
       SELECT 
         i.*,
-        c.first_name,
-        c.last_name,
+        c.name,
         c.business_name,
         c.customer_type,
         c.email,
@@ -28,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     if (invoice.length > 0) {
       const doc = invoice[0]
-      const customerName = doc.business_name || `${doc.first_name} ${doc.last_name}`
+      const customerName = doc.business_name || doc.name || "Unknown Customer"
 
       // Generate simple text-based invoice
       const content = `
@@ -71,8 +69,7 @@ Total Amount Due: KES ${Number.parseFloat(doc.amount).toLocaleString("en-US", { 
     const payment = await sql`
       SELECT 
         p.*,
-        c.first_name,
-        c.last_name,
+        c.name,
         c.business_name,
         c.customer_type,
         c.email,
@@ -84,7 +81,7 @@ Total Amount Due: KES ${Number.parseFloat(doc.amount).toLocaleString("en-US", { 
 
     if (payment.length > 0) {
       const doc = payment[0]
-      const customerName = doc.business_name || `${doc.first_name} ${doc.last_name}`
+      const customerName = doc.business_name || doc.name || "Unknown Customer"
 
       // Generate simple text-based receipt
       const content = `

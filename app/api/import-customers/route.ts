@@ -1,9 +1,9 @@
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/database"
 
 export async function POST(request: Request) {
   try {
+    const sql = await getSql()
+
     let customers: any[] = []
     let detectedFormat = "unknown"
 
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
           last_name: customer.last_name || customer.name?.split(" ").slice(1).join(" ") || "",
           email: customer.email || "",
           phone: customer.phone || "",
+          login: customer.login || customer.username || customer.email || "",
           customer_type: customer.customer_type || "individual",
           status: customer.status || "active",
           monthly_fee: Number.parseFloat(customer.monthly_fee?.toString() || "0") || 0,
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
         // Insert new customer with enhanced field mapping
         await sql`
           INSERT INTO customers (
-            first_name, last_name, email, phone, customer_type, status,
+            first_name, last_name, email, phone, login, customer_type, status,
             monthly_fee, balance, physical_address, physical_city, physical_county,
             postal_code, plan, import_source, import_date, created_at, updated_at
           ) VALUES (
@@ -103,6 +104,7 @@ export async function POST(request: Request) {
             ${customerData.last_name},
             ${customerData.email},
             ${customerData.phone},
+            ${customerData.login},
             ${customerData.customer_type},
             ${customerData.status},
             ${customerData.monthly_fee},
@@ -161,6 +163,7 @@ function parseSplynxFormat(text: string): any[] {
       physical_city: values[headers.indexOf("city")] || "",
       postal_code: values[headers.indexOf("zip_code")] || "",
       customer_type: "individual",
+      login: values[headers.indexOf("login")] || "", // Adding login field for Splynx import compatibility
     }
   })
 }
@@ -178,6 +181,7 @@ function parseMikroTikFormat(text: string): any[] {
       plan: user.profile || user["actual-profile"] || "",
       physical_address: user.address || "",
       customer_type: "individual",
+      login: user.username || "", // Adding login field for MikroTik import compatibility
     }))
   } catch {
     return []
@@ -196,6 +200,7 @@ function parseRadiusFormat(text: string): any[] {
       phone: !isEmail ? username : "",
       status: "active",
       customer_type: "individual",
+      login: username, // Adding login field for Radius import compatibility
     }
   })
 }
@@ -253,6 +258,10 @@ function parseCSVFormat(text: string): any[] {
         case "plan":
         case "service plan":
           customer.plan = value
+          break
+        case "login":
+        case "username":
+          customer.login = value
           break
       }
     })

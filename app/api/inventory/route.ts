@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const warehouseId = searchParams.get("warehouse_id")
     const category = searchParams.get("category")
@@ -213,15 +213,34 @@ export async function GET(request: NextRequest) {
       "Cables & Accessories": { icon: "Cable", color: "bg-indigo-500" },
     }
 
-    const categories = (categoryStats || []).map((cat: any) => ({
-      name: cat.category || "Unknown",
-      item_count: Number(cat.item_count || 0),
-      total_quantity: Number(cat.total_quantity || 0),
-      total_value: Number(cat.total_value || 0),
-      low_stock_count: Number(cat.low_stock_count || 0),
-      icon: categoryIcons[cat.category as keyof typeof categoryIcons]?.icon || "Package",
-      color: categoryIcons[cat.category as keyof typeof categoryIcons]?.color || "bg-gray-500",
-    }))
+    let categoriesFromDB = []
+    try {
+      categoriesFromDB = await sql`
+        SELECT id, name, icon, color FROM inventory_categories 
+        WHERE is_active = true
+        ORDER BY name ASC
+      `
+    } catch (error) {
+      console.log("[v0] inventory_categories table not found, using hardcoded mapping")
+    }
+
+    const categories = (categoryStats || []).map((cat: any) => {
+      // First try to get category info from database
+      const dbCategory = categoriesFromDB.find((c: any) => c.name === cat.category)
+
+      // Fallback to hardcoded mapping if not found in DB
+      const categoryInfo = dbCategory || categoryIcons[cat.category as keyof typeof categoryIcons] || {}
+
+      return {
+        name: cat.category || "Unknown",
+        item_count: Number(cat.item_count || 0),
+        total_quantity: Number(cat.total_quantity || 0),
+        total_value: Number(cat.total_value || 0),
+        low_stock_count: Number(cat.low_stock_count || 0),
+        icon: categoryInfo.icon || "Package",
+        color: categoryInfo.color || "bg-gray-500",
+      }
+    })
 
     const totalData = (totals && totals[0]) || {
       total_items: 0,
@@ -259,6 +278,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
+
+    const sql = await getSql()
 
     const inventoryItem = await sql`
       INSERT INTO inventory_items (

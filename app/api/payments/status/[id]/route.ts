@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
+
     const paymentId = params.id
 
     // Get payment status with M-Pesa details
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const serviceAllocations = []
     if (payment.status === "completed") {
       const services = await sql`
-        SELECT cs.*, sp.name as service_name, sp.monthly_fee
+        SELECT cs.*, sp.name as service_name, sp.price as monthly_fee
         FROM customer_services cs
         JOIN service_plans sp ON cs.service_plan_id = sp.id
         WHERE cs.customer_id = ${payment.customer_id} AND cs.status = 'active'

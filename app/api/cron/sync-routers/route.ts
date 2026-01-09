@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getSql } from "@/lib/db"
 import { createMikroTikClient } from "@/lib/mikrotik-api"
-
-const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: Request) {
   // Verify cron secret to ensure only authorized requests
@@ -10,6 +8,8 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const sql = await getSql()
 
   try {
     console.log("[v0] Starting router sync job...")
@@ -51,8 +51,15 @@ export async function GET(request: Request) {
 
         // Update sync status
         await sql`
-          INSERT INTO router_sync_status (router_id, last_sync, sync_status, details)
+          INSERT INTO router_sync_status (
+            id,
+            router_id, 
+            last_sync_at, 
+            sync_status, 
+            sync_message
+          )
           VALUES (
+            nextval('router_sync_status_id_seq'),
             ${router.id},
             NOW(),
             'success',
@@ -62,17 +69,23 @@ export async function GET(request: Request) {
               interfaces: interfaceResult.data,
             })}
           )
-          ON CONFLICT (router_id) 
-          DO UPDATE SET 
-            last_sync = NOW(),
-            sync_status = 'success',
-            details = ${JSON.stringify({
-              resources: resourcesResult.data,
-              leases: leasesResult.data,
-              interfaces: interfaceResult.data,
-            })},
-            updated_at = NOW()
-        `
+        `.catch(async (err) => {
+          // If unique constraint exists, try UPDATE instead
+          console.log("[v0] Router sync status table missing unique constraint, using fallback method...")
+          await sql`
+            UPDATE router_sync_status
+            SET 
+              last_sync_at = NOW(),
+              sync_status = 'success',
+              sync_message = ${JSON.stringify({
+                resources: resourcesResult.data,
+                leases: leasesResult.data,
+                interfaces: interfaceResult.data,
+              })},
+              updated_at = NOW()
+            WHERE router_id = ${router.id}
+          `
+        })
 
         // Update router last_seen
         await sql`
@@ -91,20 +104,33 @@ export async function GET(request: Request) {
 
         // Update sync status with error
         await sql`
-          INSERT INTO router_sync_status (router_id, last_sync, sync_status, error_message)
+          INSERT INTO router_sync_status (
+            id,
+            router_id, 
+            last_sync_at, 
+            sync_status, 
+            sync_message
+          )
           VALUES (
+            nextval('router_sync_status_id_seq'),
             ${router.id},
             NOW(),
             'failed',
             ${String(error)}
           )
-          ON CONFLICT (router_id) 
-          DO UPDATE SET 
-            last_sync = NOW(),
-            sync_status = 'failed',
-            error_message = ${String(error)},
-            updated_at = NOW()
-        `
+        `.catch(async (err) => {
+          // If unique constraint exists, try UPDATE instead
+          console.log("[v0] Fallback router sync status update...")
+          await sql`
+            UPDATE router_sync_status
+            SET 
+              last_sync_at = NOW(),
+              sync_status = 'failed',
+              sync_message = ${String(error)},
+              updated_at = NOW()
+            WHERE router_id = ${router.id}
+          `
+        })
 
         results.push({
           router_id: router.id,

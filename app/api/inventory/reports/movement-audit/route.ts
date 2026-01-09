@@ -1,13 +1,13 @@
 import type { NextRequest } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
 // Inventory Movement Audit Report
 export async function GET(request: NextRequest) {
   try {
+    const sql = await getSql()
+
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")

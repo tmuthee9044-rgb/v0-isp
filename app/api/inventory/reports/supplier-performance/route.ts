@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
+import { sql } from "slonik"
 
 export const dynamic = "force-dynamic"
 
-// Supplier Performance Report
 export async function GET(request: NextRequest) {
   try {
+    const sqlClient = await getSql()
+
     const { searchParams } = new URL(request.url)
     const supplierId = searchParams.get("supplier_id")
     const startDate = searchParams.get("start_date")
@@ -66,10 +66,10 @@ export async function GET(request: NextRequest) {
       ORDER BY total_order_value DESC
     `
 
-    const result = await sql.query(query, params)
+    const result = await sqlClient.query(query, params)
 
     // Get detailed delivery performance
-    const deliveryPerformance = await sql`
+    const deliveryPerformance = await sqlClient.query(sql`
       SELECT 
         s.id as supplier_id,
         s.company_name,
@@ -83,15 +83,15 @@ export async function GET(request: NextRequest) {
       FROM suppliers s
       JOIN purchase_orders po ON s.id = po.supplier_id
       WHERE po.actual_delivery_date IS NOT NULL
-      ${supplierId ? `AND s.id = ${supplierId}` : ""}
-      ${startDate ? `AND po.order_date >= '${startDate}'` : ""}
-      ${endDate ? `AND po.order_date <= '${endDate}'` : ""}
+      ${supplierId ? sql`AND s.id = ${supplierId}` : sql``}
+      ${startDate ? sql`AND po.order_date >= ${startDate}` : sql``}
+      ${endDate ? sql`AND po.order_date <= ${endDate}` : sql``}
       GROUP BY s.id, s.company_name
       ORDER BY on_time_percentage DESC
-    `
+    `)
 
     // Get quality metrics (based on goods receiving condition)
-    const qualityMetrics = await sql`
+    const qualityMetrics = await sqlClient.query(sql`
       SELECT 
         s.id as supplier_id,
         s.company_name,
@@ -108,16 +108,16 @@ export async function GET(request: NextRequest) {
       JOIN goods_receiving gr ON po.id = gr.purchase_order_id
       JOIN goods_receiving_items gri ON gr.id = gri.goods_receiving_id
       WHERE 1=1
-      ${supplierId ? `AND s.id = ${supplierId}` : ""}
-      ${startDate ? `AND gr.received_date >= '${startDate}'` : ""}
-      ${endDate ? `AND gr.received_date <= '${endDate}'` : ""}
+      ${supplierId ? sql`AND s.id = ${supplierId}` : sql``}
+      ${startDate ? sql`AND gr.received_date >= ${startDate}` : sql``}
+      ${endDate ? sql`AND gr.received_date <= ${endDate}` : sql``}
       GROUP BY s.id, s.company_name
       ORDER BY quality_percentage DESC
-    `
+    `)
 
     const suppliers = result.rows.map((supplier: any) => {
-      const delivery = deliveryPerformance.find((d) => d.supplier_id === supplier.id)
-      const quality = qualityMetrics.find((q) => q.supplier_id === supplier.id)
+      const delivery = deliveryPerformance.rows.find((d) => d.supplier_id === supplier.id)
+      const quality = qualityMetrics.rows.find((q) => q.supplier_id === supplier.id)
 
       return {
         id: supplier.id,

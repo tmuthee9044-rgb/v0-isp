@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getSql } from "@/lib/db"
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const body = await request.json()
     const { name, description, trigger_type, trigger_conditions, actions, is_active } = body
     const workflowId = params.id
@@ -43,6 +42,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
+    const sql = await getSql()
     const workflowId = params.id
 
     console.log("[v0] Deleting workflow:", workflowId)

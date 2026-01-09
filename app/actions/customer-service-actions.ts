@@ -105,6 +105,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         FROM customer_services cs
         LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
         WHERE cs.customer_id = ${customerId} 
+        AND cs.ip_address = ${ipAddress}
         AND cs.status IN ('active', 'pending', 'suspended')
         LIMIT 1
       `
@@ -151,6 +152,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         connection_type,
         lock_to_mac,
         auto_renew,
+        pppoe_enabled,
         pppoe_username,
         pppoe_password,
         created_at,
@@ -166,6 +168,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${connectionType || "pppoe"},
         ${lockToMac},
         ${autoRenew},
+        ${pppoeEnabled},
         ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
         ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         NOW(),
@@ -412,6 +415,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         connection_type = ${connectionType || "pppoe"},
         lock_to_mac = ${lockToMac},
         auto_renew = ${autoRenew},
+        pppoe_enabled = ${pppoeEnabled},
         pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
         pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
         updated_at = NOW()
@@ -484,14 +488,17 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
   try {
     const sql = await getSql()
 
-    const servicePlanId = formData.get("service_plan_id") as string
-    const autoRenew = formData.get("auto_renew") === "on"
-    const ipAddress = formData.get("ip_address") as string
-    const device_id = formData.get("device_id") as string
+    const servicePlanId = formData.get("service_plan_id")
+      ? Number.parseInt(formData.get("service_plan_id") as string)
+      : undefined
+    const connectionType = formData.get("connection_type") as string
     const lockToMac = formData.get("lock_to_mac") === "on"
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
+    const ipAddress = formData.get("ip_address") as string
+    const macAddress = formData.get("mac_address") as string
+    const autoRenew = formData.get("auto_renew") === "on"
 
     const serviceData = await sql`
       SELECT cs.*, c.id as customer_id, c.portal_username,
@@ -515,16 +522,17 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
     const result = await sql`
       UPDATE customer_services
-      SET
-        service_plan_id = ${servicePlanId},
-        status = ${formData.get("status")},
-        monthly_fee = ${formData.get("monthly_fee")},
-        ip_address = ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
-        device_id = ${device_id || null},
+      SET 
+        ${servicePlanId ? sql`service_plan_id = ${servicePlanId},` : sql``}
+        ${connectionType ? sql`connection_type = ${connectionType},` : sql``}
+        ${ipAddress ? sql`ip_address = ${ipAddress},` : sql``}
+        ${macAddress ? sql`device_id = ${macAddress},` : sql``}
+        ${macAddress ? sql`mac_address = ${macAddress},` : sql``}
         lock_to_mac = ${lockToMac},
         auto_renew = ${autoRenew},
-        pppoe_username = ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
-        pppoe_password = ${pppoeEnabled && pppoePassword ? pppoePassword : null},
+        pppoe_enabled = ${pppoeEnabled},
+        pppoe_username = ${pppoeUsername || null},
+        pppoe_password = ${pppoePassword || null},
         updated_at = NOW()
       WHERE id = ${serviceId}
       RETURNING *

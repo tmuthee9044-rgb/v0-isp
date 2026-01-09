@@ -87,6 +87,7 @@ async function fixSequences() {
       "credit_notes",
       "system_users",
       "roles",
+      "router_sync_status", // Added router_sync_status to sequence fix list
     ]
 
     for (const table of tables) {

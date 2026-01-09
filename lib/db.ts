@@ -53,6 +53,64 @@ async function ensureCriticalColumns() {
   columnsChecked = true
 
   try {
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS service_start TIMESTAMP`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS service_end TIMESTAMP`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN DEFAULT false`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS last_billed_at TIMESTAMP`.catch(() => {})
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auth_method VARCHAR(20) DEFAULT 'pppoe'`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS enforcement_mode VARCHAR(20) DEFAULT 'radius'`.catch(
+      () => {},
+    )
+
+    await sql`ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS billing_cycle_days INTEGER DEFAULT 30`.catch(() => {})
+    await sql`ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT false`.catch(() => {})
+
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS service_id INTEGER`.catch(() => {})
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method VARCHAR(20) DEFAULT 'cash'`.catch(() => {})
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT`.catch(() => {})
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS service_events (
+        id SERIAL PRIMARY KEY,
+        service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE,
+        event_type VARCHAR(30) NOT NULL,
+        description TEXT,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_service_events_service_id ON service_events(service_id)`.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS service_notifications (
+        id SERIAL PRIMARY KEY,
+        service_id INTEGER REFERENCES customer_services(id) ON DELETE CASCADE,
+        notification_type VARCHAR(30) NOT NULL,
+        scheduled_for TIMESTAMP NOT NULL,
+        sent_at TIMESTAMP,
+        status VARCHAR(20) DEFAULT 'pending',
+        message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_service_notifications_scheduled ON service_notifications(scheduled_for) WHERE status = 'pending'`.catch(
+      () => {},
+    )
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_customer_services_service_end ON customer_services(service_end) WHERE is_active = true`.catch(
+      () => {},
+    )
+    await sql`CREATE INDEX IF NOT EXISTS idx_customer_services_active_status ON customer_services(is_active, is_suspended, is_deleted, service_end)`.catch(
+      () => {},
+    )
+
     await sql`CREATE SEQUENCE IF NOT EXISTS suppliers_id_seq`.catch(() => {})
     await sql`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq')`.catch(() => {})
     await sql`SELECT setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false)`.catch(
@@ -140,6 +198,37 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS description TEXT`.catch(() => {})
     await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS industry VARCHAR(100)`.catch(() => {})
     await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_size VARCHAR(50)`.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        assigned_to INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        assigned_by INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        department VARCHAR(100),
+        category VARCHAR(100),
+        priority VARCHAR(20) DEFAULT 'medium',
+        status VARCHAR(50) DEFAULT 'pending',
+        progress INTEGER DEFAULT 0,
+        due_date DATE,
+        created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_date TIMESTAMP,
+        estimated_hours INTEGER,
+        actual_hours INTEGER,
+        tags TEXT[],
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`.catch(() => {})
+    await sql`CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to)`.catch(() => {})
+    await sql`CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`.catch(() => {})
+
+    await sql`CREATE SEQUENCE IF NOT EXISTS tasks_id_seq`.catch(() => {})
+    await sql`ALTER TABLE tasks ALTER COLUMN id SET DEFAULT nextval('tasks_id_seq')`.catch(() => {})
+    await sql`SELECT setval('tasks_id_seq', COALESCE((SELECT MAX(id) FROM tasks), 0) + 1, false)`.catch(() => {})
 
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {

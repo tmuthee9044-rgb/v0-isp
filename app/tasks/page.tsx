@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -41,111 +41,44 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
 
-  const tasks = [
-    {
-      id: 1,
-      title: "Network Infrastructure Upgrade",
-      description: "Upgrade core network switches in main data center",
-      assignedTo: "John Smith",
-      assignedBy: "Network Manager",
-      department: "Technical",
-      category: "Infrastructure",
-      priority: "high",
-      status: "in_progress",
-      progress: 65,
-      dueDate: "2024-02-15",
-      createdDate: "2024-01-10",
-      estimatedHours: 40,
-      actualHours: 26,
-      tags: ["network", "infrastructure", "critical"],
-    },
-    {
-      id: 2,
-      title: "Customer Support Training",
-      description: "Conduct training session on new ticketing system",
-      assignedTo: "Sarah Johnson",
-      assignedBy: "HR Manager",
-      department: "Support",
-      category: "Training",
-      priority: "medium",
-      status: "pending",
-      progress: 0,
-      dueDate: "2024-02-20",
-      createdDate: "2024-01-15",
-      estimatedHours: 16,
-      actualHours: 0,
-      tags: ["training", "support", "system"],
-    },
-    {
-      id: 3,
-      title: "Monthly Sales Report",
-      description: "Prepare comprehensive sales analysis for January",
-      assignedTo: "Mike Wilson",
-      assignedBy: "Sales Director",
-      department: "Sales",
-      category: "Reporting",
-      priority: "high",
-      status: "completed",
-      progress: 100,
-      dueDate: "2024-02-01",
-      createdDate: "2024-01-25",
-      estimatedHours: 8,
-      actualHours: 10,
-      tags: ["sales", "report", "analysis"],
-    },
-    {
-      id: 4,
-      title: "Security Audit",
-      description: "Conduct quarterly security assessment of all systems",
-      assignedTo: "Grace Wanjiku",
-      assignedBy: "IT Manager",
-      department: "IT",
-      category: "Security",
-      priority: "high",
-      status: "overdue",
-      progress: 30,
-      dueDate: "2024-01-30",
-      createdDate: "2024-01-05",
-      estimatedHours: 32,
-      actualHours: 12,
-      tags: ["security", "audit", "compliance"],
-    },
-    {
-      id: 5,
-      title: "Customer Onboarding Process",
-      description: "Streamline new customer registration workflow",
-      assignedTo: "David Kimani",
-      assignedBy: "Operations Manager",
-      department: "Operations",
-      category: "Process Improvement",
-      priority: "medium",
-      status: "in_progress",
-      progress: 45,
-      dueDate: "2024-02-25",
-      createdDate: "2024-01-20",
-      estimatedHours: 24,
-      actualHours: 11,
-      tags: ["process", "customer", "workflow"],
-    },
-  ]
+  const [tasks, setTasks] = useState<any[]>([])
+  const [taskStats, setTaskStats] = useState<any>({
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    overdue: 0,
+    avgCompletionTime: 0,
+    onTimeCompletion: 0,
+  })
+  const [departmentStats, setDepartmentStats] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const taskStats = {
-    total: 45,
-    pending: 12,
-    inProgress: 18,
-    completed: 13,
-    overdue: 2,
-    avgCompletionTime: 5.2,
-    onTimeCompletion: 87,
-  }
+  // Fetch real data from database
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true)
 
-  const departmentStats = [
-    { department: "Technical", total: 15, completed: 8, inProgress: 5, overdue: 2 },
-    { department: "Support", total: 12, completed: 9, inProgress: 3, overdue: 0 },
-    { department: "Sales", total: 8, completed: 6, inProgress: 2, overdue: 0 },
-    { department: "Operations", total: 6, completed: 4, inProgress: 2, overdue: 0 },
-    { department: "HR", total: 4, completed: 3, inProgress: 1, overdue: 0 },
-  ]
+        // Fetch tasks
+        const tasksRes = await fetch("/api/tasks")
+        const tasksData = await tasksRes.json()
+        setTasks(tasksData.tasks || [])
+
+        // Fetch statistics
+        const statsRes = await fetch("/api/tasks/stats")
+        const statsData = await statsRes.json()
+        setTaskStats(statsData.stats || {})
+        setDepartmentStats(statsData.department_stats || [])
+      } catch (error) {
+        console.error("[v0] Error fetching tasks data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =

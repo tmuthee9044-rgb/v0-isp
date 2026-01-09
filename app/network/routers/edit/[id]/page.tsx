@@ -338,7 +338,7 @@ export default function RouterEditPage({ params }: { params: { id: string } }) {
 
   const fetchLiveTraffic = async () => {
     try {
-      const response = await fetch(`/api/network/routers/${routerId}/interfaces?live=true`)
+      const response = await fetch(`/api/network/routers/${routerId}/interfaces?snapshot=true`)
       if (response.ok) {
         const data = await response.json()
         setLiveTraffic(data.trafficHistory || [])

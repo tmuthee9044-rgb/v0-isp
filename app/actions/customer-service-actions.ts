@@ -3,7 +3,7 @@
 import { getSql } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
-import { provisionRadiusUser, suspendRadiusUser, deprovisionRadiusUser } from "@/lib/radius-integration"
+import { provisionRadiusUser, suspendRadiusUser, updateRadiusSpeed, deprovisionRadiusUser } from "@/lib/radius-manager"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 
 export async function getCustomerServices(customerId: number) {
@@ -554,8 +554,8 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
         username: radiusUsername,
         password: radiusPassword,
         ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed || 10,
-        uploadSpeed: service.upload_speed || 10,
+        downloadSpeed: service.download_speed,
+        uploadSpeed: service.upload_speed,
         nasId: service.router_id || undefined,
       })
 
@@ -563,6 +563,22 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
         console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
       } else {
         console.log(`[v0] RADIUS provisioning successful`)
+      }
+    }
+
+    if (servicePlanId && pppoeUsername) {
+      try {
+        const router = await sql`
+          SELECT type FROM network_devices 
+          WHERE id = (SELECT router_id FROM customer_services WHERE id = ${serviceId})
+          LIMIT 1
+        `
+        const vendor = router[0]?.type || "mikrotik"
+
+        await updateRadiusSpeed(pppoeUsername, servicePlanId, vendor)
+        console.log(`[v0] RADIUS speed updated for service ${serviceId}`)
+      } catch (error) {
+        console.error("[v0] Failed to update RADIUS speed:", error)
       }
     }
 
@@ -592,8 +608,8 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
                 username: service.portal_username || `customer_${service.customer_id}`,
                 password: service.portal_username || `customer_${service.customer_id}`,
                 ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed || 10,
-                uploadSpeed: service.upload_speed || 10,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
                 nasId: service.router_id,
               }),
             ])
@@ -647,8 +663,8 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
                 username: service.portal_username || `customer_${service.customer_id}`,
                 password: service.portal_username || `customer_${service.customer_id}`,
                 ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed || 10,
-                uploadSpeed: service.upload_speed || 10,
+                downloadSpeed: service.download_speed,
+                uploadSpeed: service.upload_speed,
                 nasId: service.router_id,
               }),
             ])

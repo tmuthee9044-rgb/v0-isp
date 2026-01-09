@@ -3,7 +3,7 @@
 import postgres from "postgres"
 
 // Cached database client
-let sqlClient: any = null
+const sqlClient: any = null
 const initializationComplete = false
 
 const columnsChecked = false
@@ -48,7 +48,7 @@ if (isLocal) {
 /**
  * Initialize pure PostgreSQL client - works with any PostgreSQL database
  */
-export const sql = postgres(connectionString, {
+const sql = postgres(connectionString, {
   max: 10,
   idle_timeout: 20,
   connect_timeout: 10,
@@ -58,16 +58,7 @@ export const sql = postgres(connectionString, {
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
  */
 export async function getSql() {
-  if (sqlClient) {
-    return sqlClient
-  }
-
-  // Test connection
-  await sql`SELECT 1 as health_check`
-  console.log("✅ [DB] PostgreSQL connection verified")
-
-  sqlClient = sql
-  return sqlClient
+  return sql
 }
 
 /**
@@ -92,6 +83,7 @@ export async function getDatabaseStatus() {
   }
 }
 
+export { sql }
 export default sql
 export const db = sql
 export const getSqlConnection = () => sql

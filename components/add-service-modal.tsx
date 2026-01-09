@@ -53,14 +53,14 @@ interface InventoryItem {
   unit_cost: number
 }
 
-function AddServiceModal({
+export default function AddServiceModal({
   open,
   onOpenChange,
   customerId,
   customerData,
   selectedLocation,
   editMode = false,
-  editingService = null,
+  editingService,
 }: AddServiceModalProps) {
   const [selectedPlan, setSelectedPlan] = useState("")
   const [connectionType, setConnectionType] = useState("")
@@ -81,6 +81,10 @@ function AddServiceModal({
   const [currentTab, setCurrentTab] = useState("plans")
   const [adminOverride, setAdminOverride] = useState(false)
   const [customerAccountNumber, setCustomerAccountNumber] = useState("")
+
+  const [pushToRouter, setPushToRouter] = useState(false)
+  const [selectedRouter, setSelectedRouter] = useState<string>("")
+  const [routers, setRouters] = useState<any[]>([])
 
   const fetchServicePlans = async () => {
     try {
@@ -218,25 +222,30 @@ function AddServiceModal({
 
     try {
       const formData = new FormData()
-      formData.append("customer_id", customerId.toString())
-      formData.append("service_plan_id", selectedPlan)
-      formData.append("connection_type", connectionType)
+      formData.append("customerId", customerId.toString())
+      formData.append("servicePlanId", selectedPlan)
+      formData.append("connectionType", connectionType)
       if (selectedLocation) {
-        formData.append("location_id", selectedLocation)
+        formData.append("locationId", selectedLocation)
       }
-      formData.append("auto_renew", autoRenew ? "on" : "off")
-      formData.append("admin_override", adminOverride ? "on" : "off")
+      formData.append("autoRenew", autoRenew ? "true" : "false")
+      formData.append("adminOverride", adminOverride ? "true" : "false")
 
-      if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
+      if (selectedIpAddress) formData.append("ipAddress", selectedIpAddress)
       if (macAddress) {
-        formData.append("mac_address", macAddress)
-        formData.append("device_id", macAddress) // Legacy field
+        formData.append("macAddress", macAddress)
+        formData.append("deviceId", macAddress) // Legacy field
       }
-      formData.append("lock_to_mac", lockToMac ? "on" : "off")
-      formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")
+      formData.append("lockToMac", lockToMac ? "true" : "false")
+      formData.append("pppoeEnabled", pppoeEnabled ? "true" : "false")
       if (pppoeEnabled) {
-        formData.append("pppoe_username", pppoeUsername)
-        formData.append("pppoe_password", pppoePassword)
+        formData.append("pppoeUsername", pppoeUsername)
+        formData.append("pppoePassword", pppoePassword)
+      }
+
+      formData.append("pushToRouter", pushToRouter.toString())
+      if (pushToRouter && selectedRouter) {
+        formData.append("routerId", selectedRouter)
       }
 
       console.log("[v0] Calling addCustomerService/updateCustomerService...")
@@ -245,7 +254,7 @@ function AddServiceModal({
       const result =
         editMode && editingService
           ? await updateCustomerService(editingService.id, formData)
-          : await addCustomerService(customerId, formData)
+          : await addCustomerService(formData)
 
       console.log("[v0] Result:", result)
 
@@ -265,6 +274,8 @@ function AddServiceModal({
         setPppoePassword("")
         setCurrentTab("plans")
         setAdminOverride(false)
+        setPushToRouter(false)
+        setSelectedRouter("")
 
         setTimeout(() => {
           console.log("[v0] Dispatching serviceAdded event")
@@ -311,14 +322,14 @@ function AddServiceModal({
 
     if (editMode && editingService) {
       console.log("[v0] Populating edit form with service data:")
-      console.log("[v0] - service_plan_id:", editingService.service_plan_id)
-      console.log("[v0] - connection_type:", editingService.connection_type)
-      console.log("[v0] - ip_address:", editingService.ip_address)
-      console.log("[v0] - device_id:", editingService.device_id)
-      console.log("[v0] - lock_to_mac:", editingService.lock_to_mac)
-      console.log("[v0] - pppoe_username:", editingService.pppoe_username)
-      console.log("[v0] - pppoe_password:", editingService.pppoe_password ? "***" : "(empty)")
-      console.log("[v0] - auto_renew:", editingService.auto_renew)
+      console.log("[v0] - servicePlanId:", editingService.service_plan_id)
+      console.log("[v0] - connectionType:", editingService.connection_type)
+      console.log("[v0] - ipAddress:", editingService.ip_address)
+      console.log("[v0] - deviceId:", editingService.device_id)
+      console.log("[v0] - lockToMac:", editingService.lock_to_mac)
+      console.log("[v0] - pppoeUsername:", editingService.pppoe_username)
+      console.log("[v0] - pppoePassword:", editingService.pppoe_password ? "***" : "(empty)")
+      console.log("[v0] - autoRenew:", editingService.auto_renew)
 
       setSelectedPlan(editingService.service_plan_id?.toString() || "")
       setConnectionType(editingService.connection_type || "")
@@ -346,6 +357,19 @@ function AddServiceModal({
       fetchIpPools()
     }
   }, [selectedIpAddress])
+
+  useEffect(() => {
+    if (pushToRouter) {
+      fetch("/api/network/routers")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.routers) {
+            setRouters(data.routers)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [pushToRouter])
 
   const connectionTypes = [
     { value: "fiber", label: "Fiber Optic", icon: Zap, description: "High-speed fiber connection" },
@@ -375,7 +399,7 @@ function AddServiceModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
             <TabsList>
               <TabsTrigger value="plans">Service Plans</TabsTrigger>
@@ -661,6 +685,66 @@ function AddServiceModal({
                       </div>
                     </div>
                   )}
+
+                  {pppoeEnabled && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Network className="h-5 w-5" />
+                          Router Provisioning
+                        </CardTitle>
+                        <CardDescription>
+                          Choose between RADIUS-only authentication or direct router push
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="pushToRouter"
+                            checked={pushToRouter}
+                            onCheckedChange={(checked) => setPushToRouter(checked as boolean)}
+                          />
+                          <Label htmlFor="pushToRouter" className="text-sm font-medium">
+                            Push PPPoE credentials directly to router
+                          </Label>
+                        </div>
+
+                        {!pushToRouter && (
+                          <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+                            RADIUS-only mode: User will authenticate through FreeRADIUS server
+                          </div>
+                        )}
+
+                        {pushToRouter && (
+                          <div className="space-y-4">
+                            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-700 flex items-start gap-2">
+                              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                              <div>
+                                Direct router push: Credentials will be written to the router's local database. RADIUS
+                                will be used as fallback.
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="router">Select Router</Label>
+                              <Select value={selectedRouter} onValueChange={setSelectedRouter}>
+                                <SelectTrigger id="router">
+                                  <SelectValue placeholder="Choose a router" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {routers.map((router) => (
+                                    <SelectItem key={router.id} value={router.id.toString()}>
+                                      {router.name} ({router.type}) - {router.ip_address}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -731,6 +815,12 @@ function AddServiceModal({
                               <span>{pppoeUsername}</span>
                             </div>
                           )}
+                          {pppoeEnabled && pushToRouter && selectedRouter && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Router:</span>
+                              <span>{selectedRouter}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -775,5 +865,3 @@ function AddServiceModal({
     </Dialog>
   )
 }
-
-export default AddServiceModal

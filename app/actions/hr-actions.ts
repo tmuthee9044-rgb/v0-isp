@@ -169,11 +169,11 @@ export async function generatePayroll(
 
       await sql`
         INSERT INTO payroll_records (
-          employee_id, employee_name, period, basic_salary, 
+          employee_id, period, employee_name, basic_salary, 
           allowances, overtime, gross_pay, paye, nssf, sha,
           other_deductions, total_deductions, net_pay, status, created_at
         ) VALUES (
-          ${employee.id}, ${`${employee.first_name} ${employee.last_name}`}, ${period}, ${basicSalary},
+          ${employee.id}, ${period}, ${`${employee.first_name} ${employee.last_name}`}, ${basicSalary},
           ${allowances}, ${overtime}, ${grossPay}, ${paye}, ${nssf}, ${sha},
           ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
         )

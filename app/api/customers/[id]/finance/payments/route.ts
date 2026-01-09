@@ -176,7 +176,7 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
         sp.id as service_plan_id,
         sp.speed_download,
         sp.speed_upload,
-        sp.monthly_fee,
+        sp.price as monthly_fee,
         sp.billing_cycle,
         c.email,
         c.phone,

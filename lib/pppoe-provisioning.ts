@@ -51,7 +51,7 @@ export async function provisionPPPoESecret(
       SELECT 
         cs.*,
         sp.name as service_name,
-        sp.monthly_fee as service_monthly_fee,
+        sp.price as service_monthly_fee,
         sp.billing_cycle,
         nd.id as router_id,
         nd.name as router_name,

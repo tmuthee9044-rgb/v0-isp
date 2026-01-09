@@ -215,7 +215,7 @@ export class UnifiedPaymentGateway {
     const sql = await getSql()
 
     const services = await sql`
-      SELECT cs.*, sp.name as service_name, sp.monthly_fee
+      SELECT cs.*, sp.name as service_name, sp.price as monthly_fee
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customer_id} AND cs.status IN ('pending', 'suspended')
@@ -292,7 +292,7 @@ export class UnifiedPaymentGateway {
     const sql = await getSql()
 
     const services = await sql`
-      SELECT cs.*, sp.monthly_fee, sp.name as service_name
+      SELECT cs.*, sp.price as monthly_fee, sp.name as service_name
       FROM customer_services cs
       JOIN service_plans sp ON cs.service_plan_id = sp.id
       WHERE cs.customer_id = ${customer_id} AND cs.status = 'active'

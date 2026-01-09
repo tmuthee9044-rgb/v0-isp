@@ -45,68 +45,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
       )
     }
 
-    // Single optimized query with all data
     const customerResult = await sql`
       SELECT 
-        c.*,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cpn.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'id', cpn.id,
-                'number', cpn.phone_number,
-                'type', cpn.type,
-                'isPrimary', cpn.is_primary
-              )
-            END
-          ) FILTER (WHERE cpn.id IS NOT NULL), 
-          '[]'::json
-        ) as phone_numbers,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cec.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'id', cec.id,
-                'name', cec.name,
-                'phone', cec.phone,
-                'email', cec.email,
-                'relationship', cec.relationship
-              )
-            END
-          ) FILTER (WHERE cec.id IS NOT NULL),
-          '[]'::json
-        ) as emergency_contacts,
-        COALESCE(
-          JSON_AGG(
-            CASE WHEN cs.id IS NOT NULL THEN
-              JSON_BUILD_OBJECT(
-                'id', cs.id,
-                'service_plan_id', cs.service_plan_id,
-                'status', cs.status,
-                'start_date', cs.activation_date,
-                'activated_at', cs.activation_date,
-                'plan_name', sp.name,
-                'service_name', sp.name,
-                'service_type', sp.service_type,
-                'price', sp.price,
-                'monthly_fee', sp.price,
-                'upload_speed', sp.speed_upload,
-                'download_speed', sp.speed_download,
-                'data_limit', sp.data_limit,
-                'ip_address', cs.ip_address,
-                'device_id', cs.device_id
-              )
-            END
-          ) FILTER (WHERE cs.id IS NOT NULL),
-          '[]'::json
-        ) as services
-      FROM customers c
-      LEFT JOIN customer_phone_numbers cpn ON c.id = cpn.customer_id
-      LEFT JOIN customer_emergency_contacts cec ON c.id = cec.customer_id
-      LEFT JOIN customer_services cs ON c.id = cs.customer_id
-      LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      WHERE c.id = ${customerId}
-      GROUP BY c.id
+        id, account_number, first_name, last_name, email, phone,
+        address, city, state, postal_code, country, business_name,
+        customer_type, status, created_at, balance, portal_username
+      FROM customers 
+      WHERE id = ${customerId}
     `
 
     if (customerResult.length === 0) {
@@ -119,11 +64,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
       )
     }
 
-    const customer = customerResult[0]
-
     return NextResponse.json({
       success: true,
-      ...customer,
+      ...customerResult[0],
     })
   } catch (error) {
     console.error("Database error:", error)

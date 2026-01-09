@@ -318,41 +318,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         cs.ip_address,
         cs.device_id,
         cs.connection_type,
-        cs.config_id,
         cs.created_at,
-        cs.updated_at,
         cs.pppoe_username,
-        cs.pppoe_password,
         cs.lock_to_mac,
         cs.auto_renew,
         sp.name as service_name,
-        sp.description as service_description,
+        sp.service_type,
         sp.download_speed,
         sp.upload_speed,
-        sp.data_limit,
-        EXISTS(
-          SELECT 1 FROM radacct ra
-          WHERE ra."UserName" = c.username
-          AND ra."AcctStopTime" IS NULL
-          LIMIT 1
-        ) as is_online,
-        (
-          SELECT ra."AcctStartTime"
-          FROM radacct ra
-          WHERE ra."UserName" = c.username
-          ORDER BY ra."AcctStartTime" DESC
-          LIMIT 1
-        ) as last_session_at,
-        EXISTS(
-          SELECT 1 FROM radcheck rc
-          WHERE rc."UserName" = c.username
-          LIMIT 1
-        ) as radius_provisioned,
-        COALESCE(ab.balance, 0) as balance
+        sp.data_limit
       FROM customer_services cs
       LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
-      LEFT JOIN customers c ON c.id = cs.customer_id
-      LEFT JOIN account_balances ab ON ab.customer_id = cs.customer_id
       WHERE cs.customer_id = ${customerId}
       ORDER BY cs.created_at DESC
     `

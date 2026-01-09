@@ -83,6 +83,7 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState("customer-info")
   const [addServiceModalOpen, setAddServiceModalOpen] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
   useEffect(() => {
@@ -109,18 +110,33 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
     }
   }, [customerId])
 
-  const fetchCustomerData = async () => {
-    console.log("[v0] === fetchCustomerData called ===")
-    console.log("[v0] Customer ID:", customerId)
-    console.log("[v0] Timestamp:", new Date().toISOString())
+  const fetchServices = async () => {
+    if (loadedTabs.has("services")) return // Already loaded
 
+    try {
+      const response = await fetch(`/api/customers/${customerId}/services`)
+      if (response.ok) {
+        const data = await response.json()
+        setServices(data.services || [])
+        setLoadedTabs((prev) => new Set([...prev, "services"]))
+      }
+    } catch (error) {
+      console.error("Error fetching services:", error)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "services" && !loadedTabs.has("services")) {
+      fetchServices()
+    }
+  }, [activeTab])
+
+  const fetchCustomerData = async () => {
     try {
       const response = await fetch(`/api/customers/${customerId}`)
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Customer data fetched, services count:", data.services?.length || 0)
         setCustomer(data)
-        setServices(data.services || [])
       }
     } catch (error) {
       console.error("Error fetching customer:", error)
@@ -368,157 +384,166 @@ export default function CustomerPage({ params }: { params: { id: string } }) {
         </TabsContent>
 
         <TabsContent value="services" className="space-y-4 sm:space-y-6">
-          <div className="space-y-4">
-            <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Wifi className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <h2 className="text-lg sm:text-xl font-semibold">Internet Services</h2>
+          {!loadedTabs.has("services") ? (
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+                <p className="text-sm text-muted-foreground">Loading services...</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Wifi className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <h2 className="text-lg sm:text-xl font-semibold">Internet Services</h2>
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Active and historical subscriptions</p>
                 </div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Active and historical subscriptions</p>
+                <Button onClick={() => setAddServiceModalOpen(true)} size="sm" className="text-xs sm:text-sm">
+                  <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  Add Service
+                </Button>
               </div>
-              <Button onClick={() => setAddServiceModalOpen(true)} size="sm" className="text-xs sm:text-sm">
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                Add Service
-              </Button>
+
+              {services.length === 0 ? (
+                <Card>
+                  <CardContent className="pt-6 text-center text-sm sm:text-base text-muted-foreground">
+                    No services found for this customer
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {services.map((service) => (
+                    <Card key={service.id} className="border-l-4 border-l-gray-800">
+                      <CardContent className="pt-4 sm:pt-6">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
+                              <h3 className="text-base sm:text-lg font-semibold">{service.service_name}</h3>
+                              <ServiceStatusBadge
+                                status={service.status}
+                                isOnline={service.is_online}
+                                lastSessionAt={service.last_session_at}
+                                routerProvisioned={service.router_provisioned}
+                                radiusProvisioned={service.radius_provisioned}
+                                balance={service.balance}
+                              />
+                            </div>
+                            <p className="text-xs sm:text-sm text-muted-foreground">Service Plan</p>
+                          </div>
+                          <div className="flex flex-wrap gap-4 sm:gap-8">
+                            <div className="text-left sm:text-right">
+                              <p className="text-base sm:text-lg font-semibold">
+                                KES {Number(service.monthly_fee || 0).toFixed(2)}/mo
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Monthly Fee</p>
+                            </div>
+                            <div className="text-left sm:text-right">
+                              <p className="font-medium text-sm sm:text-base">
+                                {new Date(service.start_date).toLocaleDateString()}
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Start Date</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 sm:gap-8 mb-4">
+                          <div className="flex items-center gap-2">
+                            <Download className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-sm sm:text-base lg:text-lg font-semibold">
+                                {service.download_speed || 0} Mbps
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Download</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Upload className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-sm sm:text-base lg:text-lg font-semibold">
+                                {service.upload_speed || 0} Mbps
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Upload</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-4 border-t">
+                          <ServiceStatusBadge
+                            status={service.status}
+                            isOnline={service.is_online}
+                            lastSessionAt={service.last_session_at}
+                            routerProvisioned={service.router_provisioned}
+                            radiusProvisioned={service.radius_provisioned}
+                            balance={service.balance}
+                          />
+                          <div className="flex-1"></div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditService(service)}
+                            className="text-xs sm:text-sm"
+                          >
+                            <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden xs:inline">Edit</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleActivateService(service.id)}
+                            disabled={service.status === "active"}
+                            className="text-xs sm:text-sm"
+                          >
+                            <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden xs:inline">Activate</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteService(service.id)}
+                            className="text-xs sm:text-sm"
+                          >
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden xs:inline">Delete</span>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {services.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm sm:text-base text-muted-foreground">
-                  No services found for this customer
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {services.map((service) => (
-                  <Card key={service.id} className="border-l-4 border-l-gray-800">
-                    <CardContent className="pt-4 sm:pt-6">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
-                            <h3 className="text-base sm:text-lg font-semibold">{service.service_name}</h3>
-                            <ServiceStatusBadge
-                              status={service.status}
-                              isOnline={service.is_online}
-                              lastSessionAt={service.last_session_at}
-                              routerProvisioned={service.router_provisioned}
-                              radiusProvisioned={service.radius_provisioned}
-                              balance={service.balance}
-                            />
-                          </div>
-                          <p className="text-xs sm:text-sm text-muted-foreground">Service Plan</p>
-                        </div>
-                        <div className="flex flex-wrap gap-4 sm:gap-8">
-                          <div className="text-left sm:text-right">
-                            <p className="text-base sm:text-lg font-semibold">
-                              KES {Number(service.monthly_fee || 0).toFixed(2)}/mo
-                            </p>
-                            <p className="text-xs sm:text-sm text-muted-foreground">Monthly Fee</p>
-                          </div>
-                          <div className="text-left sm:text-right">
-                            <p className="font-medium text-sm sm:text-base">
-                              {new Date(service.start_date).toLocaleDateString()}
-                            </p>
-                            <p className="text-xs sm:text-sm text-muted-foreground">Start Date</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 sm:gap-8 mb-4">
-                        <div className="flex items-center gap-2">
-                          <Download className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm sm:text-base lg:text-lg font-semibold">
-                              {service.download_speed || 0} Mbps
-                            </p>
-                            <p className="text-xs sm:text-sm text-muted-foreground">Download</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Upload className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm sm:text-base lg:text-lg font-semibold">
-                              {service.upload_speed || 0} Mbps
-                            </p>
-                            <p className="text-xs sm:text-sm text-muted-foreground">Upload</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 pt-4 border-t">
-                        <ServiceStatusBadge
-                          status={service.status}
-                          isOnline={service.is_online}
-                          lastSessionAt={service.last_session_at}
-                          routerProvisioned={service.router_provisioned}
-                          radiusProvisioned={service.radius_provisioned}
-                          balance={service.balance}
-                        />
-                        <div className="flex-1"></div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditService(service)}
-                          className="text-xs sm:text-sm"
-                        >
-                          <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden xs:inline">Edit</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleActivateService(service.id)}
-                          disabled={service.status === "active"}
-                          className="text-xs sm:text-sm"
-                        >
-                          <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden xs:inline">Activate</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteService(service.id)}
-                          className="text-xs sm:text-sm"
-                        >
-                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden xs:inline">Delete</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="billing">
-          <CustomerBillingTab customerId={customerId} />
+        <TabsContent value="billing" className="space-y-4">
+          {activeTab === "billing" && <CustomerBillingTab customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="statistics">
-          <CustomerStatisticsTab customerId={customerId} />
+        <TabsContent value="statistics" className="space-y-4">
+          {activeTab === "statistics" && <CustomerStatisticsTab customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="documents">
-          <CustomerDocumentsTab customerId={customerId} />
+        <TabsContent value="documents" className="space-y-4">
+          {activeTab === "documents" && <CustomerDocumentsTab customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="support">
-          <CustomerSupportTab customerId={customerId} />
+        <TabsContent value="support" className="space-y-4">
+          {activeTab === "support" && <CustomerSupportTab customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="communications">
-          <CustomerCommunicationsTab customerId={customerId} />
+        <TabsContent value="communications" className="space-y-4">
+          {activeTab === "communications" && <CustomerCommunicationsTab customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="equipment">
-          <CustomerEquipmentAssignment customerId={customerId} />
+        <TabsContent value="equipment" className="space-y-4">
+          {activeTab === "equipment" && <CustomerEquipmentAssignment customerId={customerId} />}
         </TabsContent>
 
-        <TabsContent value="audit-log">
-          <CustomerAuditLogTab customerId={customerId} />
+        <TabsContent value="audit-log" className="space-y-4">
+          {activeTab === "audit-log" && <CustomerAuditLogTab customerId={customerId} />}
         </TabsContent>
       </Tabs>
 

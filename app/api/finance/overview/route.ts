@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
-export const runtime = "edge"
+export const runtime = "nodejs" // Removed edge runtime as postgres library requires Node.js runtime with 'fs' module
 
 export async function GET(request: NextRequest) {
   try {

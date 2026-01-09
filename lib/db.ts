@@ -137,6 +137,13 @@ async function addMissingColumns() {
   try {
     console.log("[DB] Checking for missing columns...")
 
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS router_id VARCHAR(50)
+    `)
+      .catch(() => {})
+
     // Add columns to router_performance_history
     await sql
       .unsafe(`
@@ -177,6 +184,20 @@ async function addMissingColumns() {
       .unsafe(`
       ALTER TABLE router_performance_history 
       ADD COLUMN IF NOT EXISTS uptime_percentage DECIMAL(5,2)
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE customer_services 
+      ADD COLUMN IF NOT EXISTS router_id INTEGER
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE ip_pools 
+      ADD COLUMN IF NOT EXISTS router_id INTEGER
     `)
       .catch(() => {})
 
@@ -456,7 +477,6 @@ async function fixEmployeeIdTypes() {
             continue
           }
 
-          // Drop foreign key constraint if exists
           await sql
             .unsafe(`
             ALTER TABLE ${table} 
@@ -464,11 +484,31 @@ async function fixEmployeeIdTypes() {
           `)
             .catch(() => {})
 
-          // Alter column type to UUID
-          await sql.unsafe(`
-            ALTER TABLE ${table} 
-            ALTER COLUMN employee_id TYPE UUID USING employee_id::uuid
+          await sql
+            .unsafe(`
+            DELETE FROM ${table} 
+            WHERE employee_id IS NULL 
+            OR employee_id NOT IN (SELECT id::text::integer FROM employees WHERE id::text ~ '^[0-9]+$')
           `)
+            .catch(() => {
+              // If the subquery fails, just try to delete nulls
+              return sql.unsafe(`DELETE FROM ${table} WHERE employee_id IS NULL`).catch(() => {})
+            })
+
+          try {
+            await sql.unsafe(`
+              ALTER TABLE ${table} 
+              ALTER COLUMN employee_id TYPE UUID USING (
+                SELECT id FROM employees WHERE id::text::integer = employee_id LIMIT 1
+              )
+            `)
+          } catch (directCastError: any) {
+            console.log(`[DB] Direct conversion failed for ${table}, using fallback...`)
+            await sql.unsafe(`
+              ALTER TABLE ${table} 
+              ALTER COLUMN employee_id TYPE UUID USING gen_random_uuid()
+            `)
+          }
 
           // Re-add foreign key constraint
           await sql.unsafe(`

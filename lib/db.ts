@@ -136,15 +136,45 @@ async function addMissingColumns() {
   try {
     console.log("[DB] Checking for missing columns...")
 
-    // Add bandwidth_usage to router_performance_history
+    // Add columns to router_performance_history
     await sql
       .unsafe(`
       ALTER TABLE router_performance_history 
-      ADD COLUMN IF NOT EXISTS bandwidth_usage INTEGER,
-      ADD COLUMN IF NOT EXISTS peak_usage INTEGER,
-      ADD COLUMN IF NOT EXISTS connections INTEGER,
-      ADD COLUMN IF NOT EXISTS latency DECIMAL(10,2),
-      ADD COLUMN IF NOT EXISTS packet_loss DECIMAL(5,2),
+      ADD COLUMN IF NOT EXISTS bandwidth_usage INTEGER
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS peak_usage INTEGER
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS connections INTEGER
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS latency DECIMAL(10,2)
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
+      ADD COLUMN IF NOT EXISTS packet_loss DECIMAL(5,2)
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE router_performance_history 
       ADD COLUMN IF NOT EXISTS uptime_percentage DECIMAL(5,2)
     `)
       .catch(() => {})
@@ -161,7 +191,13 @@ async function addMissingColumns() {
     await sql
       .unsafe(`
       ALTER TABLE customer_services 
-      ADD COLUMN IF NOT EXISTS pppoe_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS pppoe_enabled BOOLEAN DEFAULT false
+    `)
+      .catch(() => {})
+
+    await sql
+      .unsafe(`
+      ALTER TABLE customer_services 
       ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17)
     `)
       .catch(() => {})
@@ -169,6 +205,175 @@ async function addMissingColumns() {
     console.log("✅ [DB] Missing columns verified and added")
   } catch (error: any) {
     console.error("⚠️  [DB] Error adding missing columns:", error.message)
+  }
+}
+
+/**
+ * Create FreeRADIUS tables if they don't exist
+ */
+async function createRadiusTables() {
+  try {
+    console.log("[DB] Checking for FreeRADIUS tables...")
+
+    // Check if radacct table exists
+    const tableExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'radacct'
+      ) as exists
+    `
+
+    if (tableExists[0]?.exists) {
+      console.log("✅ [DB] FreeRADIUS tables already exist")
+      return
+    }
+
+    console.log("[DB] Creating FreeRADIUS radacct table...")
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radacct (
+        radacctid BIGSERIAL PRIMARY KEY,
+        acctsessionid VARCHAR(64) NOT NULL,
+        acctuniqueid VARCHAR(32) NOT NULL UNIQUE,
+        username VARCHAR(64),
+        groupname VARCHAR(64),
+        realm VARCHAR(64),
+        nasipaddress INET NOT NULL,
+        nasportid VARCHAR(32),
+        nasporttype VARCHAR(32),
+        acctstarttime TIMESTAMP WITH TIME ZONE,
+        acctupdatetime TIMESTAMP WITH TIME ZONE,
+        acctstoptime TIMESTAMP WITH TIME ZONE,
+        acctinterval BIGINT,
+        acctsessiontime BIGINT,
+        acctauthentic VARCHAR(32),
+        connectinfo_start VARCHAR(50),
+        connectinfo_stop VARCHAR(50),
+        acctinputoctets BIGINT,
+        acctoutputoctets BIGINT,
+        calledstationid VARCHAR(50),
+        callingstationid VARCHAR(50),
+        acctterminatecause VARCHAR(32),
+        servicetype VARCHAR(32),
+        framedprotocol VARCHAR(32),
+        framedipaddress INET,
+        acctstartdelay BIGINT,
+        acctstopdelay BIGINT,
+        xascendsessionsvrkey VARCHAR(10),
+        framedipv6address VARCHAR(45),
+        framedipv6prefix VARCHAR(45),
+        framedinterfaceid VARCHAR(44),
+        delegatedipv6prefix VARCHAR(45)
+      )
+    `)
+
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radacct_username_idx ON radacct (username)
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radacct_acctstarttime_idx ON radacct (acctstarttime)
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radacct_acctstoptime_idx ON radacct (acctstoptime)
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radacct_nasipaddress_idx ON radacct (nasipaddress)
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radacct_acctsessionid_idx ON radacct (acctsessionid)
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radcheck (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(64) NOT NULL,
+        attribute VARCHAR(64) NOT NULL,
+        op VARCHAR(2) NOT NULL DEFAULT '==',
+        value VARCHAR(253) NOT NULL
+      )
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radcheck_username_idx ON radcheck (username)
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radreply (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(64) NOT NULL,
+        attribute VARCHAR(64) NOT NULL,
+        op VARCHAR(2) NOT NULL DEFAULT '=',
+        value VARCHAR(253) NOT NULL
+      )
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radreply_username_idx ON radreply (username)
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radgroupcheck (
+        id SERIAL PRIMARY KEY,
+        groupname VARCHAR(64) NOT NULL,
+        attribute VARCHAR(64) NOT NULL,
+        op VARCHAR(2) NOT NULL DEFAULT '==',
+        value VARCHAR(253) NOT NULL
+      )
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radgroupreply (
+        id SERIAL PRIMARY KEY,
+        groupname VARCHAR(64) NOT NULL,
+        attribute VARCHAR(64) NOT NULL,
+        op VARCHAR(2) NOT NULL DEFAULT '=',
+        value VARCHAR(253) NOT NULL
+      )
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radusergroup (
+        username VARCHAR(64) NOT NULL,
+        groupname VARCHAR(64) NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (username, groupname)
+      )
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radusergroup_username_idx ON radusergroup (username)
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS radpostauth (
+        id BIGSERIAL PRIMARY KEY,
+        username VARCHAR(64) NOT NULL,
+        pass VARCHAR(64),
+        reply VARCHAR(32),
+        authdate TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      )
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radpostauth_username_idx ON radpostauth (username)
+    `)
+    await sql.unsafe(`
+      CREATE INDEX IF NOT EXISTS radpostauth_authdate_idx ON radpostauth (authdate)
+    `)
+
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS nas (
+        id SERIAL PRIMARY KEY,
+        nasname VARCHAR(128) NOT NULL UNIQUE,
+        shortname VARCHAR(32),
+        type VARCHAR(30) NOT NULL DEFAULT 'other',
+        ports INTEGER,
+        secret VARCHAR(60) NOT NULL,
+        server VARCHAR(64),
+        community VARCHAR(50),
+        description VARCHAR(200)
+      )
+    `)
+
+    console.log("✅ [DB] FreeRADIUS tables created successfully")
+  } catch (error: any) {
+    console.error("⚠️  [DB] Error creating FreeRADIUS tables:", error.message)
   }
 }
 
@@ -184,6 +389,7 @@ export async function getSql() {
   await sql`SELECT 1 as health_check`
   console.log("✅ [DB] PostgreSQL connection verified")
 
+  await createRadiusTables()
   await addMissingColumns()
   await fixSequences()
 

@@ -239,6 +239,20 @@ async function ensureCriticalColumns() {
     )
 
     await sql`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'payroll_records' 
+          AND column_name = 'employee_id' 
+          AND data_type = 'uuid'
+        ) THEN
+          ALTER TABLE payroll_records ALTER COLUMN employee_id TYPE INTEGER USING employee_id::text::integer;
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    await sql`
       CREATE TABLE IF NOT EXISTS payroll_records (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL,

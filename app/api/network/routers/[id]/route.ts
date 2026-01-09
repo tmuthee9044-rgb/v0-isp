@@ -155,15 +155,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         updated_at = NOW()
       WHERE id = ${routerId}
       RETURNING *
-    `(async () => {
+    `
+    ;(async () => {
       try {
-        const asyncSql = await getSql()
-
         if (radius_secret) {
           const nasIp = radius_nas_ip || hostname || existingRouter[0].ip_address
           const shortname = name.replace(/\s+/g, "_").toLowerCase()
 
-          await asyncSql`
+          await sql`
             INSERT INTO nas (
               nasname, shortname, type, ports, secret, server, community, description
             ) VALUES (
@@ -180,7 +179,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         }
 
         if (type === "mikrotik" && result[0]) {
-          await asyncSql`
+          await sql`
             INSERT INTO provisioning_queue (
               action, entity_type, entity_id, configuration, status, created_at
             ) VALUES (
@@ -201,7 +200,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           `
         }
 
-        await asyncSql`
+        await sql`
           INSERT INTO activity_logs (
             action, entity_type, entity_id, details, created_at
           ) VALUES (

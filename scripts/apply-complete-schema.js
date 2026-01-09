@@ -1,13 +1,14 @@
 // Apply Complete Database Schema
 // This script creates all required tables for the ISP system
 // Including RADIUS tables for FreeRADIUS integration
+// PostgreSQL offline only (Rule 4)
 
-import { getSql } from "../lib/db.js"
+import { getPool } from "../lib/db.js"
 
 async function applyCompleteSchema() {
   console.log("[INFO] Starting complete database schema application...")
 
-  const sql = await getSql()
+  const pool = getPool()
 
   try {
     // Read the complete schema SQL file
@@ -23,19 +24,34 @@ async function applyCompleteSchema() {
 
     console.log("[INFO] Executing complete schema...")
 
-    // Execute the complete schema
-    await sql`${schemaSQL}`
+    const statements = schemaSQL
+      .split(";")
+      .map((stmt) => stmt.trim())
+      .filter((stmt) => stmt.length > 0 && !stmt.startsWith("--"))
+
+    for (const statement of statements) {
+      try {
+        await pool.query(statement)
+      } catch (error) {
+        // Continue on errors like "already exists"
+        if (!error.message.includes("already exists")) {
+          console.log(`[WARNING] ${error.message}`)
+        }
+      }
+    }
 
     console.log("[SUCCESS] Database schema applied successfully!")
 
     // Verify tables were created
-    const tables = await sql`
+    const tablesResult = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public' 
       AND table_type = 'BASE TABLE'
       ORDER BY table_name
-    `
+    `)
+
+    const tables = tablesResult.rows
 
     console.log(`[INFO] Total tables in database: ${tables.length}`)
     console.log("[INFO] Tables created:")

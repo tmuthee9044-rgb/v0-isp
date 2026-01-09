@@ -4,9 +4,10 @@
  * Comprehensive SQL Migration Runner
  * Executes ALL SQL files in the scripts directory without skipping
  * Ensures all database tables and schema are created
+ * PostgreSQL offline only (Rule 4)
  */
 
-import { getSql } from "../lib/db.js"
+import { getPool } from "../lib/db.js"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -21,7 +22,7 @@ const stats = {
   failedFiles: [],
 }
 
-async function executeSQLFile(filePath, sql) {
+async function executeSQLFile(filePath, pool) {
   try {
     const content = fs.readFileSync(filePath, "utf8")
 
@@ -31,7 +32,6 @@ async function executeSQLFile(filePath, sql) {
       return { skipped: true }
     }
 
-    // Split SQL file into statements
     const statements = content
       .split(";")
       .map((stmt) => stmt.trim())
@@ -44,13 +44,11 @@ async function executeSQLFile(filePath, sql) {
 
     console.log(`\n🔄 Executing: ${path.basename(filePath)} (${statements.length} statements)`)
 
-    // Execute each statement
     for (let i = 0; i < statements.length; i++) {
       const statement = statements[i]
       if (statement.trim()) {
         try {
-          // Use unsafe to execute raw SQL
-          await sql.unsafe(statement)
+          await pool.query(statement)
         } catch (stmtError) {
           // Log but continue - some statements may fail if tables already exist
           if (!stmtError.message.includes("already exists")) {
@@ -75,10 +73,10 @@ async function runAllMigrations() {
   console.log("=" + "=".repeat(70))
   console.log("🚀 COMPREHENSIVE SQL MIGRATION RUNNER")
   console.log("=" + "=".repeat(70))
-  console.log("Rule 4: Using dual database system (PostgreSQL offline/Neon serverless)")
+  console.log("Rule 4: Using PostgreSQL offline database only")
   console.log("")
 
-  const sql = await getSql()
+  const pool = getPool()
 
   // Get all SQL files in scripts directory
   const scriptsDir = path.join(__dirname)
@@ -96,14 +94,13 @@ async function runAllMigrations() {
   if (completeSchemaIndex !== -1) {
     const schemaFile = allFiles[completeSchemaIndex]
     console.log("🎯 Executing complete schema first...")
-    await executeSQLFile(path.join(scriptsDir, schemaFile), sql)
+    await executeSQLFile(path.join(scriptsDir, schemaFile), pool)
     allFiles.splice(completeSchemaIndex, 1) // Remove from list
   }
 
-  // Execute remaining files in order
   for (const file of allFiles) {
     const filePath = path.join(scriptsDir, file)
-    await executeSQLFile(filePath, sql)
+    await executeSQLFile(filePath, pool)
   }
 
   // Verify tables were created
@@ -111,13 +108,15 @@ async function runAllMigrations() {
   console.log("🔍 VERIFICATION")
   console.log("=" + "=".repeat(70))
 
-  const tables = await sql`
+  const tablesResult = await pool.query(`
     SELECT table_name 
     FROM information_schema.tables 
     WHERE table_schema = 'public' 
     AND table_type = 'BASE TABLE'
     ORDER BY table_name
-  `
+  `)
+
+  const tables = tablesResult.rows
 
   console.log(`\n📊 Total tables in database: ${tables.length}`)
   console.log("\n📋 Tables created:")

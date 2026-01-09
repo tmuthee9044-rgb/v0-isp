@@ -4,7 +4,8 @@ import postgres from "postgres"
 
 // Cached database client
 let sqlClient: any = null
-let sequencesFixed = false
+let initializationComplete = false
+
 const columnsChecked = false
 
 /**
@@ -57,8 +58,6 @@ export const sql = postgres(connectionString, {
  * Fix all SERIAL sequences to ensure auto-increment works
  */
 async function fixSequences() {
-  if (sequencesFixed) return
-
   try {
     console.log("[DB] Checking and fixing SERIAL sequences...")
 
@@ -123,7 +122,6 @@ async function fixSequences() {
       }
     }
 
-    sequencesFixed = true
     console.log("✅ [DB] All SERIAL sequences verified and fixed")
   } catch (error: any) {
     console.error("⚠️  [DB] Error fixing sequences:", error.message)
@@ -544,10 +542,15 @@ export async function getSql() {
   await sql`SELECT 1 as health_check`
   console.log("✅ [DB] PostgreSQL connection verified")
 
-  await createRadiusTables()
-  await addMissingColumns()
-  await fixSequences()
-  await fixEmployeeIdTypes()
+  if (!initializationComplete) {
+    console.log("[DB] Running one-time database initialization...")
+    await createRadiusTables()
+    await addMissingColumns()
+    await fixSequences()
+    await fixEmployeeIdTypes()
+    initializationComplete = true
+    console.log("✅ [DB] Database initialization complete")
+  }
 
   sqlClient = sql
   return sqlClient

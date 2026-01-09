@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, Save, Database, Shield, Settings, Activity } from "lucide-react"
+import { ArrowLeft, Save, Database, Shield, Settings } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 
@@ -206,7 +206,7 @@ export default function AddRouterPage() {
 
       <form onSubmit={handleSubmit}>
         <Tabs defaultValue="basic" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="basic" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               Data & Configuration
@@ -218,10 +218,6 @@ export default function AddRouterPage() {
             <TabsTrigger value="mikrotik" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               MikroTik
-            </TabsTrigger>
-            <TabsTrigger value="monitoring" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              Monitoring
             </TabsTrigger>
           </TabsList>
 
@@ -389,7 +385,7 @@ export default function AddRouterPage() {
                     <h3 className="font-semibold">RADIUS Authentication (FreeRADIUS)</h3>
                     {radiusSettings?.enabled && (
                       <Badge className="bg-green-100 text-green-800">
-                        <Activity className="w-3 h-3 mr-1" />
+                        <activity className="w-3 h-3 mr-1" />
                         Server Active
                       </Badge>
                     )}
@@ -618,22 +614,6 @@ export default function AddRouterPage() {
                     onChange={(e) => handleInputChange("blocking_page_url", e.target.value)}
                     placeholder="http://example.com/blocked"
                   />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Monitoring Configuration */}
-          <TabsContent value="monitoring">
-            <Card>
-              <CardHeader>
-                <CardTitle>Monitoring & Alerts</CardTitle>
-                <CardDescription>Configure monitoring and alerting settings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-center py-8 text-muted-foreground">
-                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Monitoring configuration will be available after router creation</p>
                 </div>
               </CardContent>
             </Card>

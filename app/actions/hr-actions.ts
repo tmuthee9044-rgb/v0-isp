@@ -174,7 +174,7 @@ export async function generatePayroll(
           net_pay, status, created_at
         ) VALUES (
           ${employee.id}, ${`${employee.first_name} ${employee.last_name}`}, 
-          ${period}-01, ${period}-31, ${basicSalary},
+          ${period + "-01"}::date, ${period + "-31"}::date, ${basicSalary},
           ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, ${paye}, ${sha}, ${nssf},
           ${netPay}, 'pending', NOW()
         )

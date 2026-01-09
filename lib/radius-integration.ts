@@ -689,25 +689,28 @@ export async function provisionToStandardRadiusTables(config: {
   try {
     const sql = await getSql()
 
+    // Insert/update authentication password in radcheck table
     await sql`
-      INSERT INTO radcheck (UserName, Attribute, op, Value)
+      INSERT INTO radcheck (username, attribute, op, value)
       VALUES (
         ${config.username},
         'Cleartext-Password',
         ':=',
         ${config.password}
       )
-      ON CONFLICT ON CONSTRAINT radcheck_pkey 
-      DO UPDATE SET Value = ${config.password}
+      ON CONFLICT (username, attribute) 
+      DO UPDATE SET value = ${config.password}
     `
 
+    // Delete existing reply attributes for clean update
     await sql`
-      DELETE FROM radreply WHERE UserName = ${config.username}
+      DELETE FROM radreply WHERE username = ${config.username}
     `
 
+    // Add speed limit attribute (MikroTik format)
     if (config.downloadSpeed && config.uploadSpeed) {
       await sql`
-        INSERT INTO radreply (UserName, Attribute, op, Value)
+        INSERT INTO radreply (username, attribute, op, value)
         VALUES (
           ${config.username},
           'Mikrotik-Rate-Limit',
@@ -717,9 +720,10 @@ export async function provisionToStandardRadiusTables(config: {
       `
     }
 
+    // Add static IP if specified
     if (config.ipAddress) {
       await sql`
-        INSERT INTO radreply (UserName, Attribute, op, Value)
+        INSERT INTO radreply (username, attribute, op, value)
         VALUES (
           ${config.username},
           'Framed-IP-Address',
@@ -729,8 +733,9 @@ export async function provisionToStandardRadiusTables(config: {
       `
     }
 
+    // Add simultaneous use limit
     await sql`
-      INSERT INTO radreply (UserName, Attribute, op, Value)
+      INSERT INTO radreply (username, attribute, op, value)
       VALUES (
         ${config.username},
         'Simultaneous-Use',
@@ -739,10 +744,23 @@ export async function provisionToStandardRadiusTables(config: {
       )
     `
 
-    console.log("[v0] Provisioned user to standard RADIUS tables:", {
+    // Add Service-Type for Framed user
+    await sql`
+      INSERT INTO radreply (username, attribute, op, value)
+      VALUES (${config.username}, 'Service-Type', ':=', 'Framed-User')
+    `
+
+    // Add Framed-Protocol for PPP
+    await sql`
+      INSERT INTO radreply (username, attribute, op, value)
+      VALUES (${config.username}, 'Framed-Protocol', ':=', 'PPP')
+    `
+
+    console.log("[v0] Provisioned user to standard RADIUS tables (radcheck/radreply) for router authentication:", {
       username: config.username,
       speeds: `${config.downloadSpeed}M/${config.uploadSpeed}M`,
       ip: config.ipAddress || "dynamic",
+      tables: "radcheck (auth) + radreply (authorization)",
     })
 
     return { success: true }

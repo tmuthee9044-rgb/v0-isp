@@ -114,7 +114,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     let locationName = existingRouter[0].location
     if (location_id) {
       const location = await sql`
-        SELECT name FROM locations WHERE id = ${Number.parseInt(location_id)}
+        SELECT name FROM locations WHERE id = ${Number.parseInt(location_id)} LIMIT 1
       `
       if (location.length > 0) {
         locationName = location[0].name
@@ -127,8 +127,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       ...existingConfig,
       customer_auth_method: customer_auth_method || existingConfig.customer_auth_method || "pppoe_radius",
     }
-
-    console.log("[v0] Saving configuration:", configuration)
 
     const result = await sql`
       UPDATE network_devices SET
@@ -147,6 +145,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         status = ${status || "active"},
         radius_secret = ${radius_secret || null},
         nas_ip_address = ${radius_nas_ip || null},
+        customer_auth_method = ${customer_auth_method || "pppoe_radius"},
         latitude = ${gps_latitude ?? null},
         longitude = ${gps_longitude ?? null},
         enable_traffic_recording = ${enable_traffic_recording ?? false},
@@ -156,100 +155,69 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         updated_at = NOW()
       WHERE id = ${routerId}
       RETURNING *
-    `
-
-    if (radius_secret) {
+    `(async () => {
       try {
-        console.log("[v0] Syncing updated router to FreeRADIUS nas table...")
+        const asyncSql = await getSql()
 
-        const nasIp = radius_nas_ip || hostname || existingRouter[0].ip_address
-        const shortname = name.replace(/\s+/g, "_").toLowerCase()
+        if (radius_secret) {
+          const nasIp = radius_nas_ip || hostname || existingRouter[0].ip_address
+          const shortname = name.replace(/\s+/g, "_").toLowerCase()
 
-        await sql`
-          INSERT INTO nas (
-            nasname,
-            shortname,
-            type,
-            ports,
-            secret,
-            server,
-            community,
-            description
+          await asyncSql`
+            INSERT INTO nas (
+              nasname, shortname, type, ports, secret, server, community, description
+            ) VALUES (
+              ${nasIp}, ${shortname}, 'other', 1812, ${radius_secret},
+              ${hostname || existingRouter[0].ip_address}, 'public',
+              ${`Router: ${name} (${type})`}
+            )
+            ON CONFLICT (nasname) 
+            DO UPDATE SET
+              secret = EXCLUDED.secret,
+              shortname = EXCLUDED.shortname,
+              description = EXCLUDED.description
+          `
+        }
+
+        if (type === "mikrotik" && result[0]) {
+          await asyncSql`
+            INSERT INTO provisioning_queue (
+              action, entity_type, entity_id, configuration, status, created_at
+            ) VALUES (
+              'update_router_config', 'router', ${routerId},
+              ${JSON.stringify({
+                host: hostname || result[0].ip_address,
+                port: api_port || 8728,
+                username: mikrotik_user || username,
+                customer_auth_method,
+                enable_traffic_recording,
+                enable_speed_control,
+                radius_nas_ip,
+                radius_secret,
+                blocking_page_url,
+              })},
+              'pending', NOW()
+            )
+          `
+        }
+
+        await asyncSql`
+          INSERT INTO activity_logs (
+            action, entity_type, entity_id, details, created_at
           ) VALUES (
-            ${nasIp},
-            ${shortname},
-            'other',
-            1812,
-            ${radius_secret},
-            ${hostname || existingRouter[0].ip_address},
-            'public',
-            ${`Router: ${name} (${type})`}
-          )
-          ON CONFLICT (nasname) 
-          DO UPDATE SET
-            secret = EXCLUDED.secret,
-            shortname = EXCLUDED.shortname,
-            type = EXCLUDED.type,
-            description = EXCLUDED.description
-        `
-
-        console.log("[v0] Router synced to FreeRADIUS nas table successfully")
-      } catch (nasError) {
-        console.error("[v0] Error syncing to nas table:", nasError)
-      }
-    }
-
-    if (type === "mikrotik" && result[0]) {
-      try {
-        console.log("[v0] Queuing router configuration update for background processing...")
-
-        await sql`
-          INSERT INTO provisioning_queue (
-            action,
-            entity_type,
-            entity_id,
-            configuration,
-            status,
-            created_at
-          ) VALUES (
-            'update_router_config',
-            'router',
-            ${routerId},
+            'update', 'router', ${routerId}, 
             ${JSON.stringify({
-              host: hostname || result[0].ip_address,
-              port: api_port || 8728,
-              username: mikrotik_user || username,
-              customer_auth_method,
-              enable_traffic_recording,
-              enable_speed_control,
-              radius_nas_ip,
-              radius_secret,
-              blocking_page_url,
-            })},
-            'pending',
+              name,
+              radius_enabled: !!radius_secret,
+              nas_ip: radius_nas_ip || "not set",
+            })}, 
             NOW()
           )
         `
-
-        console.log("[v0] Router configuration queued for background update")
-      } catch (queueError) {
-        console.error("[v0] Error queuing router configuration:", queueError)
+      } catch (asyncError) {
+        console.error("[v0] Error in async operations:", asyncError)
       }
-    }
-
-    await sql`
-      INSERT INTO activity_logs (
-        action, entity_type, entity_id, details, created_at
-      ) VALUES (
-        'update', 'router', ${routerId}, 
-        ${JSON.stringify({
-          name,
-          radius_enabled: !!radius_secret,
-          nas_ip: radius_nas_ip || "not set",
-        })}, 
-        NOW()
-      )
-    `
+    })()
 
     return NextResponse.json(result[0])
   } catch (error) {

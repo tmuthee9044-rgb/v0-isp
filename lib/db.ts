@@ -53,6 +53,10 @@ async function ensureCriticalColumns() {
   columnsChecked = true
 
   try {
+    await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`.catch(() => {})
+
+    await sql`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT uuid_generate_v4()`.catch(() => {})
+
     await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS service_start TIMESTAMP`.catch(() => {})
     await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS service_end TIMESTAMP`.catch(() => {})
     await sql`ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false`.catch(() => {})
@@ -111,11 +115,11 @@ async function ensureCriticalColumns() {
       () => {},
     )
 
-    await sql`CREATE SEQUENCE IF NOT EXISTS suppliers_id_seq`.catch(() => {})
-    await sql`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq')`.catch(() => {})
-    await sql`SELECT setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false)`.catch(
-      () => {},
-    )
+    // await sql`CREATE SEQUENCE IF NOT EXISTS suppliers_id_seq`.catch(() => {})
+    // await sql`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq')`.catch(() => {})
+    // await sql`SELECT setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false)`.catch(
+    //   () => {},
+    // )
 
     await sql`CREATE SEQUENCE IF NOT EXISTS users_id_seq`.catch(() => {})
     await sql`ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq')`.catch(() => {})
@@ -229,6 +233,10 @@ async function ensureCriticalColumns() {
     await sql`CREATE SEQUENCE IF NOT EXISTS tasks_id_seq`.catch(() => {})
     await sql`ALTER TABLE tasks ALTER COLUMN id SET DEFAULT nextval('tasks_id_seq')`.catch(() => {})
     await sql`SELECT setval('tasks_id_seq', COALESCE((SELECT MAX(id) FROM tasks), 0) + 1, false)`.catch(() => {})
+
+    await sql`ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS customer_auth_method VARCHAR(50) DEFAULT 'pppoe_radius'`.catch(
+      () => {},
+    )
 
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {

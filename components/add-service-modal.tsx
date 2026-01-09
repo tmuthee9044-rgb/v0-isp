@@ -82,10 +82,6 @@ export default function AddServiceModal({
   const [adminOverride, setAdminOverride] = useState(false)
   const [customerAccountNumber, setCustomerAccountNumber] = useState("")
 
-  const [pushToRouter, setPushToRouter] = useState(false)
-  const [selectedRouter, setSelectedRouter] = useState<string>("")
-  const [routers, setRouters] = useState<any[]>([])
-
   const fetchServicePlans = async () => {
     try {
       setLoadingPlans(true)
@@ -243,11 +239,6 @@ export default function AddServiceModal({
         formData.append("pppoePassword", pppoePassword)
       }
 
-      formData.append("pushToRouter", pushToRouter.toString())
-      if (pushToRouter && selectedRouter) {
-        formData.append("routerId", selectedRouter)
-      }
-
       console.log("[v0] Calling addCustomerService/updateCustomerService...")
       console.log("[v0] Edit mode:", editMode)
 
@@ -274,8 +265,6 @@ export default function AddServiceModal({
         setPppoePassword("")
         setCurrentTab("plans")
         setAdminOverride(false)
-        setPushToRouter(false)
-        setSelectedRouter("")
 
         setTimeout(() => {
           console.log("[v0] Dispatching serviceAdded event")
@@ -357,19 +346,6 @@ export default function AddServiceModal({
       fetchIpPools()
     }
   }, [selectedIpAddress])
-
-  useEffect(() => {
-    if (pushToRouter) {
-      fetch("/api/network/routers")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.routers) {
-            setRouters(data.routers)
-          }
-        })
-        .catch(console.error)
-    }
-  }, [pushToRouter])
 
   const connectionTypes = [
     { value: "fiber", label: "Fiber Optic", icon: Zap, description: "High-speed fiber connection" },
@@ -616,34 +592,32 @@ export default function AddServiceModal({
                   </div>
 
                   {pppoeEnabled && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      <div>
-                        <Label htmlFor="pppoe-username">PPPoE Username</Label>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="pppoeUsername">PPPoE Username</Label>
                         <Input
-                          id="pppoe-username"
+                          id="pppoeUsername"
                           value={pppoeUsername}
                           onChange={(e) => setPppoeUsername(e.target.value)}
-                          placeholder="Enter PPPoE username"
+                          placeholder="Account number or username"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">Account number: {customerAccountNumber}</p>
                       </div>
-                      <div>
-                        <Label htmlFor="pppoe-password">PPPoE Password</Label>
+                      <div className="space-y-2">
+                        <Label htmlFor="pppoePassword">PPPoE Password</Label>
                         <div className="flex gap-2">
                           <div className="relative flex-1">
                             <Input
-                              id="pppoe-password"
+                              id="pppoePassword"
                               type={showPassword ? "text" : "password"}
                               value={pppoePassword}
                               onChange={(e) => setPppoePassword(e.target.value)}
-                              placeholder="Enter PPPoE password"
-                              className="pr-10"
+                              placeholder="Enter secure password"
                             />
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
                               onClick={() => setShowPassword(!showPassword)}
                             >
                               {showPassword ? (
@@ -684,66 +658,6 @@ export default function AddServiceModal({
                         <p className="text-xs text-muted-foreground mt-1">Click Generate for a secure password</p>
                       </div>
                     </div>
-                  )}
-
-                  {pppoeEnabled && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Network className="h-5 w-5" />
-                          Router Provisioning
-                        </CardTitle>
-                        <CardDescription>
-                          Choose between RADIUS-only authentication or direct router push
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="pushToRouter"
-                            checked={pushToRouter}
-                            onCheckedChange={(checked) => setPushToRouter(checked as boolean)}
-                          />
-                          <Label htmlFor="pushToRouter" className="text-sm font-medium">
-                            Push PPPoE credentials directly to router
-                          </Label>
-                        </div>
-
-                        {!pushToRouter && (
-                          <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
-                            RADIUS-only mode: User will authenticate through FreeRADIUS server
-                          </div>
-                        )}
-
-                        {pushToRouter && (
-                          <div className="space-y-4">
-                            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-700 flex items-start gap-2">
-                              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                              <div>
-                                Direct router push: Credentials will be written to the router's local database. RADIUS
-                                will be used as fallback.
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="router">Select Router</Label>
-                              <Select value={selectedRouter} onValueChange={setSelectedRouter}>
-                                <SelectTrigger id="router">
-                                  <SelectValue placeholder="Choose a router" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {routers.map((router) => (
-                                    <SelectItem key={router.id} value={router.id.toString()}>
-                                      {router.name} ({router.type}) - {router.ip_address}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
                   )}
                 </CardContent>
               </Card>
@@ -813,12 +727,6 @@ export default function AddServiceModal({
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">PPPoE Username:</span>
                               <span>{pppoeUsername}</span>
-                            </div>
-                          )}
-                          {pppoeEnabled && pushToRouter && selectedRouter && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Router:</span>
-                              <span>{selectedRouter}</span>
                             </div>
                           )}
                         </div>

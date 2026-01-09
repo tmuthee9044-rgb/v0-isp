@@ -1001,3 +1001,7 @@ export async function createMikroTikClient(
     throw error // Rethrow so the error message is visible to the caller
   }
 }
+
+export default MikroTikAPI
+
+export { MikroTikAPI as MikrotikAPI }

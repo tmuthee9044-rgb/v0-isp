@@ -53,6 +53,22 @@ async function ensureCriticalColumns() {
   columnsChecked = true
 
   try {
+    await sql`CREATE SEQUENCE IF NOT EXISTS suppliers_id_seq`.catch(() => {})
+    await sql`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq')`.catch(() => {})
+    await sql`SELECT setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false)`.catch(
+      () => {},
+    )
+
+    await sql`CREATE SEQUENCE IF NOT EXISTS users_id_seq`.catch(() => {})
+    await sql`ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq')`.catch(() => {})
+    await sql`SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false)`.catch(() => {})
+
+    await sql`CREATE SEQUENCE IF NOT EXISTS warehouses_id_seq`.catch(() => {})
+    await sql`ALTER TABLE warehouses ALTER COLUMN id SET DEFAULT nextval('warehouses_id_seq')`.catch(() => {})
+    await sql`SELECT setval('warehouses_id_seq', COALESCE((SELECT MAX(id) FROM warehouses), 0) + 1, false)`.catch(
+      () => {},
+    )
+
     // Add missing columns to performance_reviews using individual statements
     await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_period VARCHAR(50)`.catch(() => {})
     await sql`ALTER TABLE performance_reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50)`.catch(() => {})
@@ -108,43 +124,22 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'`.catch(() => {})
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
 
-    await sql`
-      DO $$
-      BEGIN
-        -- Create users sequence if it doesn't exist
-        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'users_id_seq') THEN
-          CREATE SEQUENCE users_id_seq;
-        END IF;
-        
-        -- Set sequence ownership to users.id column
-        ALTER SEQUENCE users_id_seq OWNED BY users.id;
-        
-        -- Set default value for id column to use sequence
-        ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
-        
-        -- Sync sequence to current max id value
-        PERFORM setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);
-      END $$;
-    `.catch(() => {})
-
-    await sql`
-      DO $$
-      BEGIN
-        -- Create suppliers sequence if it doesn't exist
-        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'suppliers_id_seq') THEN
-          CREATE SEQUENCE suppliers_id_seq;
-        END IF;
-        
-        -- Set sequence ownership to suppliers.id column
-        ALTER SEQUENCE suppliers_id_seq OWNED BY suppliers.id;
-        
-        -- Set default value for id column to use sequence
-        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
-        
-        -- Sync sequence to current max id value
-        PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1, false);
-      END $$;
-    `.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS founded_year INTEGER`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS logo TEXT`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS favicon TEXT`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS primary_color VARCHAR(7) DEFAULT '#3b82f6'`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS secondary_color VARCHAR(7) DEFAULT '#64748b'`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) DEFAULT '#16a34a'`.catch(
+      () => {},
+    )
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS slogan VARCHAR(255)`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS description TEXT`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS industry VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS company_size VARCHAR(50)`.catch(() => {})
 
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {

@@ -12,6 +12,8 @@ import { ArrowLeft, ArrowRight, Check, RouterIcon, Shield, Network } from "lucid
 import { toast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { RADIUSConfigGenerator } from "@/components/radius-config-generator"
+import { Troubleshooter } from "@/components/troubleshooter"
 
 interface Location {
   id: number
@@ -176,7 +178,7 @@ export default function AddRouterPage() {
   const progress = (currentStep / STEPS.length) * 100
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto py-6 px-4 max-w-4xl">
       {/* Header */}
       <div className="mb-8">
         <Button variant="ghost" size="sm" onClick={() => router.push("/network/routers")} className="mb-4">
@@ -539,6 +541,26 @@ export default function AddRouterPage() {
           </Button>
         )}
       </div>
+
+      {/* RADIUS Config Generator and Troubleshooter */}
+      {formData.type && formData.ip_address && (
+        <div className="mt-6 space-y-6">
+          <RADIUSConfigGenerator
+            vendor={formData.type as "mikrotik" | "ubiquiti" | "juniper"}
+            routerIp={formData.ip_address}
+            radiusServerIp={process.env.NEXT_PUBLIC_RADIUS_SERVER_IP || "10.0.0.10"}
+            radiusSecret={formData.radius_secret || "changeme"}
+            pppoeInterface="ether2"
+            localAddress="10.0.0.1"
+          />
+          <Troubleshooter
+            vendor={formData.type as "mikrotik" | "ubiquiti" | "juniper"}
+            routerIp={formData.ip_address}
+            radiusServerIp={process.env.NEXT_PUBLIC_RADIUS_SERVER_IP || "10.0.0.10"}
+            radiusSecret={formData.radius_secret || "changeme"}
+          />
+        </div>
+      )}
     </div>
   )
 }

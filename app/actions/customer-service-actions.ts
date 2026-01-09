@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/router-provisioning"
 import { provisionRadiusUser, suspendRadiusUser, updateRadiusSpeed, deprovisionRadiusUser } from "@/lib/radius-manager"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
+import { queueServiceProvisioning } from "@/lib/router-selection"
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -57,6 +58,9 @@ export async function addCustomerService(customerId: number, formData: FormData)
     console.log("[v0] Timestamp:", new Date().toISOString())
 
     const servicePlanId = Number.parseInt(formData.get("service_plan_id") as string)
+    const routerId = formData.get("router_id") as string
+    const authMethod = (formData.get("auth_method") as string) || "pppoe"
+    const enforcementMode = (formData.get("enforcement_mode") as string) || "radius"
     const connectionType = formData.get("connection_type") as string
     const locationId = formData.get("location_id") as string
     const macAddress = formData.get("mac_address") as string
@@ -64,14 +68,14 @@ export async function addCustomerService(customerId: number, formData: FormData)
     const pppoeEnabled = formData.get("pppoe_enabled") === "on"
     const pppoeUsername = formData.get("pppoe_username") as string
     const pppoePassword = formData.get("pppoe_password") as string
-    const inventoryItems = formData.get("inventory_items") as string
-    const adminOverride = formData.get("admin_override") === "on"
-    const routerId = formData.get("router_id") as string
     const ipAddress = formData.get("ip_address") as string
     const autoRenew = formData.get("auto_renew") === "on"
 
     console.log("[v0] Customer ID:", customerId)
     console.log("[v0] Service Plan ID:", servicePlanId)
+    console.log("[v0] Router ID:", routerId)
+    console.log("[v0] Auth Method:", authMethod)
+    console.log("[v0] Enforcement Mode:", enforcementMode)
     console.log("[v0] Connection Type:", connectionType)
     console.log("[v0] Location ID:", locationId)
     console.log("[v0] MAC Address:", macAddress)
@@ -79,9 +83,8 @@ export async function addCustomerService(customerId: number, formData: FormData)
     console.log("[v0] PPPoE Enabled:", pppoeEnabled)
     console.log("[v0] PPPoE Username:", pppoeUsername)
     console.log("[v0] PPPoE Password:", pppoePassword)
-    console.log("[v0] Inventory Items:", inventoryItems)
-    console.log("[v0] Admin Override:", adminOverride)
-    console.log("[v0] Router ID:", routerId)
+    console.log("[v0] IP Address:", ipAddress)
+    console.log("[v0] Auto Renew:", autoRenew)
 
     if (!servicePlanId || isNaN(servicePlanId)) {
       console.log("[v0] Invalid service plan ID")
@@ -136,220 +139,73 @@ export async function addCustomerService(customerId: number, formData: FormData)
       }
     }
 
-    const initialStatus = adminOverride ? "active" : "pending"
+    console.log("[v0] Creating new service...")
 
-    console.log("[v0] Creating new service with status:", initialStatus)
-
-    const result = await sql`
+    const [service] = await sql`
       INSERT INTO customer_services (
-        customer_id, 
-        service_plan_id, 
-        status, 
-        monthly_fee,
-        activation_date,
-        ip_address,
-        device_id,
+        customer_id,
+        service_plan_id,
+        router_id,
+        auth_method,
+        enforcement_mode,
         connection_type,
+        location_id,
+        ip_address,
+        mac_address,
         lock_to_mac,
-        auto_renew,
-        pppoe_enabled,
         pppoe_username,
         pppoe_password,
-        created_at,
-        updated_at
+        auto_renew,
+        status,
+        installation_date
       ) VALUES (
         ${customerId},
         ${servicePlanId},
-        ${initialStatus},
-        ${servicePlan[0].price},
-        ${initialStatus === "active" ? sql`NOW()` : null},
-        ${ipAddress && ipAddress !== "auto" ? ipAddress : null},
+        ${routerId || null},
+        ${authMethod},
+        ${enforcementMode},
+        ${connectionType},
+        ${locationId || null},
+        ${ipAddress || null},
         ${macAddress || null},
-        ${connectionType || "pppoe"},
         ${lockToMac},
+        ${pppoeUsername || null},
+        ${pppoePassword || null},
         ${autoRenew},
-        ${pppoeEnabled},
-        ${pppoeEnabled && pppoeUsername ? pppoeUsername : null},
-        ${pppoeEnabled && pppoePassword ? pppoePassword : null},
-        NOW(),
-        NOW()
-      ) RETURNING *
+        'active',
+        CURRENT_DATE
+      )
+      RETURNING id
     `
 
-    const serviceId = result[0].id
-    let allocatedIpAddress = null
+    const serviceId = service.id
 
-    if (ipAddress === "auto" || !ipAddress) {
-      await sql`
-        INSERT INTO pending_tasks (
-          task_type, 
-          resource_type, 
-          resource_id, 
-          data,
-          status,
-          created_at
-        ) VALUES (
-          'allocate_ip',
-          'customer_service',
-          ${serviceId},
-          ${JSON.stringify({ customerId, serviceId, locationId, connectionType })}::jsonb,
-          'pending',
-          NOW()
-        )
-        ON CONFLICT DO NOTHING
-      `
-    } else if (ipAddress && locationId) {
-      await sql`
-        UPDATE ip_addresses
-        SET status = 'assigned', customer_id = ${customerId}, service_id = ${serviceId}
-        WHERE ip_address::text = ${ipAddress}
-      `
-      allocatedIpAddress = ipAddress
+    console.log("[v0] Handling provisioning based on enforcement mode:", enforcementMode)
 
-      await sql`
-        UPDATE customer_services
-        SET ip_address = ${allocatedIpAddress}
-        WHERE id = ${serviceId}
-      `
-    }
-
-    const invoiceNumber = `INV-${customerId}-${Date.now()}-${serviceId}`
-    const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 30)
-
-    const invoice = await sql`
-      INSERT INTO invoices (
-        customer_id,
-        invoice_number,
-        amount,
-        total_amount,
-        due_date,
-        status,
-        description,
-        created_at
-      ) VALUES (
-        ${customerId},
-        ${invoiceNumber},
-        ${servicePlan[0].price},
-        ${servicePlan[0].price},
-        ${dueDate.toISOString().split("T")[0]},
-        ${adminOverride ? "paid" : "pending"},
-        ${`Initial invoice for ${servicePlan[0].name}`},
-        NOW()
-      ) RETURNING id
-    `
-
-    if (adminOverride) {
-      await sql`
-        UPDATE invoices 
-        SET paid_amount = ${servicePlan[0].price}
-        WHERE id = ${invoice[0].id}
-      `
-
-      await sql`
-        INSERT INTO admin_logs (admin_id, action, resource_type, resource_id, new_values, created_at)
-        VALUES (
-          1,
-          'service_activation',
-          'customer_service',
-          ${serviceId},
-          ${JSON.stringify({
-            customer_id: customerId,
-            service_id: serviceId,
-            invoice_id: invoice[0].id,
-            reason: "admin_override",
-          })}::jsonb,
-          NOW()
-        )
-      `
-
-      const radiusUsername = pppoeUsername || `customer_${customerId}`
-      const radiusPassword = pppoePassword || Math.random().toString(36).substring(2, 15)
-
+    if (enforcementMode === "radius" || enforcementMode === "hybrid") {
       console.log("[v0] Provisioning to RADIUS...")
-      const radiusResult = await provisionRadiusUser({
-        customerId,
-        serviceId,
-        username: radiusUsername,
-        password: radiusPassword,
-        ipAddress: allocatedIpAddress || undefined,
-        downloadSpeed: servicePlan[0].speed_download,
-        uploadSpeed: servicePlan[0].speed_upload,
-        nasId: routerId ? Number.parseInt(routerId) : undefined,
+      // Provision to RADIUS
+      await provisionRadiusUser({
+        username: pppoeUsername,
+        password: pppoePassword,
+        planId: servicePlanId,
+        ipAddress: ipAddress || null,
       })
-
-      if (!radiusResult.success) {
-        console.log("[v0] Warning: RADIUS provisioning failed:", radiusResult.error)
-      } else {
-        console.log("[v0] RADIUS user provisioned successfully")
-      }
-
-      if (routerId) {
-        console.log("[v0] Auto-provisioning service to physical router...")
-
-        const provisionResult = await provisionServiceToRouter({
-          serviceId,
-          customerId,
-          routerId: Number.parseInt(routerId),
-          ipAddress: allocatedIpAddress || undefined,
-          connectionType: connectionType as "pppoe" | "static_ip" | "dhcp",
-          pppoeUsername: radiusUsername,
-          pppoePassword: radiusPassword,
-          downloadSpeed: servicePlan[0].speed_download,
-          uploadSpeed: servicePlan[0].speed_upload,
-        })
-
-        if (!provisionResult.success) {
-          console.log("[v0] Warning: Router provisioning failed:", provisionResult.error)
-          // Don't fail the entire operation, just log the warning
-        } else {
-          console.log("[v0] Service auto-provisioned to router successfully")
-        }
-      } else {
-        console.log("[v0] No router ID provided, skipping physical router provisioning")
-      }
     }
 
-    if (inventoryItems) {
-      try {
-        const itemIds = JSON.parse(inventoryItems)
-        if (itemIds.length > 0) {
-          for (const itemId of itemIds) {
-            await sql`
-              INSERT INTO service_inventory (service_id, inventory_id, assigned_at, status)
-              VALUES (${serviceId}, ${Number.parseInt(itemId)}, NOW(), 'assigned')
-              ON CONFLICT DO NOTHING
-            `
-          }
-
-          await sql`
-            UPDATE inventory 
-            SET stock_quantity = stock_quantity - 1
-            WHERE id = ANY(${itemIds.map((id: string) => Number.parseInt(id))})
-            AND stock_quantity > 0
-          `
-        }
-      } catch (inventoryError) {
-        console.error("Inventory assignment error:", inventoryError)
-      }
+    if (enforcementMode === "direct" || enforcementMode === "hybrid") {
+      console.log("[v0] Queueing async router provisioning...")
+      // Queue async router provisioning
+      await queueServiceProvisioning(serviceId, Number.parseInt(routerId), "CREATE", enforcementMode)
     }
 
-    revalidatePath(`/customers/${customerId}`, "page")
-
-    console.log("[v0] Service created successfully:", result[0].id)
+    revalidatePath("/customers")
+    console.log("[v0] Service created successfully:", serviceId)
     console.log("[v0] === addCustomerService END ===")
 
-    return {
-      success: true,
-      service: result[0],
-      invoice: { id: invoice[0].id },
-      ip_address: allocatedIpAddress,
-      message: adminOverride
-        ? "Service activated immediately with admin override."
-        : "Service created with pending payment status. IP will be assigned upon activation.",
-    }
+    return { success: true, serviceId }
   } catch (error) {
-    console.error("Error adding customer service:", error)
+    console.error("[v0] Error adding customer service:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to add service. Please try again.",
@@ -604,7 +460,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
               }),
               provisionRadiusUser({
                 customerId: service.customer_id,
-                serviceId: service.id,
+                serviceId,
                 username: service.portal_username || `customer_${service.customer_id}`,
                 password: service.portal_username || `customer_${service.customer_id}`,
                 ipAddress: service.ip_address,

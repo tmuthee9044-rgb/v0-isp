@@ -25,6 +25,7 @@ import { toast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RADIUSConfigGenerator } from "@/components/radius-config-generator"
 
 interface Location {
   id: number
@@ -199,10 +200,26 @@ export default function EditRouterPage() {
     setIsSaving(true)
     try {
       const payload = {
-        ...formData,
+        name: formData.name,
+        type: formData.type,
         location_id: Number.parseInt(formData.location_id),
-        port: Number.parseInt(formData.port),
+        hostname: formData.ip_address,
+        connection_type: formData.connection_method,
+        api_port: Number.parseInt(formData.port),
         ssh_port: Number.parseInt(formData.ssh_port),
+        username: formData.username,
+        password: formData.password || undefined, // Only send if changed
+        mikrotik_user: formData.api_username || formData.username,
+        mikrotik_password: formData.api_password || formData.password || undefined,
+        enable_traffic_recording: formData.enable_traffic_recording,
+        enable_speed_control: formData.enable_speed_control,
+        blocking_page_url: formData.blocking_page_url,
+        customer_auth_method: formData.customer_auth_method,
+        radius_secret: formData.radius_secret,
+        radius_nas_ip: formData.nas_ip_address, // Map nas_ip_address to radius_nas_ip
+        gps_latitude: formData.latitude || null,
+        gps_longitude: formData.longitude || null,
+        status: formData.status,
       }
 
       const response = await fetch(`/api/network/routers/${params.id}`, {
@@ -639,113 +656,80 @@ export default function EditRouterPage() {
           </Button>
         ) : (
           <Button onClick={handleSubmit} disabled={isSaving}>
-            {isSaving ? "Updating..." : "Update Router"}
+            {isSaving ? "Saving..." : "Save Changes"}
             <Check className="h-4 w-4 ml-2" />
           </Button>
         )}
       </div>
 
-      <Card className="border-2 border-primary/20 mt-8">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" />
-              <CardTitle>Connection Troubleshooting</CardTitle>
-            </div>
-            <Button onClick={handleTroubleshoot} disabled={isTroubleshooting}>
+      {formData.type && formData.nas_ip_address && formData.radius_secret && (
+        <div className="mt-6">
+          <RADIUSConfigGenerator
+            vendor={formData.type as "mikrotik" | "ubiquiti" | "juniper"}
+            routerName={formData.name || "Router"}
+            nasIpAddress={formData.nas_ip_address}
+            radiusSecret={formData.radius_secret}
+          />
+        </div>
+      )}
+
+      {/* Connection Troubleshooting Tool */}
+      <div className="mt-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Connection Troubleshooting
+            </CardTitle>
+            <CardDescription>Diagnose connectivity issues and verify router configuration</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={handleTroubleshoot} disabled={isTroubleshooting} className="w-full">
               {isTroubleshooting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Running Diagnostics...
                 </>
               ) : (
                 <>
-                  <Activity className="w-4 h-4 mr-2" />
+                  <Activity className="h-4 w-4 mr-2" />
                   Run Diagnostics
                 </>
               )}
             </Button>
-          </div>
-        </CardHeader>
 
-        {troubleshootResults && (
-          <CardContent className="space-y-4">
-            {/* Overall Status */}
-            <div className="flex items-center gap-4 p-4 rounded-lg bg-muted">
-              <div className="flex-1">
-                <div className="text-sm text-muted-foreground">Overall Status</div>
-                <div className="text-lg font-semibold">
-                  {troubleshootResults.overallStatus === "healthy" && (
-                    <span className="text-green-500">✓ All Systems Operational</span>
-                  )}
-                  {troubleshootResults.overallStatus === "partial" && (
-                    <span className="text-yellow-500">⚠ Partial Connectivity</span>
-                  )}
-                  {troubleshootResults.overallStatus === "failed" && (
-                    <span className="text-red-500">✗ Connection Failed</span>
-                  )}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold">
-                  {troubleshootResults.summary.passed}/{troubleshootResults.summary.total}
-                </div>
-                <div className="text-sm text-muted-foreground">Tests Passed</div>
-              </div>
-            </div>
-
-            {/* Diagnostic Tests */}
-            <div className="space-y-3">
-              {troubleshootResults.tests.map((test: any, index: number) => (
-                <div
-                  key={index}
-                  className={`p-4 rounded-lg border ${
-                    test.status === "success"
-                      ? "border-green-200 bg-green-50"
-                      : test.status === "failed"
-                        ? "border-red-200 bg-red-50"
-                        : "border-yellow-200 bg-yellow-50"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {getStatusIcon(test.status)}
-                    <div className="flex-1">
-                      <div className="font-semibold">{test.name}</div>
-                      {test.error && <div className="text-sm text-red-600 mt-1">{test.error}</div>}
-                      {test.details && (
-                        <div className="mt-2 space-y-1">
-                          {Object.entries(test.details).map(([key, value]: any) => (
-                            <div key={key} className="text-sm">
-                              <span className="font-medium">{key}:</span>{" "}
-                              <span className="text-muted-foreground">
-                                {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+            {troubleshootResults && (
+              <div className="space-y-3 mt-4">
+                {troubleshootResults.checks?.map((check: any, index: number) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg border ${
+                      check.status === "success"
+                        ? "bg-green-50 border-green-200 dark:bg-green-950/20"
+                        : check.status === "failed"
+                          ? "bg-red-50 border-red-200 dark:bg-red-950/20"
+                          : "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {getStatusIcon(check.status)}
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-sm">{check.name}</h4>
+                        <p className="text-sm text-muted-foreground mt-1">{check.message}</p>
+                        {check.details && (
+                          <pre className="text-xs mt-2 p-2 bg-background rounded border overflow-x-auto">
+                            {JSON.stringify(check.details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Timestamp */}
-            <div className="text-xs text-muted-foreground text-right">
-              Completed at {new Date(troubleshootResults.timestamp).toLocaleString()}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
-        )}
-
-        {isTroubleshooting && !troubleshootResults && (
-          <CardContent>
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <span className="ml-3 text-muted-foreground">Running diagnostic tests...</span>
-            </div>
-          </CardContent>
-        )}
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

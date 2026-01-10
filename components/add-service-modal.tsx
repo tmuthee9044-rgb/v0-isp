@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -190,13 +188,10 @@ export default function AddServiceModal({
     }
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    event.stopPropagation() // Prevent event bubbling to avoid double submission
-
+  const handleSubmit = async () => {
     console.log("[v0] === handleSubmit START ===")
-    console.log("[v0] isLoading:", isLoading)
-    console.log("[v0] Timestamp:", new Date().toISOString())
+    console.log("[v0] Selected plan:", selectedPlan)
+    console.log("[v0] Connection type:", connectionType)
 
     if (isLoading) {
       console.log("[v0] Already loading, preventing duplicate submission")
@@ -219,24 +214,24 @@ export default function AddServiceModal({
     try {
       const formData = new FormData()
       formData.append("customerId", customerId.toString())
-      formData.append("servicePlanId", selectedPlan)
-      formData.append("connectionType", connectionType)
+      formData.append("service_plan_id", selectedPlan)
+      formData.append("connection_type", connectionType)
       if (selectedLocation) {
         formData.append("locationId", selectedLocation)
       }
-      formData.append("autoRenew", autoRenew ? "true" : "false")
+      formData.append("auto_renew", autoRenew ? "on" : "off")
       formData.append("adminOverride", adminOverride ? "true" : "false")
 
-      if (selectedIpAddress) formData.append("ipAddress", selectedIpAddress)
+      if (selectedIpAddress) formData.append("ip_address", selectedIpAddress)
       if (macAddress) {
-        formData.append("macAddress", macAddress)
+        formData.append("mac_address", macAddress)
         formData.append("deviceId", macAddress) // Legacy field
       }
-      formData.append("lockToMac", lockToMac ? "true" : "false")
-      formData.append("pppoeEnabled", pppoeEnabled ? "true" : "false")
+      formData.append("lock_to_mac", lockToMac ? "on" : "off")
+      formData.append("pppoe_enabled", pppoeEnabled ? "on" : "off")
       if (pppoeEnabled) {
-        formData.append("pppoeUsername", pppoeUsername)
-        formData.append("pppoePassword", pppoePassword)
+        formData.append("pppoe_username", pppoeUsername)
+        formData.append("pppoe_password", pppoePassword)
       }
 
       console.log("[v0] Calling addCustomerService/updateCustomerService...")
@@ -375,7 +370,13 @@ export default function AddServiceModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleSubmit()
+          }}
+          className="space-y-6"
+        >
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
             <TabsList>
               <TabsTrigger value="plans">Service Plans</TabsTrigger>

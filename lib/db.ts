@@ -281,6 +281,12 @@ async function ensureCriticalColumns() {
     )
     await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_status ON payroll_records(status)`.catch(() => {})
 
+    await sql`CREATE SEQUENCE IF NOT EXISTS purchase_orders_id_seq`.catch(() => {})
+    await sql`ALTER TABLE purchase_orders ALTER COLUMN id SET DEFAULT nextval('purchase_orders_id_seq')`.catch(() => {})
+    await sql`SELECT setval('purchase_orders_id_seq', COALESCE((SELECT MAX(id) FROM purchase_orders), 0) + 1, false)`.catch(
+      () => {},
+    )
+
     console.log("[DB] Critical columns checked successfully")
   } catch (error) {
     console.error("[DB] Error checking columns:", error)

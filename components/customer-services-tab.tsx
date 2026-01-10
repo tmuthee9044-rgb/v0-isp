@@ -64,6 +64,8 @@ interface CustomerService {
   router_id: number | null
   suspended_at: string | null
   router_sync_status: string | null
+  pppoe_username: string | null
+  pppoe_password: string | null
 }
 
 interface ServicePlan {
@@ -837,6 +839,59 @@ export function CustomerServicesTab({ customerId }: { customerId: number }) {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Shield className="w-4 h-4" />
+                        PPPoE Configuration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label htmlFor="pppoe_username">PPPoE Username</Label>
+                        <Input
+                          id="pppoe_username"
+                          name="pppoe_username"
+                          defaultValue={editingService.pppoe_username || ""}
+                          placeholder="PPPoE username"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="pppoe_password">PPPoE Password</Label>
+                        <Input
+                          id="pppoe_password"
+                          name="pppoe_password"
+                          type="text"
+                          defaultValue={editingService.pppoe_password || ""}
+                          placeholder="PPPoE password"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Password is shown in plain text for easy copying
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="ip_address">IP Address</Label>
+                        <Input
+                          id="ip_address"
+                          name="ip_address"
+                          defaultValue={editingService.ip_address || ""}
+                          placeholder="192.168.1.1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="device_id">MAC Address</Label>
+                        <Input
+                          id="device_id"
+                          name="device_id"
+                          defaultValue={editingService.device_id || ""}
+                          placeholder="00:11:22:33:44:55"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
 

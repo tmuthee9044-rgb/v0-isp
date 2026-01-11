@@ -74,6 +74,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       location_id,
       hostname,
       connection_type,
+      connection_method, // Added to support frontend field name
       api_port,
       ssh_port,
       username,
@@ -139,7 +140,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         ssh_port = ${ssh_port || existingRouter[0].ssh_port || 22},
         username = ${username || existingRouter[0].username || null},
         password = ${password || existingRouter[0].password || null},
-        connection_method = ${connection_type || existingRouter[0].connection_method || "api"},
+        connection_method = ${connection_method || connection_type || existingRouter[0].connection_method || "api"},
         api_username = ${mikrotik_user || username || null},
         api_password = ${mikrotik_password || password || null},
         status = ${status || "active"},

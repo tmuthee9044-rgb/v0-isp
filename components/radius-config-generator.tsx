@@ -10,7 +10,7 @@ import { generateRouterSetupGuide } from "@/lib/radius-client-config"
 
 interface RADIUSConfigGeneratorProps {
   vendor: "mikrotik" | "ubiquiti" | "juniper"
-  routerName: string
+  routerName?: string
   nasIpAddress: string
   radiusSecret: string
   radiusServerIP?: string
@@ -18,18 +18,18 @@ interface RADIUSConfigGeneratorProps {
 
 export function RADIUSConfigGenerator({
   vendor,
-  routerName,
+  routerName = "router",
   nasIpAddress,
   radiusSecret,
   radiusServerIP = process.env.NEXT_PUBLIC_RADIUS_SERVER_IP || "10.0.0.1",
 }: RADIUSConfigGeneratorProps) {
   const [copiedTab, setCopiedTab] = useState<string | null>(null)
 
-  const shortname = routerName.toLowerCase().replace(/\s+/g, "-")
+  const shortname = (routerName || "router").toLowerCase().replace(/\s+/g, "-")
 
   const { freeradiusConfig, routerConfig, testCommands } = generateRouterSetupGuide({
     vendor,
-    routerName,
+    routerName: routerName || "router",
     radiusServerIP,
     radiusSecret,
     nasIpAddress,

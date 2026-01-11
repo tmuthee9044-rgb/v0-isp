@@ -188,39 +188,27 @@ export default function EditRouterPage() {
   }
 
   const handleSubmit = async () => {
-    if (!validateStep(currentStep)) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      })
-      return
-    }
-
     setIsSaving(true)
     try {
+      console.log("[v0] Submitting router update with formData:", formData)
+
       const payload = {
-        name: formData.name,
-        type: formData.type,
+        ...formData,
         location_id: Number.parseInt(formData.location_id),
-        hostname: formData.ip_address,
-        connection_type: formData.connection_method,
-        api_port: Number.parseInt(formData.port),
+        port: Number.parseInt(formData.port),
         ssh_port: Number.parseInt(formData.ssh_port),
-        username: formData.username,
-        password: formData.password || undefined, // Only send if changed
-        mikrotik_user: formData.api_username || formData.username,
-        mikrotik_password: formData.api_password || formData.password || undefined,
-        enable_traffic_recording: formData.enable_traffic_recording,
-        enable_speed_control: formData.enable_speed_control,
-        blocking_page_url: formData.blocking_page_url,
+        api_port: Number.parseInt(formData.port),
+        radius_nas_ip: formData.nas_ip_address,
+        gps_latitude: formData.latitude,
+        gps_longitude: formData.longitude,
+        mikrotik_user: formData.api_username,
+        mikrotik_password: formData.api_password,
+        hostname: formData.ip_address,
+        connection_method: formData.connection_method,
         customer_auth_method: formData.customer_auth_method,
-        radius_secret: formData.radius_secret,
-        radius_nas_ip: formData.nas_ip_address, // Map nas_ip_address to radius_nas_ip
-        gps_latitude: formData.latitude || null,
-        gps_longitude: formData.longitude || null,
-        status: formData.status,
       }
+
+      console.log("[v0] Sending payload to API:", payload)
 
       const response = await fetch(`/api/network/routers/${params.id}`, {
         method: "PUT",

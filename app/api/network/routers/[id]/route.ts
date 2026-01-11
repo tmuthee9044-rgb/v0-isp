@@ -66,7 +66,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
-    console.log("[v0] Updating router with data:", body)
+    console.log("[v0] Updating router ID:", routerId, "with name:", body.name, "type:", body.type)
 
     const {
       name,

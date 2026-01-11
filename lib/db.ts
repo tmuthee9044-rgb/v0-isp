@@ -297,13 +297,11 @@ async function ensureCriticalColumns() {
  * Unified SQL client — pure PostgreSQL driver for Rule 4 compliance
  * Run column check only on first call, then return cached client
  */
-export async function getSql() {
-  // Run column check asynchronously on first call only
-  if (!columnsChecked) {
-    ensureCriticalColumns().catch(() => {}) // Fire and forget
-  }
+export function getSql() {
   return sql
 }
+
+export { sql }
 
 /**
  * Get database status for diagnostics
@@ -327,7 +325,6 @@ export async function getDatabaseStatus() {
   }
 }
 
-export { sql }
 export default sql
 export const db = sql
 export const getSqlConnection = () => sql

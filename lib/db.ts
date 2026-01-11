@@ -1,5 +1,3 @@
-"use server"
-
 import postgres from "postgres"
 
 let columnsChecked = false

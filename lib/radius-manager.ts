@@ -1,7 +1,5 @@
 import { getSql } from "./db"
 
-const sql = getSql()
-
 /**
  * Vendor-specific RADIUS attribute mapping
  * Maps generic speed profile attributes to vendor-specific RADIUS attributes
@@ -80,6 +78,14 @@ export function formatSpeedAttribute(
   }
 }
 
+function getRadiusSql() {
+  const sql = getSql()
+  if (!sql) {
+    throw new Error("Database connection not available")
+  }
+  return sql
+}
+
 /**
  * Automatically populate radcheck and radreply tables when service is created
  */
@@ -91,9 +97,13 @@ export async function provisionRadiusUser(
 ) {
   console.log(`[v0] Provisioning RADIUS user: ${username} for vendor: ${vendor}`)
 
+  const sql = getRadiusSql()
+
   // Get service plan details
   const plan = await sql`
-    SELECT speed_download, speed_upload, burst_download, burst_upload, 
+    SELECT speed_download, speed_upload, 
+           COALESCE(burst_download, 0) as burst_download, 
+           COALESCE(burst_upload, 0) as burst_upload, 
            guaranteed_download, guaranteed_upload, fup_enabled, fup_speed
     FROM service_plans 
     WHERE id = ${servicePlanId}
@@ -103,7 +113,7 @@ export async function provisionRadiusUser(
     throw new Error(`Service plan ${servicePlanId} not found`)
   }
 
-  const { speed_download, speed_upload, burst_download = null, burst_upload = null } = plan[0]
+  const { speed_download, speed_upload, burst_download = 0, burst_upload = 0 } = plan[0]
 
   // Validate required fields
   if (!speed_download || !speed_upload) {
@@ -121,7 +131,7 @@ export async function provisionRadiusUser(
   // 2. Get vendor-specific speed attribute
   const speedAttr = formatSpeedAttribute(vendor, speed_download, speed_upload, burst_download, burst_upload)
 
-  if (!speedAttr.attribute || speedAttr.value === undefined || speedAttr.value === null) {
+  if (!speedAttr.attribute || speedAttr.value === undefined || speedAttr.value === null || speedAttr.value === "") {
     throw new Error(`Failed to generate speed attribute for vendor ${vendor}`)
   }
 
@@ -166,8 +176,12 @@ export async function provisionRadiusUser(
  * Update RADIUS attributes when service plan changes
  */
 export async function updateRadiusSpeed(username: string, servicePlanId: number, vendor = "mikrotik") {
+  const sql = getRadiusSql()
+
   const plan = await sql`
-    SELECT speed_download, speed_upload, burst_download, burst_upload
+    SELECT speed_download, speed_upload, 
+           COALESCE(burst_download, 0) as burst_download, 
+           COALESCE(burst_upload, 0) as burst_upload
     FROM service_plans 
     WHERE id = ${servicePlanId}
   `
@@ -176,9 +190,13 @@ export async function updateRadiusSpeed(username: string, servicePlanId: number,
     throw new Error(`Service plan ${servicePlanId} not found`)
   }
 
-  const { speed_download, speed_upload, burst_download, burst_upload } = plan[0]
+  const { speed_download, speed_upload, burst_download = 0, burst_upload = 0 } = plan[0]
 
   const speedAttr = formatSpeedAttribute(vendor, speed_download, speed_upload, burst_download, burst_upload)
+
+  if (!speedAttr.attribute || speedAttr.value === undefined || speedAttr.value === null || speedAttr.value === "") {
+    throw new Error(`Failed to generate speed attribute for vendor ${vendor}`)
+  }
 
   // Update existing speed attribute
   await sql`
@@ -195,6 +213,8 @@ export async function updateRadiusSpeed(username: string, servicePlanId: number,
  * Suspend user by removing from radcheck (user can't authenticate)
  */
 export async function suspendRadiusUser(username: string) {
+  const sql = getRadiusSql()
+
   await sql`
     DELETE FROM radcheck WHERE username = ${username}
   `
@@ -205,6 +225,8 @@ export async function suspendRadiusUser(username: string) {
  * Unsuspend user by restoring radcheck entry
  */
 export async function unsuspendRadiusUser(username: string, password: string) {
+  const sql = getRadiusSql()
+
   await sql`
     INSERT INTO radcheck (username, attribute, op, value)
     VALUES (${username}, 'Cleartext-Password', ':=', ${password})
@@ -230,6 +252,8 @@ export async function deprovisionRadiusUser({
   reason?: string
 }) {
   try {
+    const sql = getRadiusSql()
+
     // Remove from radcheck (authentication)
     await sql`
       DELETE FROM radcheck WHERE username = ${username}
@@ -261,6 +285,8 @@ export async function deprovisionRadiusUser({
  * Get current online sessions from radacct
  */
 export async function getOnlineSessions() {
+  const sql = getRadiusSql()
+
   const sessions = await sql`
     SELECT 
       username,
@@ -283,6 +309,8 @@ export async function getOnlineSessions() {
  * Get session statistics for a specific user
  */
 export async function getUserSessionStats(username: string) {
+  const sql = getRadiusSql()
+
   const stats = await sql`
     SELECT 
       COUNT(*) as total_sessions,
@@ -300,6 +328,8 @@ export async function getUserSessionStats(username: string) {
  * Disconnect active session (for disconnection via RADIUS CoA/DM)
  */
 export async function getActiveSession(username: string) {
+  const sql = getRadiusSql()
+
   const session = await sql`
     SELECT 
       radacctid,

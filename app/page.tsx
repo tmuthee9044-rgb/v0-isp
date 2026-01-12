@@ -130,7 +130,7 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
   const [realTimeKPIs, setRealTimeKPIs] = useState<RealTimeKPIs | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { settings: localizationSettings } = useLocalization()
@@ -148,7 +148,7 @@ export default function Dashboard() {
         const responses = await Promise.allSettled([
           fetch("/api/dashboard/metrics"),
           fetch("/api/dashboard/revenue"),
-          fetch("/api/dashboard/real-time-kpis"),
+          fetch("/api/dashboard/kpis"),
         ])
 
         const [metricsResponse, revenueResponse, kpisResponse] = responses
@@ -171,7 +171,7 @@ export default function Dashboard() {
       } catch (error) {
         setError("Failed to load dashboard data. Please try refreshing the page.")
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
@@ -179,7 +179,7 @@ export default function Dashboard() {
 
     const realTimeInterval = setInterval(async () => {
       try {
-        const kpisResponse = await fetch("/api/dashboard/real-time-kpis")
+        const kpisResponse = await fetch("/api/dashboard/kpis")
         if (kpisResponse.ok) {
           const kpisData = await kpisResponse.json()
           setRealTimeKPIs(kpisData.data)
@@ -274,7 +274,7 @@ export default function Dashboard() {
     )
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-8 pt-6">
         <div className="flex items-center justify-center h-64">

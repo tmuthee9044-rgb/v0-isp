@@ -116,7 +116,7 @@ export async function POST(request: Request) {
               mrr_total, gdpr_agreed, prepaid_monthly_costs, prepaid_expiration_date,
               prepaid_remains_days, billing_type, partner_id, location_id, 
               added_by, added_by_id, login, category, password_hash,
-              date_add, last_online, last_update, daily_prepaid_cost, conversion_date,
+              date_add, last_online, daily_prepaid_cost, conversion_date,
               mpesa_phone_number, report_first_service_amount, report_first_service_cancel_date,
               splynx_addon_agents_agent, splynx_addon_resellers_reseller,
               enabled, type, deposit, billing_date, billing_due, 
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
               email = EXCLUDED.email,
               phone = EXCLUDED.phone,
               status = EXCLUDED.status,
-              last_update = NOW()
+              updated_at = NOW()
           `
           imported++
         } catch (error) {

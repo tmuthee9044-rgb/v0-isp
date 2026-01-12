@@ -103,7 +103,12 @@ export async function provisionRadiusUser(
     throw new Error(`Service plan ${servicePlanId} not found`)
   }
 
-  const { speed_download, speed_upload, burst_download, burst_upload } = plan[0]
+  const { speed_download, speed_upload, burst_download = null, burst_upload = null } = plan[0]
+
+  // Validate required fields
+  if (!speed_download || !speed_upload) {
+    throw new Error(`Service plan ${servicePlanId} is missing required speed values`)
+  }
 
   // 1. Insert password check (radcheck)
   await sql`
@@ -115,6 +120,10 @@ export async function provisionRadiusUser(
 
   // 2. Get vendor-specific speed attribute
   const speedAttr = formatSpeedAttribute(vendor, speed_download, speed_upload, burst_download, burst_upload)
+
+  if (!speedAttr.attribute || speedAttr.value === undefined || speedAttr.value === null) {
+    throw new Error(`Failed to generate speed attribute for vendor ${vendor}`)
+  }
 
   // 3. Insert speed limit (radreply)
   await sql`

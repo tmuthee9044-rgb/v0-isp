@@ -137,34 +137,47 @@ export async function provisionRadiusUser(
 
   // 3. Insert speed limit (radreply)
   await sql`
+    DELETE FROM radreply 
+    WHERE username = ${username} 
+    AND (attribute = ${speedAttr.attribute})
+  `
+
+  await sql`
     INSERT INTO radreply (username, attribute, op, value)
     VALUES (${username}, ${speedAttr.attribute}, ':=', ${speedAttr.value})
-    ON CONFLICT (username, attribute)
-    DO UPDATE SET value = ${speedAttr.value}
   `
 
   // 4. Add Framed-Protocol for PPPoE
   await sql`
+    DELETE FROM radreply 
+    WHERE username = ${username} AND attribute = 'Framed-Protocol'
+  `
+
+  await sql`
     INSERT INTO radreply (username, attribute, op, value)
     VALUES (${username}, 'Framed-Protocol', ':=', 'PPP')
-    ON CONFLICT (username, attribute)
-    DO NOTHING
   `
 
   // 5. Add Framed-Compression
   await sql`
+    DELETE FROM radreply 
+    WHERE username = ${username} AND attribute = 'Framed-Compression'
+  `
+
+  await sql`
     INSERT INTO radreply (username, attribute, op, value)
     VALUES (${username}, 'Framed-Compression', ':=', 'Van-Jacobson-TCP-IP')
-    ON CONFLICT (username, attribute)
-    DO NOTHING
   `
 
   // 6. Add Service-Type
   await sql`
+    DELETE FROM radreply 
+    WHERE username = ${username} AND attribute = 'Service-Type'
+  `
+
+  await sql`
     INSERT INTO radreply (username, attribute, op, value)
     VALUES (${username}, 'Service-Type', ':=', 'Framed-User')
-    ON CONFLICT (username, attribute)
-    DO NOTHING
   `
 
   console.log(`[v0] RADIUS user provisioned successfully: ${username} with ${speedAttr.attribute}=${speedAttr.value}`)
@@ -200,10 +213,14 @@ export async function updateRadiusSpeed(username: string, servicePlanId: number,
 
   // Update existing speed attribute
   await sql`
-    UPDATE radreply 
-    SET value = ${speedAttr.value}, attribute = ${speedAttr.attribute}
+    DELETE FROM radreply 
     WHERE username = ${username} 
     AND (attribute LIKE '%Rate-Limit%' OR attribute LIKE '%Bandwidth%' OR attribute = 'Filter-Id')
+  `
+
+  await sql`
+    INSERT INTO radreply (username, attribute, op, value)
+    VALUES (${username}, ${speedAttr.attribute}, ':=', ${speedAttr.value})
   `
 
   console.log(`[v0] Updated RADIUS speed for ${username}`)

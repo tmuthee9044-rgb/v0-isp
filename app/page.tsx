@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import dynamic from "next/dynamic"
 import { useLocalization } from "@/lib/localization-context"
 import { formatCurrency } from "@/lib/localization-utils"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,11 +25,6 @@ import {
   CreditCard,
   UserCheck,
 } from "lucide-react"
-
-const RealTimeDashboard = dynamic(() => import("@/lib/real-time-dashboard").then((mod) => ({ default: mod.default })), {
-  loading: () => <div className="text-center p-4">Loading real-time data...</div>,
-  ssr: false,
-})
 
 interface DashboardData {
   metrics: {

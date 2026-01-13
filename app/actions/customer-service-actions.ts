@@ -184,13 +184,13 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     if (enforcementMode === "radius" || enforcementMode === "hybrid") {
       console.log("[v0] Provisioning to RADIUS...")
-      // Provision to RADIUS
-      await provisionRadiusUser({
-        username: pppoeUsername,
-        password: pppoePassword,
-        planId: servicePlanId,
-        ipAddress: ipAddress || null,
-      })
+      if (!pppoeUsername || !pppoePassword) {
+        console.log("[v0] RADIUS provisioning skipped - PPPoE credentials not provided")
+        console.log(`[v0] pppoeUsername: ${pppoeUsername}, pppoePassword: ${pppoePassword}`)
+      } else {
+        console.log(`[v0] Calling provisionRadiusUser with: username=${pppoeUsername}, servicePlanId=${servicePlanId}`)
+        await provisionRadiusUser(pppoeUsername, pppoePassword, servicePlanId, "mikrotik")
+      }
     }
 
     if (enforcementMode === "direct" || enforcementMode === "hybrid") {
@@ -400,19 +400,18 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
 
     // Provision PPPoE credentials to RADIUS if enabled
     if (pppoeEnabled && (pppoeUsername || pppoePassword)) {
-      const radiusUsername = pppoeUsername || service.portal_username || `customer_${service.customer_id}`
+      const radiusUsername = pppoeUsername || serviceData.portal_username || `customer_${serviceData.customer_id}`
       const radiusPassword = pppoePassword || radiusUsername
 
       console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
       const radiusResult = await provisionRadiusUser({
-        customerId: service.customer_id,
-        serviceId: service.id,
+        customerId: serviceData.customer_id,
+        serviceId,
         username: radiusUsername,
         password: radiusPassword,
-        ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed,
-        uploadSpeed: service.upload_speed,
-        nasId: service.router_id || undefined,
+        ipAddress: serviceData.ip_address || undefined,
+        downloadSpeed: serviceData.download_speed || 10,
+        uploadSpeed: serviceData.upload_speed || 10,
       })
 
       if (!radiusResult.success) {

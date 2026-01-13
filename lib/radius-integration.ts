@@ -691,6 +691,12 @@ export async function provisionToStandardRadiusTables(config: {
 
     // Insert/update authentication password in radcheck table
     await sql`
+      DELETE FROM radcheck 
+      WHERE username = ${config.username} 
+      AND attribute = 'Cleartext-Password'
+    `
+
+    await sql`
       INSERT INTO radcheck (username, attribute, op, value)
       VALUES (
         ${config.username},
@@ -698,8 +704,6 @@ export async function provisionToStandardRadiusTables(config: {
         ':=',
         ${config.password}
       )
-      ON CONFLICT (username, attribute) 
-      DO UPDATE SET value = ${config.password}
     `
 
     // Delete existing reply attributes for clean update

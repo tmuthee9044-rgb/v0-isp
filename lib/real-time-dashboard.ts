@@ -1,5 +1,3 @@
-"use server"
-
 import { getSql } from "@/lib/db"
 
 function getSqlConnection() {

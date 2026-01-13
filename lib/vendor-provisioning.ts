@@ -142,31 +142,40 @@ async function provisionToRadius(
   console.log(`[v0] Storing ${username} in RADIUS tables`)
 
   await sql`
+    DELETE FROM radcheck 
+    WHERE username = ${username} AND attribute = 'Cleartext-Password'
+  `
+
+  await sql`
     INSERT INTO radcheck (username, attribute, op, value)
     VALUES 
       (${username}, 'Cleartext-Password', ':=', ${password})
-    ON CONFLICT (username, attribute) 
-    DO UPDATE SET value = ${password}
   `
 
   if (ipAddress) {
     await sql`
+      DELETE FROM radreply 
+      WHERE username = ${username} AND attribute = 'Framed-IP-Address'
+    `
+
+    await sql`
       INSERT INTO radreply (username, attribute, op, value)
       VALUES 
         (${username}, 'Framed-IP-Address', ':=', ${ipAddress})
-      ON CONFLICT (username, attribute)
-      DO UPDATE SET value = ${ipAddress}
     `
   }
 
   if (profile) {
     // Example: MikroTik rate limit attribute
     await sql`
+      DELETE FROM radreply 
+      WHERE username = ${username} AND attribute = 'Mikrotik-Rate-Limit'
+    `
+
+    await sql`
       INSERT INTO radreply (username, attribute, op, value)
       VALUES 
         (${username}, 'Mikrotik-Rate-Limit', ':=', ${profile})
-      ON CONFLICT (username, attribute)
-      DO UPDATE SET value = ${profile}
     `
   }
 

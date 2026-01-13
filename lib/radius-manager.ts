@@ -122,10 +122,13 @@ export async function provisionRadiusUser(
 
   // 1. Insert password check (radcheck)
   await sql`
+    DELETE FROM radcheck 
+    WHERE username = ${username} AND attribute = 'Cleartext-Password'
+  `
+
+  await sql`
     INSERT INTO radcheck (username, attribute, op, value)
     VALUES (${username}, 'Cleartext-Password', ':=', ${password})
-    ON CONFLICT (username, attribute) 
-    DO UPDATE SET value = ${password}
   `
 
   // 2. Get vendor-specific speed attribute
@@ -245,11 +248,15 @@ export async function unsuspendRadiusUser(username: string, password: string) {
   const sql = getRadiusSql()
 
   await sql`
+    DELETE FROM radcheck 
+    WHERE username = ${username} AND attribute = 'Cleartext-Password'
+  `
+
+  await sql`
     INSERT INTO radcheck (username, attribute, op, value)
     VALUES (${username}, 'Cleartext-Password', ':=', ${password})
-    ON CONFLICT (username, attribute)
-    DO UPDATE SET value = ${password}
   `
+
   console.log(`[v0] Unsuspended RADIUS user: ${username}`)
 }
 

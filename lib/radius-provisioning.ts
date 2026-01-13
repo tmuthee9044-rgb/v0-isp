@@ -15,20 +15,26 @@ export async function provisionToStandardRadiusTables(
 
     // Add authentication credentials to radcheck table
     await sql`
+      DELETE FROM radcheck 
+      WHERE username = ${username} AND attribute = 'Cleartext-Password'
+    `
+
+    await sql`
       INSERT INTO radcheck (username, attribute, op, value)
       VALUES 
         (${username}, 'Cleartext-Password', ':=', ${password})
-      ON CONFLICT (username, attribute) 
-      DO UPDATE SET value = ${password}, updated_at = NOW()
     `
 
     // Add bandwidth limits to radreply table in MikroTik format
     await sql`
+      DELETE FROM radreply 
+      WHERE username = ${username} AND attribute = 'Mikrotik-Rate-Limit'
+    `
+
+    await sql`
       INSERT INTO radreply (username, attribute, op, value)
       VALUES 
         (${username}, 'Mikrotik-Rate-Limit', ':=', ${`${uploadLimit}/${downloadLimit}`})
-      ON CONFLICT (username, attribute) 
-      DO UPDATE SET value = ${`${uploadLimit}/${downloadLimit}`}, updated_at = NOW()
     `
 
     console.log(`[v0] ✓ Provisioned ${username} to FreeRADIUS tables`)

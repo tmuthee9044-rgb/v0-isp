@@ -404,36 +404,22 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       const radiusPassword = pppoePassword || radiusUsername
 
       console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
-      const radiusResult = await provisionRadiusUser({
-        customerId: serviceData.customer_id,
-        serviceId,
-        username: radiusUsername,
-        password: radiusPassword,
-        ipAddress: serviceData.ip_address || undefined,
-        downloadSpeed: serviceData.download_speed || 10,
-        uploadSpeed: serviceData.upload_speed || 10,
-      })
+      await provisionRadiusUser(radiusUsername, radiusPassword, servicePlanId || 1, "mikrotik")
 
-      if (!radiusResult.success) {
-        console.error(`[v0] RADIUS provisioning failed:`, radiusResult.error)
-      } else {
-        console.log(`[v0] RADIUS provisioning successful`)
-      }
-    }
+      if (servicePlanId && pppoeUsername) {
+        try {
+          const router = await sql`
+            SELECT type FROM network_devices 
+            WHERE id = (SELECT router_id FROM customer_services WHERE id = ${serviceId})
+            LIMIT 1
+          `
+          const vendor = router[0]?.type || "mikrotik"
 
-    if (servicePlanId && pppoeUsername) {
-      try {
-        const router = await sql`
-          SELECT type FROM network_devices 
-          WHERE id = (SELECT router_id FROM customer_services WHERE id = ${serviceId})
-          LIMIT 1
-        `
-        const vendor = router[0]?.type || "mikrotik"
-
-        await updateRadiusSpeed(pppoeUsername, servicePlanId, vendor)
-        console.log(`[v0] RADIUS speed updated for service ${serviceId}`)
-      } catch (error) {
-        console.error("[v0] Failed to update RADIUS speed:", error)
+          await updateRadiusSpeed(pppoeUsername, servicePlanId, vendor)
+          console.log(`[v0] RADIUS speed updated for service ${serviceId}`)
+        } catch (error) {
+          console.error("[v0] Failed to update RADIUS speed:", error)
+        }
       }
     }
 
@@ -457,16 +443,12 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
                 downloadSpeed: service.download_speed,
                 uploadSpeed: service.upload_speed,
               }),
-              provisionRadiusUser({
-                customerId: service.customer_id,
-                serviceId,
-                username: service.portal_username || `customer_${service.customer_id}`,
-                password: service.portal_username || `customer_${service.customer_id}`,
-                ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed,
-                uploadSpeed: service.upload_speed,
-                nasId: service.router_id,
-              }),
+              provisionRadiusUser(
+                service.portal_username || `customer_${service.customer_id}`,
+                service.portal_username || `customer_${service.customer_id}`,
+                servicePlanId || 1,
+                "mikrotik",
+              ),
             ])
 
             console.log("[v0] Router result:", routerResult.success ? "OK" : routerResult.error)
@@ -500,7 +482,7 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
           if (formData.get("status") === "active" && service.status === "suspended") {
             console.log("[v0] Async re-provisioning: suspended -> active")
 
-            await Promise.all([
+            const [routerResult, radiusResult] = await Promise.all([
               provisionServiceToRouter({
                 serviceId: service.id,
                 customerId: service.customer_id,
@@ -512,17 +494,16 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
                 downloadSpeed: service.download_speed,
                 uploadSpeed: service.upload_speed,
               }),
-              provisionRadiusUser({
-                customerId: service.customer_id,
-                serviceId,
-                username: service.portal_username || `customer_${service.customer_id}`,
-                password: service.portal_username || `customer_${service.customer_id}`,
-                ipAddress: service.ip_address,
-                downloadSpeed: service.download_speed,
-                uploadSpeed: service.upload_speed,
-                nasId: service.router_id,
-              }),
+              provisionRadiusUser(
+                service.portal_username || `customer_${service.customer_id}`,
+                service.portal_username || `customer_${service.customer_id}`,
+                servicePlanId || 1,
+                "mikrotik",
+              ),
             ])
+
+            console.log("[v0] Router result:", routerResult.success ? "OK" : routerResult.error)
+            console.log("[v0] RADIUS result:", radiusResult.success ? "OK" : radiusResult.error)
           }
         } catch (provisionError) {
           console.error("[v0] Async router provisioning error:", provisionError)

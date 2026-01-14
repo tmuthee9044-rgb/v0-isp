@@ -122,7 +122,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         tags,
         is_confidential,
         uploaded_by,
-        file_content,
         status
       ) VALUES (
         ${customerId},
@@ -136,7 +135,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         ${tagsArray},
         ${isConfidential},
         1,
-        ${fileBuffer},
         'active'
       )
       RETURNING id, customer_id, document_name, document_type, file_path, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, status, version, created_at

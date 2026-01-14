@@ -238,10 +238,12 @@ async function ensureCriticalColumns() {
 
     console.log("[DB] Fixing payroll_records employee_id type...")
 
-    // Drop the table with CASCADE to remove dependencies
-    await sql`DROP TABLE IF EXISTS payroll_records CASCADE`.catch((e) => {
-      console.log("[DB] Drop payroll_records warning:", e.message)
-    })
+    try {
+      await sql`TRUNCATE TABLE payroll_records CASCADE`
+    } catch (e) {
+      // Table doesn't exist yet, which is fine
+      console.log("[DB] Truncate payroll_records note:", e.message)
+    }
 
     // Recreate with correct schema - employee_id as INTEGER
     await sql`
@@ -267,7 +269,7 @@ async function ensureCriticalColumns() {
       )
     `
 
-    console.log("[DB] Payroll_records table recreated with INTEGER employee_id")
+    console.log("[DB] Payroll_records table verified with INTEGER employee_id")
 
     await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_employee ON payroll_records(employee_id)`.catch(() => {})
     await sql`CREATE INDEX IF NOT EXISTS idx_payroll_records_period ON payroll_records(pay_period_start, pay_period_end)`.catch(

@@ -47,6 +47,16 @@ export async function POST(request: Request) {
 
     console.log("[v0] Creating performance review for employee:", employeeId)
 
+    const employeeResult = await sql`
+      SELECT id FROM employees WHERE employee_id = ${employeeId}
+    `
+
+    if (!employeeResult || employeeResult.length === 0) {
+      return NextResponse.json({ success: false, message: "Employee not found" }, { status: 404 })
+    }
+
+    const employeeNumericId = employeeResult[0].id
+
     // Insert the performance review
     const result = await sql`
       INSERT INTO performance_reviews (
@@ -64,7 +74,7 @@ export async function POST(request: Request) {
         next_review_date,
         status
       ) VALUES (
-        ${employeeId},
+        ${employeeNumericId},
         ${reviewPeriod},
         ${reviewType || "quarterly"},
         ${rating},
@@ -85,7 +95,7 @@ export async function POST(request: Request) {
       await sql`
         UPDATE employees
         SET performance_rating = ${rating}
-        WHERE id = ${Number.parseInt(employeeId)}
+        WHERE id = ${Number.parseInt(employeeNumericId)}
       `
     } catch (updateError) {
       console.log("[v0] Note: performance_rating column not available yet. Run migration script to add it.")

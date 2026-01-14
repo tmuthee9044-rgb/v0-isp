@@ -35,9 +35,15 @@ export async function GET() {
       ORDER BY r.id, l.id
     `
 
-    console.log("[v0] Fetched routers count:", routers.length)
-    console.log("[v0] Fetched routers:", routers)
-    return NextResponse.json(routers)
+    const parsedRouters = routers.map((router: any) => ({
+      ...router,
+      configuration:
+        typeof router.configuration === "string" ? JSON.parse(router.configuration || "{}") : router.configuration,
+    }))
+
+    console.log("[v0] Fetched routers count:", parsedRouters.length)
+    console.log("[v0] Fetched routers:", parsedRouters)
+    return NextResponse.json(parsedRouters)
   } catch (error) {
     console.error("[v0] Error fetching routers:", error)
     return NextResponse.json({ message: "Failed to fetch routers" }, { status: 500 })

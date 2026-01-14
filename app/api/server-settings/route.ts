@@ -185,21 +185,13 @@ export async function POST(request: NextRequest) {
 
     if (type === "radius") {
       for (const [key, value] of Object.entries(settings)) {
-        if (key === "protocols" || key === "authMethods") {
-          await sql`
-            INSERT INTO system_config (key, value, updated_at)
-            VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
-            ON CONFLICT (key) 
-            DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
-          `
-        } else {
-          await sql`
-            INSERT INTO system_config (key, value, updated_at)
-            VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
-            ON CONFLICT (key) 
-            DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
-          `
-        }
+        await sql`
+          DELETE FROM system_config WHERE key = ${`server.radius.${key}`}
+        `
+        await sql`
+          INSERT INTO system_config (key, value, updated_at)
+          VALUES (${`server.radius.${key}`}, ${JSON.stringify(value)}, NOW())
+        `
       }
 
       if (settings.enabled && settings.host && settings.sharedSecret) {
@@ -237,10 +229,11 @@ export async function POST(request: NextRequest) {
     if (type === "openvpn") {
       for (const [key, value] of Object.entries(settings)) {
         await sql`
+          DELETE FROM system_config WHERE key = ${`server.openvpn.${key}`}
+        `
+        await sql`
           INSERT INTO system_config (key, value, updated_at)
           VALUES (${`server.openvpn.${key}`}, ${JSON.stringify(value)}, NOW())
-          ON CONFLICT (key) 
-          DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
         `
       }
 
@@ -267,10 +260,11 @@ export async function POST(request: NextRequest) {
     if (type === "network") {
       for (const [key, value] of Object.entries(settings)) {
         await sql`
+          DELETE FROM system_config WHERE key = ${`network.${key}`}
+        `
+        await sql`
           INSERT INTO system_config (key, value, updated_at)
           VALUES (${`network.${key}`}, ${JSON.stringify(value)}, NOW())
-          ON CONFLICT (key) 
-          DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
         `
       }
 

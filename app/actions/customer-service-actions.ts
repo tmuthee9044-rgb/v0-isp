@@ -199,6 +199,33 @@ export async function addCustomerService(customerId: number, formData: FormData)
       await queueServiceProvisioning(serviceId, Number.parseInt(routerId), "CREATE", enforcementMode)
     }
 
+    console.log("[v0] Creating invoice for service...")
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 30)
+
+    await sql`
+      INSERT INTO invoices (
+        customer_id,
+        service_id,
+        amount,
+        description,
+        due_date,
+        status,
+        invoice_date,
+        created_at
+      ) VALUES (
+        ${customerId},
+        ${serviceId},
+        ${servicePlan[0].price},
+        'Service: ' || ${servicePlan[0].name},
+        ${dueDate.toISOString().split("T")[0]},
+        'pending',
+        CURRENT_DATE,
+        NOW()
+      )
+    `
+    console.log("[v0] Invoice created for service:", serviceId)
+
     revalidatePath("/customers")
     console.log("[v0] Service created successfully:", serviceId)
     console.log("[v0] === addCustomerService END ===")

@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
         const nasIp = nas_ip_address || ip_address
         const shortname = name.replace(/\s+/g, "_").toLowerCase()
 
+        await sql`DELETE FROM nas WHERE nasname = ${nasIp}`
         await sql`
           INSERT INTO nas (
             nasname,
@@ -229,12 +230,6 @@ export async function POST(request: NextRequest) {
             'public',
             ${`Router: ${name} (${type})`}
           )
-          ON CONFLICT (nasname) 
-          DO UPDATE SET
-            secret = EXCLUDED.secret,
-            shortname = EXCLUDED.shortname,
-            type = EXCLUDED.type,
-            description = EXCLUDED.description
         `
 
         console.log("[v0] Router synced to FreeRADIUS nas table successfully")

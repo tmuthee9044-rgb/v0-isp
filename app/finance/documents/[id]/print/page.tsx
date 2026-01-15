@@ -1,38 +1,44 @@
 "use client"
 
-import { getSql } from "@/lib/database"
 import { notFound } from "next/navigation"
-
-const sql = getSql(process.env.DATABASE_URL!)
 
 interface PrintDocumentPageProps {
   params: { id: string }
 }
 
+interface DocumentData {
+  id: string
+  type: string
+  reference_number?: string
+  invoice_number?: string
+  date?: string
+  due_date?: string
+  status: string
+  amount: string
+  description?: string
+  first_name?: string
+  last_name?: string
+  business_name?: string
+  customer_type?: string
+  email?: string
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+}
+
 export default async function PrintDocumentPage({ params }: PrintDocumentPageProps) {
   try {
-    const documents = await sql`
-      SELECT 
-        fd.*,
-        c.first_name,
-        c.last_name,
-        c.business_name,
-        c.customer_type,
-        c.email,
-        c.address,
-        c.city,
-        c.state,
-        c.postal_code
-      FROM finance_documents fd
-      LEFT JOIN customers c ON fd.customer_id = c.id
-      WHERE fd.id = ${params.id}
-    `
+    const response = await fetch(`/api/finance/documents/${params.id}`, {
+      cache: "no-store",
+    })
 
-    if (documents.length === 0) {
+    if (!response.ok) {
       notFound()
     }
 
-    const document = documents[0]
+    const data = await response.json()
+    const document: DocumentData = data.document
 
     return (
       <div className="print-document max-w-4xl mx-auto p-4 sm:p-6 lg:p-8 bg-white">
@@ -71,7 +77,7 @@ export default async function PrintDocumentPage({ params }: PrintDocumentPagePro
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm sm:text-base">
             <div>
               <p>
-                <strong>Date:</strong> {new Date(document.date).toLocaleDateString()}
+                <strong>Date:</strong> {document.date ? new Date(document.date).toLocaleDateString() : "N/A"}
               </p>
               <p>
                 <strong>Due Date:</strong>{" "}

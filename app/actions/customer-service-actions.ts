@@ -202,29 +202,28 @@ export async function addCustomerService(customerId: number, formData: FormData)
     console.log("[v0] Creating invoice for service...")
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 30)
+    const invoiceNumber = `INV-${Date.now()}-${customerId}`
 
     await sql`
       INSERT INTO invoices (
         customer_id,
-        service_id,
+        invoice_number,
         amount,
-        description,
+        total_amount,
         due_date,
         status,
-        invoice_date,
         created_at
       ) VALUES (
         ${customerId},
-        ${serviceId},
+        ${invoiceNumber},
         ${servicePlan[0].price},
-        'Service: ' || ${servicePlan[0].name},
+        ${servicePlan[0].price},
         ${dueDate.toISOString().split("T")[0]},
         'pending',
-        CURRENT_DATE,
         NOW()
       )
     `
-    console.log("[v0] Invoice created for service:", serviceId)
+    console.log("[v0] Invoice created for customer:", customerId)
 
     revalidatePath("/customers")
     console.log("[v0] Service created successfully:", serviceId)
@@ -431,7 +430,15 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       const radiusPassword = pppoePassword || radiusUsername
 
       console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
-      await provisionRadiusUser(radiusUsername, radiusPassword, servicePlanId || 1, "mikrotik")
+      await provisionRadiusUser({
+        customerId: serviceData.customer_id,
+        serviceId,
+        username: radiusUsername,
+        password: radiusPassword,
+        ipAddress: serviceData.ip_address || undefined,
+        downloadSpeed: serviceData.download_speed || 10,
+        uploadSpeed: serviceData.upload_speed || 10,
+      })
 
       if (servicePlanId && pppoeUsername) {
         try {

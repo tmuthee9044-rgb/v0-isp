@@ -35,11 +35,24 @@ export async function GET() {
       ORDER BY r.id, l.id
     `
 
-    const parsedRouters = routers.map((router: any) => ({
-      ...router,
-      configuration:
-        typeof router.configuration === "string" ? JSON.parse(router.configuration || "{}") : router.configuration,
-    }))
+    const parsedRouters = routers.map((router: any) => {
+      let configuration = {}
+
+      if (router.configuration) {
+        try {
+          configuration =
+            typeof router.configuration === "string" ? JSON.parse(router.configuration) : router.configuration
+        } catch (e) {
+          console.error(`[v0] Failed to parse configuration for router ${router.id}:`, e)
+          configuration = {}
+        }
+      }
+
+      return {
+        ...router,
+        configuration,
+      }
+    })
 
     console.log("[v0] Fetched routers count:", parsedRouters.length)
     console.log("[v0] Fetched routers:", parsedRouters)

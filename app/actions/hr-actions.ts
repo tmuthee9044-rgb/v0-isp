@@ -171,31 +171,25 @@ export async function generatePayroll(
       const periodEnd = `${period}-31`
       const employeeName = `${employee.first_name} ${employee.last_name}`
 
+      // Delete existing record first, then insert to avoid ON CONFLICT constraint issues
+      await sql`
+        DELETE FROM payroll_records 
+        WHERE employee_id = ${employee.id}::UUID 
+        AND pay_period_start = ${periodStart}::DATE
+      `.catch(() => {})
+      
       await sql`
         INSERT INTO payroll_records (
           employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
           allowances, deductions, gross_pay, tax, nhif, nssf,
           net_pay, status, created_at
         ) VALUES (
-          ${employee.id}::INTEGER, ${employeeName}::VARCHAR, 
+          ${employee.id}::UUID, ${employeeName}::VARCHAR, 
           ${periodStart}::DATE, ${periodEnd}::DATE, ${basicSalary}::NUMERIC,
           ${allowances}::NUMERIC, ${totalEmployeeDeductions}::NUMERIC, ${grossPay}::NUMERIC, 
           ${paye}::NUMERIC, ${sha}::NUMERIC, ${nssf}::NUMERIC,
           ${netPay}::NUMERIC, 'pending', NOW()
         )
-        ON CONFLICT (employee_id, pay_period_start) 
-        DO UPDATE SET
-          employee_name = EXCLUDED.employee_name,
-          basic_salary = EXCLUDED.basic_salary,
-          allowances = EXCLUDED.allowances,
-          deductions = EXCLUDED.deductions,
-          gross_pay = EXCLUDED.gross_pay,
-          tax = EXCLUDED.tax,
-          nhif = EXCLUDED.nhif,
-          nssf = EXCLUDED.nssf,
-          net_pay = EXCLUDED.net_pay,
-          status = EXCLUDED.status,
-          updated_at = NOW()
       `
 
       totalGrossPay += grossPay

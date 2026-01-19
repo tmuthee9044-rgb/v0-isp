@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
         ${longitude || null},
         ${notes || null},
         ${status || "active"},
-        ${JSON.stringify(configuration)},
+        ${sql.json(configuration)},
         NOW()
       )
       RETURNING *

@@ -152,7 +152,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         enable_traffic_recording = ${enable_traffic_recording ?? false},
         enable_speed_control = ${enable_speed_control ?? false},
         blocking_page_url = ${blocking_page_url || null},
-        configuration = ${JSON.stringify(configuration)},
+        configuration = ${sql.json(configuration)},
         updated_at = NOW()
       WHERE id = ${routerId}
       RETURNING *

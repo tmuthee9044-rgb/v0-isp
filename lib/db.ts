@@ -80,7 +80,13 @@ export async function getDatabaseStatus() {
  */
 async function ensureCriticalColumns() {
   try {
-    // Add missing days_requested column to leave_requests
+    // Rename days_count to days_requested if it exists
+    await sql`
+      ALTER TABLE leave_requests 
+      RENAME COLUMN days_count TO days_requested
+    `.catch(() => {})
+    
+    // Add missing days_requested column to leave_requests (if rename failed)
     await sql`
       ALTER TABLE leave_requests 
       ADD COLUMN IF NOT EXISTS days_requested INTEGER NOT NULL DEFAULT 0
@@ -117,6 +123,41 @@ async function ensureCriticalColumns() {
     
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT true
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS conversion_date DATE
+    `.catch(() => {})
+
+    // Fix payroll_records table with wrong column types
+    await sql`
+      DROP TABLE IF EXISTS payroll_records CASCADE
+    `.catch(() => {})
+    
+    await sql`
+      CREATE TABLE IF NOT EXISTS payroll_records (
+        id SERIAL PRIMARY KEY,
+        employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        employee_name VARCHAR(255) NOT NULL,
+        pay_period_start DATE NOT NULL,
+        pay_period_end DATE NOT NULL,
+        basic_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        allowances DECIMAL(15, 2) DEFAULT 0,
+        deductions DECIMAL(15, 2) DEFAULT 0,
+        gross_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        tax DECIMAL(15, 2) DEFAULT 0,
+        nhif DECIMAL(15, 2) DEFAULT 0,
+        nssf DECIMAL(15, 2) DEFAULT 0,
+        net_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'pending',
+        payment_date DATE,
+        payment_method VARCHAR(50),
+        payment_reference VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(employee_id, pay_period_start)
+      )
     `.catch(() => {})
 
     console.log("[DB] Critical column migrations applied")

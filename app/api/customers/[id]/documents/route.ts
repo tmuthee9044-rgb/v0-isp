@@ -109,7 +109,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
     const filePath = `/uploads/documents/customer_${customerId}/${sanitizedFileName}`
 
-    const [document] = await sql`
+    const documentResult = await sql`
       INSERT INTO customer_documents (
         customer_id,
         document_name,
@@ -137,8 +137,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         1,
         'active'
       )
-      RETURNING id, customer_id, document_name, document_type, file_path, file_name, file_size, mime_type, description, tags, is_confidential, uploaded_by, status, version, created_at
+      RETURNING *
     `
+    
+    const document = documentResult[0]
 
     await sql`
       INSERT INTO system_logs (

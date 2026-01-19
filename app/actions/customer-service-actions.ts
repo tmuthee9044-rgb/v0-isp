@@ -441,15 +441,12 @@ export async function updateCustomerService(serviceId: number, formData: FormDat
       const radiusPassword = pppoePassword || radiusUsername
 
       console.log(`[v0] Provisioning service ${service.id} to RADIUS...`)
-      await provisionRadiusUser({
-        customerId: serviceData.customer_id,
-        serviceId,
-        username: radiusUsername,
-        password: radiusPassword,
-        ipAddress: serviceData.ip_address || undefined,
-        downloadSpeed: serviceData.download_speed || 10,
-        uploadSpeed: serviceData.upload_speed || 10,
-      })
+      await provisionRadiusUser(
+        radiusUsername,
+        radiusPassword,
+        servicePlanId || 1,
+        "mikrotik"
+      )
 
       if (servicePlanId && pppoeUsername) {
         try {
@@ -585,12 +582,10 @@ export async function deleteCustomerService(serviceId: number) {
     const service = serviceData[0]
 
     if (service.portal_username) {
-      await deprovisionRadiusUser({
-        customerId: service.customer_id,
-        serviceId,
-        username: service.portal_username,
-        reason: "Service deleted",
-      }).catch((err) => console.error("[v0] RADIUS deprovision error:", err))
+      await deprovisionRadiusUser(
+        service.portal_username,
+        "mikrotik"
+      ).catch((err) => console.error("[v0] RADIUS deprovision error:", err))
     }
 
     // Deprovision from router if provisioned
@@ -717,15 +712,13 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       const pppoePassword = service.pppoe_password || Math.random().toString(36).substring(2, 15)
 
       // Provision to RADIUS
-      await provisionRadiusUser({
-        customerId,
-        serviceId: service.id,
-        username: pppoeUsername,
-        password: pppoePassword,
-        ipAddress: service.ip_address || undefined,
-        downloadSpeed: service.download_speed || 10,
-        uploadSpeed: service.upload_speed || 10,
-      })
+      const servicePlanId = service.service_plan_id || 1
+      await provisionRadiusUser(
+        pppoeUsername,
+        pppoePassword,
+        servicePlanId,
+        "mikrotik"
+      )
 
       // Provision to standard RADIUS tables
       await provisionToStandardRadiusTables(
@@ -811,31 +804,25 @@ export async function updateServiceStatus(
 
     if (newStatus === "active" && oldStatus !== "active") {
       // Activate in RADIUS
-      await provisionRadiusUser({
-        customerId: serviceData.customer_id,
-        serviceId,
+      const servicePlanId = serviceData.service_plan_id || 1
+      await provisionRadiusUser(
         username,
         password,
-        ipAddress: serviceData.ip_address || undefined,
-        downloadSpeed: serviceData.download_speed || 10,
-        uploadSpeed: serviceData.upload_speed || 10,
-      })
+        servicePlanId,
+        "mikrotik"
+      )
     } else if (newStatus === "suspended") {
       // Suspend in RADIUS
-      await suspendRadiusUser({
-        customerId: serviceData.customer_id,
-        serviceId,
+      await suspendRadiusUser(
         username,
-        reason: reason || "Service suspended",
-      })
+        "mikrotik"
+      )
     } else if (newStatus === "terminated") {
       // Remove from RADIUS
-      await deprovisionRadiusUser({
-        customerId: serviceData.customer_id,
-        serviceId,
+      await deprovisionRadiusUser(
         username,
-        reason: reason || "Service terminated",
-      })
+        "mikrotik"
+      )
     }
 
     // Log the status change

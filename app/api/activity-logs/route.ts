@@ -70,9 +70,10 @@ export async function POST(request: NextRequest) {
         level, source, category, message, ip_address, 
         user_id, customer_id, details, session_id, user_agent
       ) VALUES (
-        ${data.level}, ${data.source}, ${data.category}, ${data.message}, ${ipAddress},
+        ${data.level || 'info'}, ${data.source || 'system'}, ${data.category || 'general'}, 
+        ${data.message || 'Activity logged'}, ${ipAddress},
         ${userId}, ${customerId}, ${data.details ? JSON.stringify(data.details) : null}, 
-        ${data.session_id}, ${data.user_agent}
+        ${data.session_id || null}, ${data.user_agent || null}
       )
     `
 

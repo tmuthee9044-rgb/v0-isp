@@ -246,10 +246,9 @@ export async function processPayroll(
       UPDATE payroll_records 
       SET 
         status = 'processed',
-        processed_at = NOW(),
         updated_at = NOW()
-      WHERE period = ${period}
-      AND employee_id = ANY(${employeeIds})
+      WHERE TO_CHAR(pay_period_start, 'YYYY-MM') = ${period}
+      AND employee_id::TEXT = ANY(${employeeIds})
     `
 
     revalidatePath("/hr")
@@ -279,16 +278,16 @@ export async function getPayrollHistory(): Promise<{
 
     const result = await sql`
       SELECT 
-        period,
+        TO_CHAR(pay_period_start, 'YYYY-MM') as period,
         COUNT(*) as employee_count,
         SUM(gross_pay) as total_gross_pay,
-        SUM(total_deductions) as total_deductions,
+        SUM(deductions) as total_deductions,
         SUM(net_pay) as total_net_pay,
         status,
-        MAX(processed_at) as processed_at
+        MAX(created_at) as processed_at
       FROM payroll_records 
-      GROUP BY period, status
-      ORDER BY period DESC
+      GROUP BY TO_CHAR(pay_period_start, 'YYYY-MM'), status
+      ORDER BY TO_CHAR(pay_period_start, 'YYYY-MM') DESC
       LIMIT 12
     `
 

@@ -232,23 +232,34 @@ async function activateServicesAfterPayment(customerId: number, paymentId: numbe
             )
           }
         } else {
-          console.log("[v0] Router uses", service.customer_auth_method, "- using RADIUS provisioning")
+          console.log("[v0] Router uses", service.customer_auth_method, "- provisioning to physical router")
 
-          const username = `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
-          const password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
+          const username = service.portal_username || `${service.email?.split("@")[0] || "user"}${customerId}`.toLowerCase()
+          const password = service.portal_password || Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10)
 
-          const radiusResult = await provisionRadiusUser({
-            username: username,
-            password: password,
-            customerId: customerId,
-            serviceId: service.id,
-            ipAddress: service.ip_address,
-            downloadSpeed: service.speed_download,
-            uploadSpeed: service.speed_upload,
-          })
+          // Use vendor-specific provisioning that handles both local and RADIUS auth
+          const { provisionUserCredentials } = await import("@/lib/vendor-provisioning")
+          
+          const provisionResult = await provisionUserCredentials(
+            service.id,
+            username,
+            password,
+            service.ip_address || undefined,
+            undefined // profile determined from service plan
+          )
 
-          if (radiusResult.success) {
-            console.log("[v0] RADIUS user provisioned successfully for", username)
+          if (provisionResult.success) {
+            console.log("[v0] Provisioning successful:", provisionResult.message)
+            
+            // Update service with credentials
+            await sql`
+              UPDATE customer_services
+              SET portal_username = ${username},
+                  portal_password = ${password}
+              WHERE id = ${service.id}
+            `
+          } else {
+            console.error("[v0] Provisioning failed:", provisionResult.error)
           }
         }
 

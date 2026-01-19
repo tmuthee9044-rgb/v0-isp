@@ -237,54 +237,88 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (type === "mikrotik" && (api_username || username) && (api_password || password)) {
+    // Auto-provision carrier-grade configuration to physical router
+    if ((username || api_username) && (password || api_password)) {
       try {
-        console.log("[v0] Applying MikroTik configuration to physical router...")
+        console.log("[v0] Auto-provisioning carrier-grade configuration to physical router...")
 
-        const { MikroTikAPI } = await import("@/lib/mikrotik-api")
-        const mikrotik = new MikroTikAPI({
+        // Get RADIUS server settings from environment or database
+        const radiusServer = process.env.RADIUS_SERVER_IP || nas_ip_address || "10.0.0.1"
+        const radiusServerSecret = radius_secret || process.env.RADIUS_SECRET || "testing123"
+        const mgmtIp = process.env.MGMT_IP || "10.0.0.0/24"
+
+        // Import auto-provisioning modules
+        const { RouterAutoProvision } = await import("@/lib/router-auto-provision")
+        const { RouterApiWorker } = await import("@/lib/router-api-worker")
+
+        // Generate carrier-grade provisioning script
+        const provisionConfig = {
+          routerId: result[0].id,
+          routerIp: ip_address,
+          radiusIp: radiusServer,
+          radiusSecret: radiusServerSecret,
+          mgmtIp: mgmtIp,
+          safeDNS: true,
+          vendor: type as "mikrotik" | "ubiquiti" | "juniper",
+        }
+
+        const script = RouterAutoProvision.generateScript(provisionConfig)
+        console.log("[v0] Generated provisioning script length:", script.length)
+
+        // Execute script on physical router
+        const worker = new RouterApiWorker({
           host: ip_address,
-          port: api_port || port || 8728,
           username: api_username || username || "admin",
           password: api_password || password,
+          port: type === "mikrotik" ? (api_port || 8728) : (ssh_port || 22),
+          vendor: type as "mikrotik" | "ubiquiti" | "juniper",
         })
 
-        await mikrotik.connect()
+        const execResult = await worker.executeProvisionScript(script)
 
-        const configResult = await mikrotik.applyRouterConfiguration({
-          customer_auth_method: customer_auth_method || "pppoe_radius",
-          trafficking_record: enable_traffic_recording ? "Traffic Flow (RouterOS V6x,V7.x)" : undefined,
-          speed_control: enable_speed_control ? "PCQ + Addresslist" : undefined,
-          radius_server: nas_ip_address,
-          radius_secret: radius_secret,
-        })
-
-        console.log("[v0] MikroTik configuration result:", configResult)
-
-        await mikrotik.disconnect()
-
-        if (!configResult.success && configResult.errors && configResult.errors.length > 0) {
-          console.warn("[v0] Some router configurations failed:", configResult.errors)
-
-          // Update router notes with configuration errors for user review
+        if (execResult.success) {
+          console.log("[v0] Auto-provisioning successful:", execResult.message)
+          
           await sql`
             UPDATE network_devices 
-            SET notes = COALESCE(notes || E'\n\n', '') || 
-              'Configuration Errors (Auto-generated):\n' || 
-              ${configResult.errors.join("\n")}
+            SET 
+              notes = COALESCE(notes || E'\n\n', '') || 
+                'Auto-provisioned on ' || NOW()::TEXT || E'\n' ||
+                'RADIUS: ' || ${radiusServer} || E'\n' ||
+                'Configuration applied successfully',
+              compliance_status = 'green',
+              last_compliance_check = NOW()
+            WHERE id = ${result[0].id}
+          `
+        } else {
+          console.warn("[v0] Auto-provisioning partially failed:", execResult.error)
+          
+          await sql`
+            UPDATE network_devices 
+            SET 
+              notes = COALESCE(notes || E'\n\n', '') || 
+                'Auto-provisioning attempted on ' || NOW()::TEXT || E'\n' ||
+                'Status: Partial failure\n' ||
+                'Error: ' || ${execResult.error || "Unknown error"} || E'\n\n' ||
+                'Please verify configuration manually or download script from Router Management page.',
+              compliance_status = 'yellow'
             WHERE id = ${result[0].id}
           `
         }
-      } catch (configError) {
-        console.error("[v0] Error applying router configuration:", configError)
+      } catch (provisionError) {
+        console.error("[v0] Error during auto-provisioning:", provisionError)
+        
         await sql`
           UPDATE network_devices 
-          SET notes = COALESCE(notes || E'\n\n', '') || 
-            'Auto-configuration failed: ' || ${configError instanceof Error ? configError.message : String(configError)} ||
-            E'\n\nPlease configure manually via WinBox:\n' ||
-            '1. Enable REST API in System → Services\n' ||
-            '2. Configure RADIUS in Radius menu\n' ||
-            '3. Enable RADIUS for PPP in PPP → AAA Settings'
+          SET 
+            notes = COALESCE(notes || E'\n\n', '') || 
+              'Auto-provisioning failed on ' || NOW()::TEXT || E'\n' ||
+              'Error: ' || ${provisionError instanceof Error ? provisionError.message : String(provisionError)} || E'\n\n' ||
+              'Download and apply provisioning script manually:\n' ||
+              '1. Go to Network → Routers → Actions → Download Provision Script\n' ||
+              '2. Apply script via SSH or router management interface\n' ||
+              '3. Verify RADIUS connectivity and firewall rules',
+            compliance_status = 'red'
           WHERE id = ${result[0].id}
         `
       }

@@ -745,7 +745,11 @@ export default function HRPage() {
                 <div className="text-2xl font-bold">
                   {employees.filter((emp) => emp.performance_rating === "excellent").length}
                 </div>
-                <p className="text-xs text-muted-foreground">33% of employees</p>
+                <p className="text-xs text-muted-foreground">
+                  {employees.length > 0
+                    ? `${((employees.filter((emp) => emp.performance_rating === "excellent").length / employees.length) * 100).toFixed(1)}% of employees`
+                    : "No data"}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -757,7 +761,11 @@ export default function HRPage() {
                 <div className="text-2xl font-bold">
                   {employees.filter((emp) => emp.performance_rating === "good").length}
                 </div>
-                <p className="text-xs text-muted-foreground">50% of employees</p>
+                <p className="text-xs text-muted-foreground">
+                  {employees.length > 0
+                    ? `${((employees.filter((emp) => emp.performance_rating === "good").length / employees.length) * 100).toFixed(1)}% of employees`
+                    : "No data"}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -769,7 +777,11 @@ export default function HRPage() {
                 <div className="text-2xl font-bold">
                   {employees.filter((emp) => emp.performance_rating === "satisfactory").length}
                 </div>
-                <p className="text-xs text-muted-foreground">12.5% of employees</p>
+                <p className="text-xs text-muted-foreground">
+                  {employees.length > 0
+                    ? `${((employees.filter((emp) => emp.performance_rating === "satisfactory").length / employees.length) * 100).toFixed(1)}% of employees`
+                    : "No data"}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -781,7 +793,11 @@ export default function HRPage() {
                 <div className="text-2xl font-bold">
                   {employees.filter((emp) => emp.performance_rating === "needs_improvement").length}
                 </div>
-                <p className="text-xs text-muted-foreground">4.2% of employees</p>
+                <p className="text-xs text-muted-foreground">
+                  {employees.length > 0
+                    ? `${((employees.filter((emp) => emp.performance_rating === "needs_improvement").length / employees.length) * 100).toFixed(1)}% of employees`
+                    : "No data"}
+                </p>
               </CardContent>
             </Card>
           </div>

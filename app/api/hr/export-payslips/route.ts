@@ -17,8 +17,8 @@ export async function POST(req: Request) {
         e.position,
         e.employee_id as emp_no
       FROM payroll_records pr
-      JOIN employees e ON pr.employee_id = e.employee_id
-      WHERE pr.period = ${period}
+      JOIN employees e ON pr.employee_id = e.id
+      WHERE TO_CHAR(pr.pay_period_start, 'YYYY-MM') = ${period}
       AND pr.status IN ('processed', 'paid')
       ORDER BY e.employee_id
     `

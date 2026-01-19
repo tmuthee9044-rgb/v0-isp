@@ -129,6 +129,62 @@ async function ensureCriticalColumns() {
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS conversion_date DATE
     `.catch(() => {})
 
+    // Ensure customer_documents table exists with correct schema
+    await sql`
+      CREATE TABLE IF NOT EXISTS customer_documents (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        document_name VARCHAR(255) NOT NULL,
+        document_type VARCHAR(50) NOT NULL DEFAULT 'contract',
+        file_path TEXT NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_size BIGINT NOT NULL,
+        mime_type VARCHAR(100) NOT NULL,
+        description TEXT,
+        tags TEXT[],
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        is_confidential BOOLEAN DEFAULT FALSE,
+        uploaded_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP,
+        version INTEGER DEFAULT 1,
+        parent_document_id INTEGER REFERENCES customer_documents(id)
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_documents_customer_id ON customer_documents(customer_id)
+    `.catch(() => {})
+
+    // Ensure customer_equipment table exists with correct schema
+    await sql`
+      CREATE TABLE IF NOT EXISTS customer_equipment (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        inventory_item_id INTEGER,
+        equipment_name VARCHAR(255) NOT NULL,
+        equipment_type VARCHAR(100),
+        serial_number VARCHAR(255),
+        mac_address VARCHAR(17),
+        quantity INTEGER DEFAULT 1,
+        unit_price DECIMAL(10, 2),
+        total_price DECIMAL(10, 2),
+        monthly_cost DECIMAL(10, 2),
+        issued_date TIMESTAMP DEFAULT NOW(),
+        return_date TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'issued',
+        condition_notes TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_equipment_customer_id ON customer_equipment(customer_id)
+    `.catch(() => {})
+
     // Fix payroll_records table with wrong column types
     await sql`
       DROP TABLE IF EXISTS payroll_records CASCADE

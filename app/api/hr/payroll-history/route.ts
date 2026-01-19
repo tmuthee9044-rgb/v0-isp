@@ -7,18 +7,18 @@ export async function GET() {
 
     const payrollHistory = await sql`
       SELECT 
-        period,
-        CAST(SPLIT_PART(period, '-', 2) AS INTEGER) as period_month,
-        CAST(SPLIT_PART(period, '-', 1) AS INTEGER) as period_year,
+        TO_CHAR(pay_period_start, 'YYYY-MM') as period,
+        EXTRACT(MONTH FROM pay_period_start)::INTEGER as period_month,
+        EXTRACT(YEAR FROM pay_period_start)::INTEGER as period_year,
         COUNT(DISTINCT employee_id) as employee_count,
-        SUM(basic_salary + COALESCE(allowances, 0) + COALESCE(overtime, 0)) as gross_pay,
-        SUM(paye + COALESCE(nssf, 0) + COALESCE(sha, 0) + COALESCE(other_deductions, 0)) as total_deductions,
+        SUM(gross_pay) as gross_pay,
+        SUM(COALESCE(tax, 0) + COALESCE(nhif, 0) + COALESCE(nssf, 0) + COALESCE(deductions, 0)) as total_deductions,
         SUM(net_pay) as net_pay,
         status,
-        MAX(processed_at) as processed_date
+        MAX(created_at) as processed_date
       FROM payroll_records
-      GROUP BY period, status
-      ORDER BY period DESC
+      GROUP BY TO_CHAR(pay_period_start, 'YYYY-MM'), EXTRACT(MONTH FROM pay_period_start), EXTRACT(YEAR FROM pay_period_start), status
+      ORDER BY TO_CHAR(pay_period_start, 'YYYY-MM') DESC
       LIMIT 12
     `
 

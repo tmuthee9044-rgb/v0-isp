@@ -173,7 +173,7 @@ export async function addCustomerService(customerId: number, formData: FormData)
         ${pppoeUsername || null},
         ${pppoePassword || null},
         ${autoRenew},
-        'active',
+        'pending',
         CURRENT_DATE
       )
       RETURNING id

@@ -4,6 +4,22 @@ import { getSql } from "@/lib/db"
 export async function GET() {
   try {
     const sql = await getSql()
+    
+    if (!sql) {
+      console.error("[v0] SQL client is null")
+      return NextResponse.json({
+        localization_language: "en",
+        localization_currency: "KES",
+        localization_timezone: "Africa/Nairobi",
+        localization_date_format: "DD/MM/YYYY",
+        localization_time_format: "24h",
+        localization_number_format: "comma",
+        localization_week_start: "Monday",
+        company_prefix: "ISP",
+        tax_system: "VAT",
+        tax_rate: 16,
+      })
+    }
 
     const settings = await sql`
       SELECT 

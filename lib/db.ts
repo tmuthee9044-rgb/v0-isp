@@ -185,6 +185,35 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_customer_equipment_customer_id ON customer_equipment(customer_id)
     `.catch(() => {})
 
+    // Ensure system_config table exists with correct schema
+    await sql`
+      CREATE TABLE IF NOT EXISTS system_config (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(255) UNIQUE NOT NULL,
+        value TEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key)
+    `.catch(() => {})
+
+    // Add compliance tracking columns to network_devices (routers table)
+    await sql`
+      ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS compliance_status VARCHAR(20) DEFAULT 'unknown'
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS last_compliance_check TIMESTAMP
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS compliance_notes TEXT
+    `.catch(() => {})
+
     // Fix payroll_records table with wrong column types
     await sql`
       DROP TABLE IF EXISTS payroll_records CASCADE

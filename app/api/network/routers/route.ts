@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
 
         // Import auto-provisioning modules
         const { RouterAutoProvision } = await import("@/lib/router-auto-provision")
-        const { RouterApiWorker } = await import("@/lib/router-api-worker")
+        const { executeProvisionScript } = await import("@/lib/router-api-worker")
 
         // Generate carrier-grade provisioning script
         const provisionConfig = {
@@ -266,15 +266,16 @@ export async function POST(request: NextRequest) {
         console.log("[v0] Generated provisioning script length:", script.length)
 
         // Execute script on physical router
-        const worker = new RouterApiWorker({
-          host: ip_address,
-          username: api_username || username || "admin",
-          password: api_password || password,
-          port: type === "mikrotik" ? (api_port || 8728) : (ssh_port || 22),
-          vendor: type as "mikrotik" | "ubiquiti" | "juniper",
-        })
-
-        const execResult = await worker.executeProvisionScript(script)
+        const execResult = await executeProvisionScript(
+          {
+            ip: ip_address,
+            username: api_username || username || "admin",
+            password: api_password || password,
+            vendor: type as "mikrotik" | "ubiquiti" | "juniper",
+            port: type === "mikrotik" ? (api_port || 8728) : (ssh_port || 22),
+          },
+          script
+        )
 
         if (execResult.success) {
           console.log("[v0] Auto-provisioning successful:", execResult.message)
@@ -285,11 +286,18 @@ export async function POST(request: NextRequest) {
               notes = COALESCE(notes || E'\n\n', '') || 
                 'Auto-provisioned on ' || NOW()::TEXT || E'\n' ||
                 'RADIUS: ' || ${radiusServer} || E'\n' ||
-                'Configuration applied successfully',
-              compliance_status = 'green',
-              last_compliance_check = NOW()
+                'Configuration applied successfully'
             WHERE id = ${result[0].id}
-          `
+          `.catch(() => {})
+          
+          // Update compliance status if column exists
+          await sql`
+            UPDATE network_devices 
+            SET compliance_status = 'green', last_compliance_check = NOW()
+            WHERE id = ${result[0].id}
+          `.catch(() => {
+            console.log("[v0] Compliance tracking not yet available (migration pending)")
+          })
         } else {
           console.warn("[v0] Auto-provisioning partially failed:", execResult.error)
           
@@ -300,10 +308,15 @@ export async function POST(request: NextRequest) {
                 'Auto-provisioning attempted on ' || NOW()::TEXT || E'\n' ||
                 'Status: Partial failure\n' ||
                 'Error: ' || ${execResult.error || "Unknown error"} || E'\n\n' ||
-                'Please verify configuration manually or download script from Router Management page.',
-              compliance_status = 'yellow'
+                'Please verify configuration manually or download script from Router Management page.'
             WHERE id = ${result[0].id}
-          `
+          `.catch(() => {})
+          
+          await sql`
+            UPDATE network_devices 
+            SET compliance_status = 'yellow'
+            WHERE id = ${result[0].id}
+          `.catch(() => {})
         }
       } catch (provisionError) {
         console.error("[v0] Error during auto-provisioning:", provisionError)
@@ -317,10 +330,15 @@ export async function POST(request: NextRequest) {
               'Download and apply provisioning script manually:\n' ||
               '1. Go to Network → Routers → Actions → Download Provision Script\n' ||
               '2. Apply script via SSH or router management interface\n' ||
-              '3. Verify RADIUS connectivity and firewall rules',
-            compliance_status = 'red'
+              '3. Verify RADIUS connectivity and firewall rules'
           WHERE id = ${result[0].id}
-        `
+        `.catch(() => {})
+        
+        await sql`
+          UPDATE network_devices 
+          SET compliance_status = 'red'
+          WHERE id = ${result[0].id}
+        `.catch(() => {})
       }
     }
 

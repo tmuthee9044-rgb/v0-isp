@@ -205,6 +205,13 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key)
     `.catch(() => {})
 
+    // Ensure UNIQUE constraint exists on system_config.key for UPSERT operations
+    await sql`
+      ALTER TABLE system_config ADD CONSTRAINT system_config_key_unique UNIQUE (key)
+    `.catch(() => {
+      // Constraint already exists, ignore error
+    })
+
     // Add compliance tracking columns to network_devices (routers table)
     await sql`
       ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS compliance_status VARCHAR(20) DEFAULT 'unknown'

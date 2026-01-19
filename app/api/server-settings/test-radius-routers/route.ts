@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Test 7: Check if router has RADIUS configuration via API
+      // Test 7: Check if router has RADIUS configuration via API and verify secret
       if (router.api_username && router.api_password && router.ip_address) {
         try {
           const radiusConfigUrl = `http://${router.ip_address}:${router.api_port || 8728}/rest/radius/print`
@@ -241,21 +241,65 @@ export async function POST(request: NextRequest) {
 
           if (response.ok) {
             const radiusServers = await response.json()
-            const hasThisRadius = radiusServers.some(
+            const thisRadiusServer = radiusServers.find(
               (server: any) =>
                 server.address === radiusHost || server.address === radiusHost.replace("http://", "").split(":")[0],
             )
 
+            // Get physical router's RADIUS secret
+            const physicalRouterSecret = thisRadiusServer?.secret || null
+            const dbSecret = router.radius_secret
+
             routerResult.tests.routerRadiusConfig = {
-              success: hasThisRadius,
-              configured: hasThisRadius,
+              success: !!thisRadiusServer,
+              configured: !!thisRadiusServer,
               serversCount: radiusServers.length,
-              status: hasThisRadius
+              status: thisRadiusServer
                 ? "Router is configured to use this RADIUS server"
                 : "Router not configured for this RADIUS server",
-              message: hasThisRadius
+              message: thisRadiusServer
                 ? "Two-way RADIUS communication confirmed"
                 : "Add this RADIUS server to router configuration",
+            }
+
+            // Test 7b: Verify RADIUS secret on physical router matches database
+            if (thisRadiusServer && dbSecret) {
+              const secretsMatch = physicalRouterSecret === dbSecret
+
+              routerResult.tests.physicalRouterSecretMatch = {
+                success: secretsMatch,
+                match: secretsMatch,
+                physicalRouterSecret: physicalRouterSecret ? "***configured***" : "not set",
+                databaseSecret: dbSecret ? "***configured***" : "not set",
+                status: secretsMatch
+                  ? "RADIUS secrets match between physical router and database"
+                  : "RADIUS secret mismatch between physical router and database",
+                message: secretsMatch
+                  ? "Secret synchronization verified"
+                  : "Update router or database to match secrets",
+                troubleshooting: secretsMatch
+                  ? []
+                  : [
+                      "Option 1: Update router secret via provisioning script",
+                      "Option 2: Update database: UPDATE network_devices SET radius_secret = 'xxx' WHERE id = " +
+                        router.id,
+                      "Option 3: Re-provision router with auto-provisioning feature",
+                    ],
+              }
+            } else if (!dbSecret) {
+              routerResult.tests.physicalRouterSecretMatch = {
+                success: false,
+                match: false,
+                status: "Database RADIUS secret not configured",
+                message: "Add RADIUS secret to network_devices table",
+              }
+            } else {
+              routerResult.tests.physicalRouterSecretMatch = {
+                success: false,
+                match: false,
+                status: "Could not retrieve physical router secret",
+                message: "Router may not have RADIUS configured",
+              }
             }
           } else {
             routerResult.tests.routerRadiusConfig = {
@@ -263,6 +307,11 @@ export async function POST(request: NextRequest) {
               configured: false,
               status: "Could not query router RADIUS config",
               error: `HTTP ${response.status}`,
+            }
+            routerResult.tests.physicalRouterSecretMatch = {
+              success: false,
+              match: false,
+              status: "Cannot verify - router API returned error",
             }
           }
         } catch (error) {
@@ -272,6 +321,12 @@ export async function POST(request: NextRequest) {
             status: "Router API not accessible",
             message: "Cannot verify router RADIUS configuration - API credentials may be incorrect",
           }
+          routerResult.tests.physicalRouterSecretMatch = {
+            success: false,
+            match: false,
+            status: "Cannot verify - router API not accessible",
+            error: error instanceof Error ? error.message : String(error),
+          }
         }
       } else {
         routerResult.tests.routerRadiusConfig = {
@@ -280,10 +335,21 @@ export async function POST(request: NextRequest) {
           status: "Router API credentials not configured",
           message: "Add router API credentials to verify RADIUS configuration",
         }
+        routerResult.tests.physicalRouterSecretMatch = {
+          success: false,
+          match: false,
+          status: "Cannot verify - router API credentials not configured",
+        }
       }
 
       // Test 8: Test actual RADIUS authentication to this specific router
       try {
+        console.log("[v0] Testing RADIUS auth for router:", router.name, {
+          radiusHost,
+          radiusPort: Number(radiusPort),
+          nasIp: router.nas_ip_address || router.ip_address,
+        })
+
         const testResult = await testRadiusServer(
           radiusHost,
           Number(radiusPort),
@@ -291,6 +357,8 @@ export async function POST(request: NextRequest) {
           5000,
           router.nas_ip_address || router.ip_address,
         )
+
+        console.log("[v0] RADIUS test result for", router.name, ":", testResult)
 
         routerResult.tests.radiusAuthToRouter = {
           success: testResult.success,
@@ -302,10 +370,17 @@ export async function POST(request: NextRequest) {
           details: testResult.details,
         }
       } catch (error) {
+        console.error("[v0] RADIUS auth test error for", router.name, ":", error)
         routerResult.tests.radiusAuthToRouter = {
           success: false,
           status: "RADIUS authentication test failed",
-          error: String(error),
+          error: error instanceof Error ? error.message : String(error),
+          troubleshooting: [
+            "Check FreeRADIUS is running: systemctl status freeradius",
+            `Verify ports are open: netstat -tulpn | grep ${radiusPort}`,
+            "Test manual auth: radtest testuser testpass localhost 0 testing123",
+            `Check NAS client: radiusd -X | grep ${router.ip_address}`,
+          ],
         }
       }
 
@@ -317,8 +392,16 @@ export async function POST(request: NextRequest) {
         routerResult.tests.radiusToRouterReachability?.success &&
         routerResult.tests.radiusAuthToRouter?.success
 
+      const secretsVerified =
+        routerResult.tests.secretMatch?.success &&
+        (routerResult.tests.physicalRouterSecretMatch?.success !== false ||
+          routerResult.tests.physicalRouterSecretMatch?.status?.includes("not configured"))
+
       routerResult.overallStatus = allTestsPassed ? "Fully Connected" : "Issues Detected"
-      routerResult.readyForProduction = allTestsPassed && routerResult.tests.routerRadiusConfig?.success !== false
+      routerResult.readyForProduction =
+        allTestsPassed &&
+        secretsVerified &&
+        routerResult.tests.routerRadiusConfig?.success !== false
 
       results.push(routerResult)
     }

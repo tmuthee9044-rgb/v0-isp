@@ -96,6 +96,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       gps_latitude,
       gps_longitude,
       status,
+      ip_address, // Declared here
+      nas_ip_address, // Declared here
     } = body
 
     if (!name || !type) {
@@ -201,15 +203,75 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           `
         }
 
-        if (type === "mikrotik" && result[0]) {
-          await sql`
-            INSERT INTO provisioning_queue (
-              router_id, action, username, password, status, created_at
-            ) VALUES (
-              ${routerId}, 'update_router_config', ${username || null}, ${password || null},
-              'pending', NOW()
+        // Auto-provision carrier-grade configuration to physical router on update
+        if ((username || mikrotik_user) && (password || mikrotik_password) && ip_address) {
+          try {
+            console.log("[v0] Auto-provisioning configuration updates to physical router:", name)
+
+            // Get RADIUS server settings
+            const radiusServer = process.env.RADIUS_SERVER_IP || radius_nas_ip || nas_ip_address || "10.0.0.1"
+            const radiusServerSecret = radius_secret || process.env.RADIUS_SECRET || "testing123"
+            const mgmtIp = process.env.MGMT_IP || "10.0.0.0/24"
+
+            // Import auto-provisioning modules
+            const { RouterAutoProvision } = await import("@/lib/router-auto-provision")
+            const { executeProvisionScript } = await import("@/lib/router-api-worker")
+
+            // Generate carrier-grade provisioning script with firewall rules
+            const provisionConfig = {
+              routerId: routerId,
+              routerIp: ip_address,
+              radiusIp: radiusServer,
+              radiusSecret: radiusServerSecret,
+              mgmtIp: mgmtIp,
+              safeDNS: true,
+              vendor: type as "mikrotik" | "ubiquiti" | "juniper",
+            }
+
+            const script = RouterAutoProvision.generateScript(provisionConfig)
+            console.log("[v0] Generated provisioning script for update, length:", script.length)
+
+            // Execute script on physical router
+            const execResult = await executeProvisionScript(
+              {
+                ip: ip_address,
+                username: mikrotik_user || username || "admin",
+                password: mikrotik_password || password,
+                vendor: type as "mikrotik" | "ubiquiti" | "juniper",
+                port: type === "mikrotik" ? (api_port || 8728) : (ssh_port || 22),
+              },
+              script
             )
-          `
+
+            if (execResult.success) {
+              console.log("[v0] Auto-provisioning update successful:", execResult.message)
+              
+              await sql`
+                UPDATE network_devices 
+                SET 
+                  notes = COALESCE(notes || E'\n\n', '') || 
+                    'Re-provisioned on ' || NOW()::TEXT || E'\n' ||
+                    'Configuration updated successfully'
+                WHERE id = ${routerId}
+              `.catch(() => {})
+              
+              await sql`
+                UPDATE network_devices 
+                SET compliance_status = 'green', last_compliance_check = NOW()
+                WHERE id = ${routerId}
+              `.catch(() => {})
+            } else {
+              console.warn("[v0] Auto-provisioning update partially failed:", execResult.error)
+              
+              await sql`
+                UPDATE network_devices 
+                SET compliance_status = 'yellow'
+                WHERE id = ${routerId}
+              `.catch(() => {})
+            }
+          } catch (provisionError) {
+            console.error("[v0] Error during router update provisioning:", provisionError)
+          }
         }
 
         await sql`

@@ -202,12 +202,12 @@ export async function POST(request: NextRequest) {
         // Create supplier invoice
         const invoice = await sql`
           INSERT INTO supplier_invoices (
-            invoice_number, supplier_id, purchase_order_id, goods_receiving_id,
-            invoice_date, due_date, subtotal, tax_rate, tax_amount, total_amount,
-            amount_paid, status, notes
+            invoice_number, supplier_id, purchase_order_id,
+            invoice_date, due_date, subtotal, tax_amount, total_amount,
+            paid_amount, status, notes
           ) VALUES (
-            ${invoiceNumber}, ${data.supplier_id}, ${data.purchase_order_id}, ${grId},
-            ${data.received_date}, ${dueDate.toISOString()}, ${subtotal}, ${taxRate},
+            ${invoiceNumber}, ${data.supplier_id}, ${data.purchase_order_id},
+            ${data.received_date}, ${dueDate.toISOString()}, ${subtotal},
             ${taxAmount}, ${totalAmount}, 0, 'UNPAID',
             ${"Invoice automatically generated for goods receiving " + receivingNumber + " (PO: " + poNumber + ")"}
           )

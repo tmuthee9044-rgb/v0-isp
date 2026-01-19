@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
 
 async function fetchDashboardData(dateFrom: string, dateTo: string) {
   const sql = await getSql()
+  
+  if (!sql) {
+    console.error("[v0] SQL client is null")
+    return NextResponse.json({ error: "Database connection unavailable" }, { status: 503 })
+  }
 
   console.log("[v0] Executing dashboard queries with date range:", { dateFrom, dateTo })
 

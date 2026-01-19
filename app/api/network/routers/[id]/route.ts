@@ -204,20 +204,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         if (type === "mikrotik" && result[0]) {
           await sql`
             INSERT INTO provisioning_queue (
-              action, entity_type, entity_id, configuration, status, created_at
+              router_id, action, username, password, status, created_at
             ) VALUES (
-              'update_router_config', 'router', ${routerId},
-              ${JSON.stringify({
-                host: hostname || result[0].ip_address,
-                port: api_port || 8728,
-                username: mikrotik_user || username,
-                customer_auth_method,
-                enable_traffic_recording,
-                enable_speed_control,
-                radius_nas_ip,
-                radius_secret,
-                blocking_page_url,
-              })},
+              ${routerId}, 'update_router_config', ${username || null}, ${password || null},
               'pending', NOW()
             )
           `

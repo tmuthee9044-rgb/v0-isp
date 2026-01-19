@@ -6,6 +6,7 @@ import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/ro
 import { provisionRadiusUser, suspendRadiusUser, updateRadiusSpeed, deprovisionRadiusUser } from "@/lib/radius-manager"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 import { queueServiceProvisioning } from "@/lib/router-selection"
+import { provisionUserCredentials } from "@/lib/user-credentials-provisioning" // Import provisionUserCredentials
 
 export async function getCustomerServices(customerId: number) {
   try {
@@ -182,21 +183,31 @@ export async function addCustomerService(customerId: number, formData: FormData)
 
     console.log("[v0] Handling provisioning based on enforcement mode:", enforcementMode)
 
-    if (enforcementMode === "radius" || enforcementMode === "hybrid") {
-      console.log("[v0] Provisioning to RADIUS...")
-      if (!pppoeUsername || !pppoePassword) {
-        console.log("[v0] RADIUS provisioning skipped - PPPoE credentials not provided")
-        console.log(`[v0] pppoeUsername: ${pppoeUsername}, pppoePassword: ${pppoePassword}`)
+    // Provision PPPoE credentials to router based on customer_auth_method
+    try {
+      if (pppoeUsername && pppoePassword) {
+        console.log(`[v0] Provisioning ${pppoeUsername} to router (enforcement: ${enforcementMode})`)
+        
+        // Use vendor-specific provisioning that handles both local and RADIUS auth
+        const provisionResult = await provisionUserCredentials(
+          serviceId,
+          pppoeUsername,
+          pppoePassword,
+          ipAddress || undefined,
+          undefined // profile will be determined from service plan
+        )
+        
+        if (provisionResult.success) {
+          console.log(`[v0] Provisioning successful: ${provisionResult.message}`)
+        } else {
+          console.error(`[v0] Provisioning warning: ${provisionResult.error}`)
+        }
       } else {
-        console.log(`[v0] Calling provisionRadiusUser with: username=${pppoeUsername}, servicePlanId=${servicePlanId}`)
-        await provisionRadiusUser(pppoeUsername, pppoePassword, servicePlanId, "mikrotik")
+        console.log("[v0] PPPoE provisioning skipped - credentials not provided")
       }
-    }
-
-    if (enforcementMode === "direct" || enforcementMode === "hybrid") {
-      console.log("[v0] Queueing async router provisioning...")
-      // Queue async router provisioning
-      await queueServiceProvisioning(serviceId, Number.parseInt(routerId), "CREATE", enforcementMode)
+    } catch (provisionError) {
+      console.error("[v0] Provisioning error (non-fatal):", provisionError)
+      // Continue to invoice creation even if provisioning fails
     }
 
     console.log("[v0] Creating invoice for service...")

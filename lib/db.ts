@@ -75,6 +75,46 @@ export async function getDatabaseStatus() {
   }
 }
 
+/**
+ * Auto-migrate critical missing columns on startup
+ */
+async function ensureCriticalColumns() {
+  try {
+    // Add missing days_requested column to leave_requests
+    await sql`
+      ALTER TABLE leave_requests 
+      ADD COLUMN IF NOT EXISTS days_requested INTEGER NOT NULL DEFAULT 0
+    `.catch(() => {})
+
+    // Update existing records to calculate days_requested
+    await sql`
+      UPDATE leave_requests 
+      SET days_requested = (end_date - start_date + 1)
+      WHERE days_requested = 0
+    `.catch(() => {})
+
+    // Add missing total_amount column to purchase_order_items
+    await sql`
+      ALTER TABLE purchase_order_items 
+      ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15, 2)
+    `.catch(() => {})
+
+    // Calculate total_amount for existing records
+    await sql`
+      UPDATE purchase_order_items 
+      SET total_amount = (quantity * unit_cost)
+      WHERE total_amount IS NULL
+    `.catch(() => {})
+
+    console.log("[DB] Critical column migrations applied")
+  } catch (error) {
+    console.error("[DB] Column migration error:", error)
+  }
+}
+
+// Run migrations on startup
+ensureCriticalColumns()
+
 export default sql
 export const db = sql
 export const getSqlConnection = () => sql

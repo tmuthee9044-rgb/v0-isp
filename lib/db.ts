@@ -106,6 +106,19 @@ async function ensureCriticalColumns() {
       WHERE total_amount IS NULL
     `.catch(() => {})
 
+    // Add missing columns for customer import (from CSV)
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS daily_prepaid_cost DECIMAL(10, 4) DEFAULT 0.0000
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS login VARCHAR(100) UNIQUE
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT true
+    `.catch(() => {})
+
     console.log("[DB] Critical column migrations applied")
   } catch (error) {
     console.error("[DB] Column migration error:", error)

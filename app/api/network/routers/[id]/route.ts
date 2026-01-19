@@ -66,6 +66,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = await request.json()
+    
+    // Prevent processing malformed or oversized request bodies
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return NextResponse.json({ message: "Invalid request body" }, { status: 400 })
+    }
+    
     console.log("[v0] Updating router ID:", routerId, "with name:", body.name, "type:", body.type)
 
     const {
@@ -122,7 +128,23 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       }
     }
 
-    const existingConfig = existingRouter[0].configuration || {}
+    // Parse existing config safely to avoid RangeError from corrupted data
+    let existingConfig = {}
+    try {
+      const rawConfig = existingRouter[0].configuration
+      if (rawConfig && typeof rawConfig === 'object') {
+        // Check if it's corrupted character-indexed object
+        if ('0' in rawConfig && '1' in rawConfig) {
+          console.log("[v0] Detected corrupted configuration, resetting to empty object")
+          existingConfig = {}
+        } else {
+          existingConfig = rawConfig
+        }
+      }
+    } catch (error) {
+      console.log("[v0] Failed to parse existing config:", error)
+      existingConfig = {}
+    }
 
     const configuration = {
       ...existingConfig,

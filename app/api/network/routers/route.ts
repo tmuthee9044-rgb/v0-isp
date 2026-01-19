@@ -55,7 +55,6 @@ export async function GET() {
     })
 
     console.log("[v0] Fetched routers count:", parsedRouters.length)
-    console.log("[v0] Fetched routers:", parsedRouters)
     return NextResponse.json(parsedRouters)
   } catch (error) {
     console.error("[v0] Error fetching routers:", error)
@@ -69,7 +68,6 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[v0] Creating new router...")
     const body = await request.json()
-    console.log("[v0] Request body:", body)
 
     const {
       location_id,

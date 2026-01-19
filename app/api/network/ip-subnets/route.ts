@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     console.log("[v0] ===== IP SUBNET API POST REQUEST START =====")
 
     const body = await request.json()
-    console.log("[v0] Request body:", JSON.stringify(body, null, 2))
+    console.log("[v0] Creating subnet for router:", body.router_id)
 
     const { router_id, cidr, name, description, version, type, allocation_mode } = body
 
@@ -178,9 +178,10 @@ export async function POST(request: NextRequest) {
     const createdSubnet = result[0]
     console.log("[v0] Subnet created:", createdSubnet.id)
 
-    if (!isIPv6 && prefix >= 16 && totalIPs <= 65534) {
-      console.log("[v0] Auto-generating", totalIPs, "IP addresses for subnet")
-
+    // Skip automatic IP generation to prevent memory issues
+    // IPs will be generated on-demand when assigning to customers
+    if (!isIPv6 && prefix >= 24 && totalIPs <= 254) {
+      // Only auto-generate for small subnets (/24 or smaller = max 254 IPs)
       try {
         const ipToNumber = (ip: string): number => {
           const parts = ip.split(".").map(Number)
@@ -192,59 +193,27 @@ export async function POST(request: NextRequest) {
         }
 
         const networkNumber = ipToNumber(networkAddr)
-        // First usable IP (skip network address)
         const firstUsableIP = networkNumber + 1
-        // Last usable IP (skip broadcast address)
         const lastUsableIP = networkNumber + totalIPs
 
-        const ipAddresses: string[] = []
-        for (let i = firstUsableIP; i <= lastUsableIP; i++) {
-          ipAddresses.push(numberToIp(i))
-        }
-
-        console.log("[v0] Generated", ipAddresses.length, "IP addresses, inserting in batches...")
-
-        const BATCH_SIZE = 100
         let insertedCount = 0
-
-        for (let i = 0; i < ipAddresses.length; i += BATCH_SIZE) {
-          const batch = ipAddresses.slice(i, i + BATCH_SIZE)
-
-          for (const ip of batch) {
-            await sql`
-              INSERT INTO ip_addresses (ip_address, subnet_id, status, created_at)
-              VALUES (${ip}, ${createdSubnet.id}, 'available', NOW())
-              ON CONFLICT (ip_address) DO NOTHING
-            `
-            insertedCount++
-          }
-
-          // Log progress for large subnets
-          if (ipAddresses.length > 1000 && i % 1000 === 0) {
-            console.log(`[v0] Progress: ${i}/${ipAddresses.length} IPs inserted`)
-          }
+        for (let i = firstUsableIP; i <= lastUsableIP; i++) {
+          const ip = numberToIp(i)
+          await sql`
+            INSERT INTO ip_addresses (ip_address, subnet_id, status, created_at)
+            VALUES (${ip}, ${createdSubnet.id}, 'available', NOW())
+            ON CONFLICT (ip_address) DO NOTHING
+          `
+          insertedCount++
         }
-
-        console.log("[v0] Successfully inserted", insertedCount, "IP addresses")
 
         await sql`
-          UPDATE ip_subnets 
-          SET 
-            total_ips = ${insertedCount},
-            used_ips = 0
+          UPDATE ip_subnets SET total_ips = ${insertedCount}, used_ips = 0
           WHERE id = ${createdSubnet.id}
         `
-
-        console.log("[v0] Updated subnet with IP counts")
       } catch (ipError) {
         console.error("[v0] IP generation failed:", ipError)
-        // Don't fail subnet creation if IP generation fails
-        console.log("[v0] Subnet created but IP generation failed - IPs can be generated manually later")
       }
-    } else if (isIPv6) {
-      console.log("[v0] IPv6 subnet created - IP generation skipped (too many addresses)")
-    } else if (totalIPs > 65534) {
-      console.log("[v0] Large subnet created - IP generation skipped (more than 65,534 IPs)")
     }
 
     console.log("[v0] ===== IP SUBNET CREATED SUCCESSFULLY =====")

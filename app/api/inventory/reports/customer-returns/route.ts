@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest) {
   try {
     const sql = await getSql()

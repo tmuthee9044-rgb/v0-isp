@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { WalletManager } from "@/lib/wallet-manager"
 
+export const dynamic = "force-dynamic"
+
 /**
  * Manual wallet allocation API
  */

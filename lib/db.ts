@@ -128,6 +128,10 @@ async function ensureCriticalColumns() {
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS conversion_date DATE
     `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS mpesa_phone_number VARCHAR(15)
+    `.catch(() => {})
 
     // Ensure customer_documents table exists with correct schema
     await sql`
@@ -212,6 +216,38 @@ async function ensureCriticalColumns() {
     
     await sql`
       ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS compliance_notes TEXT
+    `.catch(() => {})
+
+    // Ensure provisioning_queue table exists for async router operations
+    await sql`
+      CREATE TABLE IF NOT EXISTS provisioning_queue (
+        id SERIAL PRIMARY KEY,
+        router_id INTEGER REFERENCES network_devices(id) ON DELETE CASCADE,
+        action VARCHAR(50) NOT NULL,
+        username VARCHAR(255),
+        password TEXT,
+        static_ip INET,
+        profile VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'pending',
+        error_message TEXT,
+        attempts INTEGER DEFAULT 0,
+        max_attempts INTEGER DEFAULT 3,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        processed_at TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_provisioning_queue_status ON provisioning_queue(status)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_provisioning_queue_router ON provisioning_queue(router_id)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_provisioning_queue_created ON provisioning_queue(created_at)
     `.catch(() => {})
 
     // Fix payroll_records table with wrong column types

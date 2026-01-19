@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RADIUSConfigGenerator } from "@/components/radius-config-generator"
+import { Troubleshooter } from "@/components/troubleshooter"
 
 interface Location {
   id: number
@@ -304,7 +305,7 @@ export default function EditRouterPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto py-6 px-4 max-w-4xl">
       {/* Header */}
       <div className="mb-8">
         <Button variant="ghost" size="sm" onClick={() => router.push("/network/routers")} className="mb-4">

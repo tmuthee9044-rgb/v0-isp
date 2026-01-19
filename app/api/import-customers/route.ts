@@ -79,6 +79,7 @@ export async function POST(request: Request) {
           last_name: customer.last_name || customer.name?.split(" ").slice(1).join(" ") || "",
           email: customer.email || "",
           phone: customer.phone || "",
+          mpesa_phone_number: customer.mpesa_phone_number || customer.mpesa_phone || customer.phone || "",
           login: customer.login || customer.username || customer.email || "",
           customer_type: customer.customer_type || "individual",
           status: customer.status || "active",
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
         // Insert new customer with enhanced field mapping
         await sql`
           INSERT INTO customers (
-            first_name, last_name, email, phone, login, customer_type, status,
+            first_name, last_name, email, phone, mpesa_phone_number, login, customer_type, status,
             monthly_fee, balance, physical_address, physical_city, physical_county,
             postal_code, plan, import_source, import_date, created_at, updated_at
           ) VALUES (
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
             ${customerData.last_name},
             ${customerData.email},
             ${customerData.phone},
+            ${customerData.mpesa_phone_number},
             ${customerData.login},
             ${customerData.customer_type},
             ${customerData.status},
@@ -231,6 +233,11 @@ function parseCSVFormat(text: string): any[] {
           break
         case "phone":
           customer.phone = value
+          break
+        case "mpesa phone":
+        case "mpesa_phone_number":
+        case "mpesa phone number":
+          customer.mpesa_phone_number = value
           break
         case "customer type":
           customer.customer_type = value

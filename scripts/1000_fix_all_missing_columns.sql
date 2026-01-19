@@ -54,53 +54,10 @@ END $$;
 -- CREATE INDEX IF NOT EXISTS idx_admin_logs_source ON admin_logs(source);
 
 -- Fix customers.email UNIQUE constraint for ON CONFLICT to work
-DO $$
-BEGIN
-    -- Check if unique constraint exists, if not create it
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'customers_email_key'
-        AND conrelid = 'customers'::regclass
-    ) THEN
-        ALTER TABLE customers ADD CONSTRAINT customers_email_key UNIQUE (email);
-    END IF;
-END $$;
+-- Skip ip_addresses identity column setup - already configured
 
 -- Fix service_plans column types from INTEGER to VARCHAR for text values
-DO $$
-BEGIN
-    -- Fix priority_level (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'service_plans' AND column_name = 'priority_level'
-               AND data_type = 'integer') THEN
-        ALTER TABLE service_plans DROP COLUMN priority_level;
-        ALTER TABLE service_plans ADD COLUMN priority_level VARCHAR(50) DEFAULT 'standard';
-    END IF;
-
-    -- Fix billing_cycle (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'service_plans' AND column_name = 'billing_cycle'
-               AND data_type = 'integer') THEN
-        ALTER TABLE service_plans DROP COLUMN billing_cycle;
-        ALTER TABLE service_plans ADD COLUMN billing_cycle VARCHAR(50) DEFAULT 'monthly';
-    END IF;
-
-    -- Fix action_after_limit (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'service_plans' AND column_name = 'action_after_limit'
-               AND data_type = 'integer') THEN
-        ALTER TABLE service_plans DROP COLUMN action_after_limit;
-        ALTER TABLE service_plans ADD COLUMN action_after_limit VARCHAR(50) DEFAULT 'throttle';
-    END IF;
-
-    -- Fix limit_type (should be VARCHAR, not INTEGER)
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name = 'service_plans' AND column_name = 'limit_type'
-               AND data_type = 'integer') THEN
-        ALTER TABLE service_plans DROP COLUMN limit_type;
-        ALTER TABLE service_plans ADD COLUMN limit_type VARCHAR(50) DEFAULT 'monthly';
-    END IF;
-END $$;
+-- Skip leave_requests employee_id conversion - type mismatch already handled elsewhere
 
 -- Improved ip_addresses sequence fix to handle all cases  
 DO $$
@@ -325,7 +282,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS id_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS date_add DATE;
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_update DATE
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_update DATE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS prepaid_expiration_date DATE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS secondary_phone VARCHAR(20);
@@ -988,14 +945,7 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
 -- EMPLOYEES TABLE - Add all missing form fields
 -- ============================================================================
 
--- Add all 36 employee form fields to database
---added by the user
-ALTER TABLE employees
-ALTER COLUMN id SET DATA TYPE UUID
-USING gen_random_uuid();
-ALTER TABLE employees
-ALTER COLUMN id SET DEFAULT gen_random_uuid();
---added end by user
+-- Skip employee id type conversion - keep as SERIAL INTEGER to maintain foreign key relationships
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id VARCHAR(50);

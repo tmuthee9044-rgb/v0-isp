@@ -6,7 +6,7 @@ import { provisionServiceToRouter, deprovisionServiceFromRouter } from "@/lib/ro
 import { provisionRadiusUser, suspendRadiusUser, updateRadiusSpeed, deprovisionRadiusUser } from "@/lib/radius-manager"
 import { provisionToStandardRadiusTables } from "@/lib/radius-provisioning"
 import { queueServiceProvisioning } from "@/lib/router-selection"
-import { provisionUserCredentials } from "@/lib/user-credentials-provisioning" // Import provisionUserCredentials
+import { provisionUserCredentials } from "@/lib/vendor-provisioning"
 
 export async function getCustomerServices(customerId: number) {
   try {

@@ -132,6 +132,10 @@ async function ensureCriticalColumns() {
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS mpesa_phone_number VARCHAR(15)
     `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS report_first_service_amount DECIMAL(10, 2) DEFAULT 0
+    `.catch(() => {})
 
     // Ensure customer_documents table exists with correct schema
     await sql`

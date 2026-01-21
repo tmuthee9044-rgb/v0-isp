@@ -247,35 +247,28 @@ export async function POST(request: NextRequest) {
         const radiusServerSecret = radius_secret || process.env.RADIUS_SECRET || "testing123"
         const mgmtIp = process.env.MGMT_IP || "10.0.0.0/24"
 
-        // Import auto-provisioning modules
-        const { RouterAutoProvision } = await import("@/lib/router-auto-provision")
-        const { executeProvisionScript } = await import("@/lib/router-api-worker")
+        // Import MikroTik API for direct configuration
+        const { MikroTikAPI } = await import("@/lib/mikrotik-api")
 
-        // Generate carrier-grade provisioning script
-        const provisionConfig = {
-          routerId: result[0].id,
-          routerIp: ip_address,
-          radiusIp: radiusServer,
-          radiusSecret: radiusServerSecret,
-          mgmtIp: mgmtIp,
-          safeDNS: true,
-          vendor: type as "mikrotik" | "ubiquiti" | "juniper",
-        }
+        const mikrotik = new MikroTikAPI({
+          host: ip_address,
+          port: api_port || 8728,
+          username: api_username || username || "admin",
+          password: api_password || password,
+        })
 
-        const script = RouterAutoProvision.generateScript(provisionConfig)
-        console.log("[v0] Generated provisioning script length:", script.length)
+        await mikrotik.connect()
 
-        // Execute script on physical router
-        const execResult = await executeProvisionScript(
-          {
-            ip: ip_address,
-            username: api_username || username || "admin",
-            password: api_password || password,
-            vendor: type as "mikrotik" | "ubiquiti" | "juniper",
-            port: type === "mikrotik" ? (api_port || 8728) : (ssh_port || 22),
-          },
-          script
-        )
+        // Apply carrier-grade router configuration including firewall rules
+        const execResult = await mikrotik.applyRouterConfiguration({
+          customer_auth_method: customer_auth_method || "pppoe_radius",
+          trafficking_record: enable_traffic_recording ? "Traffic Flow (RouterOS V6x,V7.x)" : undefined,
+          speed_control: enable_speed_control ? "PCQ + Addresslist" : undefined,
+          radius_server: radiusServer,
+          radius_secret: radiusServerSecret,
+        })
+
+        await mikrotik.disconnect()
 
         if (execResult.success) {
           console.log("[v0] Auto-provisioning successful:", execResult.message)

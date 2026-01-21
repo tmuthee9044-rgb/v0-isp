@@ -99,10 +99,15 @@ async function ensureCriticalColumns() {
       WHERE days_requested = 0
     `.catch(() => {})
 
-    // Add missing total_amount column to purchase_order_items
+    // Add missing columns to purchase_order_items
     await sql`
       ALTER TABLE purchase_order_items 
       ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15, 2)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE purchase_order_items 
+      ADD COLUMN IF NOT EXISTS description TEXT
     `.catch(() => {})
 
     // Calculate total_amount for existing records
@@ -289,6 +294,32 @@ async function ensureCriticalColumns() {
 
     await sql`
       CREATE INDEX IF NOT EXISTS idx_supplier_invoices_status ON supplier_invoices(status)
+    `.catch(() => {})
+
+    // Fix supplier_invoices id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'supplier_invoices_id_seq') THEN
+          CREATE SEQUENCE supplier_invoices_id_seq;
+          RAISE NOTICE 'Created supplier_invoices_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='supplier_invoices') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('supplier_invoices_id_seq', COALESCE((SELECT MAX(id) FROM supplier_invoices), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE supplier_invoices ALTER COLUMN id SET DEFAULT nextval('supplier_invoices_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE supplier_invoices_id_seq OWNED BY supplier_invoices.id;
+          
+          RAISE NOTICE 'Fixed supplier_invoices id sequence';
+        END IF;
+      END $$;
     `.catch(() => {})
 
     // Fix payroll_records table with wrong column types

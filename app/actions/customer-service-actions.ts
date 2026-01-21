@@ -341,6 +341,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
     }
 
     // Log the activity
+    const description = `Updated service to ${servicePlan[0].name}`
     await sql`
       INSERT INTO activity_logs (
         user_id,
@@ -354,7 +355,7 @@ export async function updateCustomerServiceWithoutInvoice(serviceId: number, for
         'update',
         'customer_service',
         ${serviceId},
-        ${`Updated service to ${servicePlan[0].name}`},
+        ${description},
         NOW()
       )
       ON CONFLICT DO NOTHING
@@ -729,6 +730,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
       )
 
       // Log the activation
+      const activationDescription = `Service activated after payment: ${service.service_name}`
       await sql`
         INSERT INTO activity_logs (
           user_id,
@@ -742,7 +744,7 @@ export async function processPayment(customerId: number, invoiceId: number, amou
           'activate',
           'customer_service',
           ${service.id},
-          ${`Service activated after payment: ${service.service_name}`},
+          ${activationDescription},
           NOW()
         )
         ON CONFLICT DO NOTHING
@@ -826,6 +828,7 @@ export async function updateServiceStatus(
     }
 
     // Log the status change
+    const statusChangeDescription = `Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}`
     await sql`
       INSERT INTO activity_logs (
         user_id,
@@ -839,7 +842,7 @@ export async function updateServiceStatus(
         'status_change',
         'customer_service',
         ${serviceId},
-        ${`Status changed from ${oldStatus} to ${newStatus}${reason ? `: ${reason}` : ""}`},
+        ${statusChangeDescription},
         NOW()
       )
       ON CONFLICT DO NOTHING

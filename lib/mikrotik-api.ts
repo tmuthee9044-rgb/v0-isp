@@ -513,13 +513,19 @@ export class MikroTikAPI {
 
       if (method === "PCQ + Addresslist") {
         // Check for existing pcq-download-default queue type
-        const existingDownloadQueue = await this.execute("/queue/type/print", "GET", { name: "pcq-download-default" })
+        const existingDownloadQueue = await this.execute("/queue/type", "GET")
 
-        if (existingDownloadQueue.success && existingDownloadQueue.data && existingDownloadQueue.data.length > 0) {
+        const downloadExists =
+          existingDownloadQueue.success &&
+          existingDownloadQueue.data &&
+          Array.isArray(existingDownloadQueue.data) &&
+          existingDownloadQueue.data.some((q: any) => q.name === "pcq-download-default")
+
+        if (downloadExists) {
           console.log("[v0] pcq-download-default already exists, skipping creation")
         } else {
           // Create PCQ queue type for download
-          const downloadResult = await this.execute("/queue/type/add", "POST", {
+          const downloadResult = await this.execute("/queue/type", "POST", {
             name: "pcq-download-default",
             kind: "pcq",
             "pcq-rate": "0",
@@ -528,19 +534,27 @@ export class MikroTikAPI {
 
           if (downloadResult.success) {
             console.log("[v0] Created pcq-download-default queue type")
+          } else if (downloadResult.error?.includes("name already used")) {
+            console.log("[v0] pcq-download-default already exists (caught during creation)")
           } else {
             console.warn("[v0] Could not create pcq-download-default:", downloadResult.error)
           }
         }
 
         // Check for existing pcq-upload-default queue type
-        const existingUploadQueue = await this.execute("/queue/type/print", "GET", { name: "pcq-upload-default" })
+        const existingUploadQueue = await this.execute("/queue/type", "GET")
 
-        if (existingUploadQueue.success && existingUploadQueue.data && existingUploadQueue.data.length > 0) {
+        const uploadExists =
+          existingUploadQueue.success &&
+          existingUploadQueue.data &&
+          Array.isArray(existingUploadQueue.data) &&
+          existingUploadQueue.data.some((q: any) => q.name === "pcq-upload-default")
+
+        if (uploadExists) {
           console.log("[v0] pcq-upload-default already exists, skipping creation")
         } else {
           // Create PCQ queue type for upload
-          const uploadResult = await this.execute("/queue/type/add", "POST", {
+          const uploadResult = await this.execute("/queue/type", "POST", {
             name: "pcq-upload-default",
             kind: "pcq",
             "pcq-rate": "0",
@@ -549,6 +563,8 @@ export class MikroTikAPI {
 
           if (uploadResult.success) {
             console.log("[v0] Created pcq-upload-default queue type")
+          } else if (uploadResult.error?.includes("name already used")) {
+            console.log("[v0] pcq-upload-default already exists (caught during creation)")
           } else {
             console.warn("[v0] Could not create pcq-upload-default:", uploadResult.error)
           }
@@ -802,41 +818,64 @@ export class MikroTikAPI {
     speed_control?: string
     radius_server?: string
     radius_secret?: string
-  }): Promise<{ success: boolean; results: any; errors: string[] }> {
+  }): Promise<{ success: boolean; message?: string; results?: any; errors?: string[] }> {
     const results: any = {}
     const errors: string[] = []
+    let successCount = 0
+    let totalSteps = 0
 
     try {
       console.log("[v0] Applying complete router configuration:", config)
 
       // 1. Configure customer authorization method
       if (config.customer_auth_method) {
-        const authResult = await this.configureCustomerAuth(
-          config.customer_auth_method,
-          config.radius_server,
-          config.radius_secret,
-        )
-        results.customerAuth = authResult
-        if (!authResult.success) {
-          errors.push(`Customer Auth: ${authResult.error}`)
+        totalSteps++
+        try {
+          const authResult = await this.configureCustomerAuth(
+            config.customer_auth_method,
+            config.radius_server,
+            config.radius_secret,
+          )
+          results.customerAuth = authResult
+          if (authResult.success) {
+            successCount++
+          } else {
+            errors.push(`Customer Auth: ${authResult.error}`)
+          }
+        } catch (error) {
+          errors.push(`Customer Auth failed: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
 
       // 2. Configure traffic monitoring
       if (config.trafficking_record) {
-        const trafficResult = await this.configureTrafficMonitoring(config.trafficking_record)
-        results.trafficMonitoring = trafficResult
-        if (!trafficResult.success) {
-          errors.push(`Traffic Monitoring: ${trafficResult.error}`)
+        totalSteps++
+        try {
+          const trafficResult = await this.configureTrafficMonitoring(config.trafficking_record)
+          results.trafficMonitoring = trafficResult
+          if (trafficResult.success) {
+            successCount++
+          } else {
+            errors.push(`Traffic Monitoring: ${trafficResult.error}`)
+          }
+        } catch (error) {
+          errors.push(`Traffic Monitoring failed: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
 
       // 3. Configure speed control
       if (config.speed_control) {
-        const speedResult = await this.configureSpeedControl(config.speed_control, {})
-        results.speedControl = speedResult
-        if (!speedResult.success) {
-          errors.push(`Speed Control: ${speedResult.error}`)
+        totalSteps++
+        try {
+          const speedResult = await this.configureSpeedControl(config.speed_control, {})
+          results.speedControl = speedResult
+          if (speedResult.success) {
+            successCount++
+          } else {
+            errors.push(`Speed Control: ${speedResult.error}`)
+          }
+        } catch (error) {
+          errors.push(`Speed Control failed: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
 
@@ -852,13 +891,14 @@ export class MikroTikAPI {
       console.error("[v0] Error applying router configuration:", error)
       return {
         success: false,
+        message: "Configuration failed with unexpected error",
         results,
-        errors: [...errors, error.message],
+        errors: [...errors, error.message || "Unknown error occurred"],
       }
     }
   }
 
-  /**
+  /**\
    * Update a singleton resource (resources that have only one configuration item)
    * These resources need to be fetched first to get their ID before updating
    */
@@ -897,7 +937,7 @@ export class MikroTikAPI {
   }
 }
 
-/**
+/**\
  * Create MikroTik API client from router configuration
  */
 export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null>
@@ -1003,5 +1043,3 @@ export async function createMikroTikClient(
 }
 
 export default MikroTikAPI
-
-export { MikroTikAPI as MikrotikAPI }

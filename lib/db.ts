@@ -322,6 +322,41 @@ async function ensureCriticalColumns() {
       END $$;
     `.catch(() => {})
 
+    // Fix purchase_order_items id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'purchase_order_items_id_seq') THEN
+          CREATE SEQUENCE purchase_order_items_id_seq;
+          RAISE NOTICE 'Created purchase_order_items_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='purchase_order_items') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('purchase_order_items_id_seq', COALESCE((SELECT MAX(id) FROM purchase_order_items), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE purchase_order_items ALTER COLUMN id SET DEFAULT nextval('purchase_order_items_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE purchase_order_items_id_seq OWNED BY purchase_order_items.id;
+          
+          RAISE NOTICE 'Fixed purchase_order_items id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Add portal credentials columns to customer_services for customer portal access
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS portal_username VARCHAR(100)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255)
+    `.catch(() => {})
+
     // Fix payroll_records table with wrong column types
     await sql`
       DROP TABLE IF EXISTS payroll_records CASCADE

@@ -58,11 +58,12 @@ export async function allocateIPByLocation(
     console.log(`[v0] Found ${routers.length} routers in ${location}`)
 
     for (const router of routers) {
-      // Find IP addresses allocated to this router that are available
+      // Find IP addresses from subnets associated with this router that are available
       const availableIPs = await sql`
         SELECT ia.id, ia.ip_address, ia.subnet_id, ia.status
         FROM ip_addresses ia
-        WHERE ia.device_id = ${router.id}
+        JOIN ip_subnets s ON ia.subnet_id = s.id
+        WHERE s.router_id = ${router.id}
         AND ia.status = 'available'
         AND ia.customer_id IS NULL
         ORDER BY ia.ip_address ASC
@@ -126,6 +127,7 @@ export async function allocateIPByLocation(
 
 /**
  * Gets available IPs for a specific location
+ * Joins through ip_subnets to get the correct router relationship
  */
 export async function getAvailableIPsByLocation(location: string): Promise<any[]> {
   try {
@@ -137,10 +139,13 @@ export async function getAvailableIPsByLocation(location: string): Promise<any[]
         ia.ip_address,
         ia.subnet_id,
         ia.status,
+        s.cidr as subnet_cidr,
+        nd.id as router_id,
         nd.name as router_name,
         nd.location as router_location
       FROM ip_addresses ia
-      JOIN network_devices nd ON ia.device_id = nd.id
+      JOIN ip_subnets s ON ia.subnet_id = s.id
+      JOIN network_devices nd ON s.router_id = nd.id
       LEFT JOIN customer_services cs ON cs.ip_address = ia.ip_address::text 
         AND cs.status IN ('active', 'pending', 'suspended')
       WHERE LOWER(nd.location) = LOWER(${location})
@@ -150,6 +155,8 @@ export async function getAvailableIPsByLocation(location: string): Promise<any[]
       AND nd.status = 'active'
       ORDER BY ia.ip_address ASC
     `
+
+    console.log(`[v0] Found ${availableIPs.length} available IPs in location: ${location}`)
 
     return availableIPs
   } catch (error) {

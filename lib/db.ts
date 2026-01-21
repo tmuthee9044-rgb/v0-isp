@@ -261,6 +261,36 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_provisioning_queue_created ON provisioning_queue(created_at)
     `.catch(() => {})
 
+    // Ensure supplier_invoices table exists with correct schema
+    await sql`
+      CREATE TABLE IF NOT EXISTS supplier_invoices (
+        id SERIAL PRIMARY KEY,
+        invoice_number VARCHAR(100) UNIQUE NOT NULL,
+        supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+        purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE SET NULL,
+        invoice_date DATE DEFAULT CURRENT_DATE,
+        due_date DATE,
+        subtotal DECIMAL(15, 2) DEFAULT 0.00,
+        tax_amount DECIMAL(15, 2) DEFAULT 0.00,
+        total_amount DECIMAL(15, 2) NOT NULL,
+        paid_amount DECIMAL(15, 2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'UNPAID',
+        payment_terms INTEGER DEFAULT 30,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier ON supplier_invoices(supplier_id)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoices_status ON supplier_invoices(status)
+    `.catch(() => {})
+
     // Fix payroll_records table with wrong column types
     await sql`
       DROP TABLE IF EXISTS payroll_records CASCADE

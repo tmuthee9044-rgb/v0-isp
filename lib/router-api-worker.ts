@@ -63,28 +63,55 @@ export async function executeProvisionScript(
 }
 
 /**
- * MikroTik RouterOS - via SSH or API
+ * MikroTik RouterOS - via REST API (no SSH dependencies)
  */
 async function executeMikroTik(connection: RouterConnection, script: string): Promise<ExecutionResult> {
   try {
-    // Write script to temp file
-    const scriptFile = `/tmp/mikrotik-provision-${Date.now()}.rsc`
-    const fs = require("fs")
-    fs.writeFileSync(scriptFile, script)
+    const { MikroTikAPI } = await import("./mikrotik-api")
+    
+    console.log("[v0] Connecting to MikroTik via REST API...")
+    const mikrotik = new MikroTikAPI({
+      host: connection.ip,
+      port: connection.port || 8728,
+      username: connection.username,
+      password: connection.password,
+    })
 
-    // Execute via SSH using sshpass (in production, use SSH keys)
-    const sshCommand = `sshpass -p '${connection.password}' ssh -o StrictHostKeyChecking=no ${connection.username}@${connection.ip} < ${scriptFile}`
+    await mikrotik.connect()
 
-    const { stdout, stderr } = await execAsync(sshCommand, { timeout: 60000 })
+    // Parse script into individual commands
+    const commands = script
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && line.length > 0)
 
-    // Clean up temp file
-    fs.unlinkSync(scriptFile)
+    console.log(`[v0] Executing ${commands.length} commands on MikroTik router`)
 
-    if (stderr && stderr.includes("error")) {
-      return { success: false, error: stderr, timestamp: new Date() }
+    let successCount = 0
+    let errorCount = 0
+    const errors: string[] = []
+
+    // Execute commands sequentially
+    for (const command of commands) {
+      try {
+        await mikrotik.executeCommand(command)
+        successCount++
+      } catch (error) {
+        errorCount++
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        errors.push(`${command}: ${errorMsg}`)
+        console.error("[v0] Command failed:", command, errorMsg)
+      }
     }
 
-    return { success: true, output: stdout, timestamp: new Date() }
+    await mikrotik.disconnect()
+
+    return {
+      success: errorCount === 0,
+      output: `Executed ${successCount}/${commands.length} commands successfully${errorCount > 0 ? `\nErrors:\n${errors.join("\n")}` : ""}`,
+      error: errorCount > 0 ? `${errorCount} commands failed` : undefined,
+      timestamp: new Date(),
+    }
   } catch (error) {
     return {
       success: false,

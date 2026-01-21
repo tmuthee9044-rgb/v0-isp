@@ -59,26 +59,8 @@ END $$;
 -- Fix service_plans column types from INTEGER to VARCHAR for text values
 -- Skip leave_requests employee_id conversion - type mismatch already handled elsewhere
 
--- Improved ip_addresses sequence fix to handle all cases  
-DO $$
-BEGIN
-    -- Create sequence if it doesn't exist
-    IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'ip_addresses_id_seq') THEN
-        CREATE SEQUENCE ip_addresses_id_seq;
-    END IF;
-    
-    -- If table exists, configure the sequence properly
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='ip_addresses') THEN
-        -- Set sequence to max existing id + 1
-        PERFORM setval('ip_addresses_id_seq', COALESCE((SELECT MAX(id) FROM ip_addresses), 0) + 1, false);
-        
-        -- Set the default value for id column to use the sequence
-        ALTER TABLE ip_addresses ALTER COLUMN id SET DEFAULT nextval('ip_addresses_id_seq');
-        
-        -- Link sequence ownership to the column
-        ALTER SEQUENCE ip_addresses_id_seq OWNED BY ip_addresses.id;
-    END IF;
-END $$;
+-- Skip ip_addresses identity column - already configured
+-- The ip_addresses table already has id as IDENTITY column, no need to modify
 
 -- Create performance_reviews table with employee_id as VARCHAR to match API JOIN logic
 CREATE TABLE IF NOT EXISTS performance_reviews (
@@ -1385,16 +1367,8 @@ BEGIN
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     
-    -- Ensure employee_id is INTEGER for JOIN compatibility with employees.id
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'leave_requests' 
-        AND column_name = 'employee_id' 
-        AND data_type != 'integer'
-    ) THEN
-        ALTER TABLE leave_requests ALTER COLUMN employee_id TYPE INTEGER USING employee_id::integer;
-        RAISE NOTICE 'Converted leave_requests.employee_id to INTEGER for JOIN compatibility';
-    END IF;
+    -- Skip employee_id type conversion - cannot safely cast UUID to INTEGER
+    -- Keep original type to match employees.id (both should be UUID or both INTEGER)
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employee_id);

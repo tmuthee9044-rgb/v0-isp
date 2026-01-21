@@ -213,6 +213,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           speed_control: enable_speed_control ? "PCQ + Addresslist" : undefined,
           radius_server: radiusServer,
           radius_secret: radiusServerSecret,
+          mgmt_ip: mgmtIp,
         })
 
         await mikrotik.disconnect()

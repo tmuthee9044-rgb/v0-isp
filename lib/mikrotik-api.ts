@@ -671,9 +671,24 @@ export class MikroTikAPI {
         let radiusConfigured = false
 
         if (Array.isArray(existingRadius.data)) {
-          // Try to update existing RADIUS entry
+          console.log(`[v0] Found ${existingRadius.data.length} existing RADIUS server(s)`)
+          
+          // Check if desired RADIUS server already exists with correct settings
           for (const radius of existingRadius.data) {
-            if (radius.address === radiusServer || radius.service === "ppp") {
+            const radiusService = radius.service || ""
+            const isForPPP = radiusService.includes("ppp")
+            const addressMatches = radius.address === radiusServer
+            const portMatches = radius["authentication-port"] === "1812" || radius["authentication-port"] === 1812
+            
+            if (addressMatches && isForPPP && portMatches) {
+              console.log(`[v0] RADIUS server ${radiusServer} already configured correctly, skipping`)
+              radiusConfigured = true
+              break
+            }
+            
+            // Update if address matches but settings are different
+            if (addressMatches) {
+              console.log(`[v0] Updating existing RADIUS server ${radiusServer}`)
               await this.execute(`/radius/${radius[".id"]}`, "PATCH", {
                 service: "ppp",
                 address: radiusServer,
@@ -682,15 +697,33 @@ export class MikroTikAPI {
                 "accounting-port": "1813",
                 timeout: "3s",
               })
-              console.log("[v0] Updated existing RADIUS configuration")
               radiusConfigured = true
               break
             }
           }
+          
+          // If only one PPP RADIUS exists but with wrong address, update it instead of adding
+          if (!radiusConfigured && existingRadius.data.length === 1) {
+            const singleRadius = existingRadius.data[0]
+            const radiusService = singleRadius.service || ""
+            if (radiusService.includes("ppp")) {
+              console.log(`[v0] Updating single PPP RADIUS server from ${singleRadius.address} to ${radiusServer}`)
+              await this.execute(`/radius/${singleRadius[".id"]}`, "PATCH", {
+                service: "ppp",
+                address: radiusServer,
+                secret: radiusSecret,
+                "authentication-port": "1812",
+                "accounting-port": "1813",
+                timeout: "3s",
+              })
+              radiusConfigured = true
+            }
+          }
         }
 
-        // Add new RADIUS entry if not found
+        // Add new RADIUS entry only if none found
         if (!radiusConfigured) {
+          console.log(`[v0] Adding new RADIUS server ${radiusServer}`)
           const radiusResult = await this.execute("/radius", "POST", {
             service: "ppp",
             address: radiusServer,
@@ -699,7 +732,12 @@ export class MikroTikAPI {
             "accounting-port": "1813",
             timeout: "3s",
           })
-          console.log("[v0] Added new RADIUS configuration:", radiusResult.success ? "Success" : "Failed")
+          
+          if (radiusResult.success) {
+            console.log("[v0] Successfully added new RADIUS configuration")
+          } else {
+            console.warn("[v0] Failed to add RADIUS configuration:", radiusResult.error)
+          }
         }
 
         // Step 2: Enable RADIUS for PPP AAA
@@ -809,6 +847,87 @@ export class MikroTikAPI {
   }
 
   /**
+   * Configure carrier-grade firewall rules for ISP operations
+   * Applies RADIUS, CoA, DNS, and management access rules
+   */
+  async configureCarrierGradeFirewall(radiusServer?: string, mgmtIp?: string): Promise<{ success: boolean; error?: string; rulesAdded?: number }> {
+    try {
+      console.log("[v0] Configuring carrier-grade firewall rules...")
+      
+      const radiusIp = radiusServer || "10.0.0.1"
+      const managementIp = mgmtIp || "10.0.0.0/24"
+      let rulesAdded = 0
+
+      // Get existing firewall rules to avoid duplicates
+      const existingRules = await this.execute("/ip/firewall/filter")
+      const existingComments = existingRules.success && Array.isArray(existingRules.data)
+        ? existingRules.data.map((r: any) => r.comment || "")
+        : []
+
+      // Rule 1: Allow RADIUS Auth/Acct (UDP 1812-1813)
+      if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_RADIUS_AUTH"))) {
+        await this.execute("/ip/firewall/filter", "POST", {
+          chain: "input",
+          protocol: "udp",
+          "dst-port": "1812,1813",
+          "src-address": radiusIp,
+          action: "accept",
+          comment: "ISP_MANAGED_RADIUS_AUTH - Allow RADIUS authentication and accounting",
+        }).catch(() => {})
+        rulesAdded++
+        console.log("[v0] Added RADIUS auth/acct firewall rule")
+      }
+
+      // Rule 2: Allow RADIUS CoA (UDP 3799)
+      if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_RADIUS_COA"))) {
+        await this.execute("/ip/firewall/filter", "POST", {
+          chain: "input",
+          protocol: "udp",
+          "dst-port": "3799",
+          "src-address": radiusIp,
+          action: "accept",
+          comment: "ISP_MANAGED_RADIUS_COA - Allow RADIUS disconnect messages",
+        }).catch(() => {})
+        rulesAdded++
+        console.log("[v0] Added RADIUS CoA firewall rule")
+      }
+
+      // Rule 3: Protect management access
+      if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_MGMT_ACCESS"))) {
+        await this.execute("/ip/firewall/filter", "POST", {
+          chain: "input",
+          protocol: "tcp",
+          "dst-port": "22,23,80,443,8291,8728,8729",
+          "src-address": `!${managementIp}`,
+          action: "drop",
+          comment: "ISP_MANAGED_MGMT_ACCESS - Restrict management to trusted IPs",
+        }).catch(() => {})
+        rulesAdded++
+        console.log("[v0] Added management access protection rule")
+      }
+
+      // Rule 4: Prevent FastTrack on RADIUS traffic for accurate billing
+      if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_FASTTRACK_BYPASS"))) {
+        await this.execute("/ip/firewall/filter", "POST", {
+          chain: "forward",
+          protocol: "udp",
+          "dst-port": "1812,1813,3799",
+          action: "accept",
+          comment: "ISP_MANAGED_FASTTRACK_BYPASS - Ensure RADIUS bypasses FastTrack",
+        }).catch(() => {})
+        rulesAdded++
+        console.log("[v0] Added FastTrack bypass for RADIUS")
+      }
+
+      console.log(`[v0] Carrier-grade firewall configuration completed: ${rulesAdded} rules added`)
+      return { success: true, rulesAdded }
+    } catch (error: any) {
+      console.error("[v0] Error configuring firewall:", error)
+      return { success: false, error: error.message || "Failed to configure firewall" }
+    }
+  }
+
+  /**
    * Apply full MikroTik configuration from settings
    * This is called when router settings are saved
    */
@@ -818,6 +937,7 @@ export class MikroTikAPI {
     speed_control?: string
     radius_server?: string
     radius_secret?: string
+    mgmt_ip?: string
   }): Promise<{ success: boolean; message?: string; results?: any; errors?: string[] }> {
     const results: any = {}
     const errors: string[] = []
@@ -826,6 +946,21 @@ export class MikroTikAPI {
 
     try {
       console.log("[v0] Applying complete router configuration:", config)
+
+      // 0. Configure carrier-grade firewall rules first
+      totalSteps++
+      try {
+        const firewallResult = await this.configureCarrierGradeFirewall(config.radius_server, config.mgmt_ip)
+        results.firewall = firewallResult
+        if (firewallResult.success) {
+          successCount++
+          console.log(`[v0] Firewall configured: ${firewallResult.rulesAdded} rules added`)
+        } else {
+          errors.push(`Firewall: ${firewallResult.error}`)
+        }
+      } catch (error) {
+        errors.push(`Firewall failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
 
       // 1. Configure customer authorization method
       if (config.customer_auth_method) {

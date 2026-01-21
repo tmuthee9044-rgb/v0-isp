@@ -221,6 +221,32 @@ async function ensureCriticalColumns() {
       // Constraint already exists, ignore error
     })
 
+    // Fix system_config id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'system_config_id_seq') THEN
+          CREATE SEQUENCE system_config_id_seq;
+          RAISE NOTICE 'Created system_config_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='system_config') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('system_config_id_seq', COALESCE((SELECT MAX(id) FROM system_config), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE system_config ALTER COLUMN id SET DEFAULT nextval('system_config_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE system_config_id_seq OWNED BY system_config.id;
+          
+          RAISE NOTICE 'Fixed system_config id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
     // Add compliance tracking columns to network_devices (routers table)
     await sql`
       ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS compliance_status VARCHAR(20) DEFAULT 'unknown'

@@ -141,6 +141,8 @@ export default function UserManagementPage() {
   }
 
   const handleAddRole = async () => {
+    console.log("[v0] Creating role with data:", newRole)
+    
     if (!newRole.name || !newRole.description) {
       toast({
         title: "Validation Error",
@@ -150,6 +152,8 @@ export default function UserManagementPage() {
       return
     }
 
+    console.log("[v0] Sending role creation request with", newRole.permissions.length, "permissions:", newRole.permissions)
+    
     setIsLoading(true)
     try {
       const response = await fetch("/api/roles", {
@@ -251,30 +255,46 @@ export default function UserManagementPage() {
   }
 
   const togglePermission = (permissionKey: string, isRole = false) => {
+    console.log("[v0] Toggling permission:", permissionKey, "isRole:", isRole)
+    
     if (isRole && selectedRole) {
       const permissions = selectedRole.permissions || []
-      if (permissions.includes(permissionKey)) {
+      const isCurrentlySelected = permissions.includes(permissionKey)
+      console.log("[v0] Edit role - Current permissions:", permissions, "Toggling:", permissionKey, "Currently selected:", isCurrentlySelected)
+      
+      if (isCurrentlySelected) {
+        const updatedPermissions = permissions.filter((p: string) => p !== permissionKey)
+        console.log("[v0] Removing permission. New permissions:", updatedPermissions)
         setSelectedRole({
           ...selectedRole,
-          permissions: permissions.filter((p: string) => p !== permissionKey),
+          permissions: updatedPermissions,
         })
       } else {
+        const updatedPermissions = [...permissions, permissionKey]
+        console.log("[v0] Adding permission. New permissions:", updatedPermissions)
         setSelectedRole({
           ...selectedRole,
-          permissions: [...permissions, permissionKey],
+          permissions: updatedPermissions,
         })
       }
     } else {
       const permissions = newRole.permissions || []
-      if (permissions.includes(permissionKey)) {
+      const isCurrentlySelected = permissions.includes(permissionKey)
+      console.log("[v0] New role - Current permissions:", permissions, "Toggling:", permissionKey, "Currently selected:", isCurrentlySelected)
+      
+      if (isCurrentlySelected) {
+        const updatedPermissions = permissions.filter((p) => p !== permissionKey)
+        console.log("[v0] Removing permission. New permissions:", updatedPermissions)
         setNewRole({
           ...newRole,
-          permissions: permissions.filter((p) => p !== permissionKey),
+          permissions: updatedPermissions,
         })
       } else {
+        const updatedPermissions = [...permissions, permissionKey]
+        console.log("[v0] Adding permission. New permissions:", updatedPermissions)
         setNewRole({
           ...newRole,
-          permissions: [...permissions, permissionKey],
+          permissions: updatedPermissions,
         })
       }
     }

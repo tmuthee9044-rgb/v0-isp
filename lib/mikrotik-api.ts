@@ -512,62 +512,54 @@ export class MikroTikAPI {
       console.log(`[v0] Configuring speed control: ${method}`)
 
       if (method === "PCQ + Addresslist") {
-        // Check for existing pcq-download-default queue type
-        const existingDownloadQueue = await this.execute("/queue/type", "GET")
+        // Note: Queue types in MikroTik are often pre-configured
+        // We'll attempt to create them but catch errors gracefully
+        console.log("[v0] Setting up PCQ queue types for bandwidth management")
 
-        const downloadExists =
-          existingDownloadQueue.success &&
-          existingDownloadQueue.data &&
-          Array.isArray(existingDownloadQueue.data) &&
-          existingDownloadQueue.data.some((q: any) => q.name === "pcq-download-default")
+        // Try to create PCQ queue type for download
+        const downloadResult = await this.execute("/queue/type/add", "POST", {
+          name: "pcq-download-default",
+          kind: "pcq",
+          "pcq-rate": "0",
+          "pcq-classifier": "dst-address",
+        }).catch((e) => ({
+          success: false,
+          error: e.message || String(e),
+        }))
 
-        if (downloadExists) {
-          console.log("[v0] pcq-download-default already exists, skipping creation")
+        if (downloadResult.success) {
+          console.log("[v0] Created pcq-download-default queue type")
+        } else if (
+          downloadResult.error?.includes("already") ||
+          downloadResult.error?.includes("name already used") ||
+          downloadResult.error?.includes("exists")
+        ) {
+          console.log("[v0] pcq-download-default already exists, skipping")
         } else {
-          // Create PCQ queue type for download
-          const downloadResult = await this.execute("/queue/type", "POST", {
-            name: "pcq-download-default",
-            kind: "pcq",
-            "pcq-rate": "0",
-            "pcq-classifier": "dst-address",
-          })
-
-          if (downloadResult.success) {
-            console.log("[v0] Created pcq-download-default queue type")
-          } else if (downloadResult.error?.includes("name already used")) {
-            console.log("[v0] pcq-download-default already exists (caught during creation)")
-          } else {
-            console.warn("[v0] Could not create pcq-download-default:", downloadResult.error)
-          }
+          console.log("[v0] pcq-download-default creation skipped:", downloadResult.error)
         }
 
-        // Check for existing pcq-upload-default queue type
-        const existingUploadQueue = await this.execute("/queue/type", "GET")
+        // Try to create PCQ queue type for upload
+        const uploadResult = await this.execute("/queue/type/add", "POST", {
+          name: "pcq-upload-default",
+          kind: "pcq",
+          "pcq-rate": "0",
+          "pcq-classifier": "src-address",
+        }).catch((e) => ({
+          success: false,
+          error: e.message || String(e),
+        }))
 
-        const uploadExists =
-          existingUploadQueue.success &&
-          existingUploadQueue.data &&
-          Array.isArray(existingUploadQueue.data) &&
-          existingUploadQueue.data.some((q: any) => q.name === "pcq-upload-default")
-
-        if (uploadExists) {
-          console.log("[v0] pcq-upload-default already exists, skipping creation")
+        if (uploadResult.success) {
+          console.log("[v0] Created pcq-upload-default queue type")
+        } else if (
+          uploadResult.error?.includes("already") ||
+          uploadResult.error?.includes("name already used") ||
+          uploadResult.error?.includes("exists")
+        ) {
+          console.log("[v0] pcq-upload-default already exists, skipping")
         } else {
-          // Create PCQ queue type for upload
-          const uploadResult = await this.execute("/queue/type", "POST", {
-            name: "pcq-upload-default",
-            kind: "pcq",
-            "pcq-rate": "0",
-            "pcq-classifier": "src-address",
-          })
-
-          if (uploadResult.success) {
-            console.log("[v0] Created pcq-upload-default queue type")
-          } else if (uploadResult.error?.includes("name already used")) {
-            console.log("[v0] pcq-upload-default already exists (caught during creation)")
-          } else {
-            console.warn("[v0] Could not create pcq-upload-default:", uploadResult.error)
-          }
+          console.log("[v0] pcq-upload-default creation skipped:", uploadResult.error)
         }
 
         return { success: true, data: { message: "PCQ queue types configured" } }
@@ -859,14 +851,14 @@ export class MikroTikAPI {
       let rulesAdded = 0
 
       // Get existing firewall rules to avoid duplicates
-      const existingRules = await this.execute("/ip/firewall/filter")
+      const existingRules = await this.execute("/ip/firewall/filter/rule")
       const existingComments = existingRules.success && Array.isArray(existingRules.data)
         ? existingRules.data.map((r: any) => r.comment || "")
         : []
 
       // Rule 1: Allow RADIUS Auth/Acct (UDP 1812-1813)
       if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_RADIUS_AUTH"))) {
-        await this.execute("/ip/firewall/filter", "POST", {
+        await this.execute("/ip/firewall/filter/rule", "POST", {
           chain: "input",
           protocol: "udp",
           "dst-port": "1812,1813",
@@ -880,7 +872,7 @@ export class MikroTikAPI {
 
       // Rule 2: Allow RADIUS CoA (UDP 3799)
       if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_RADIUS_COA"))) {
-        await this.execute("/ip/firewall/filter", "POST", {
+        await this.execute("/ip/firewall/filter/rule", "POST", {
           chain: "input",
           protocol: "udp",
           "dst-port": "3799",
@@ -894,7 +886,7 @@ export class MikroTikAPI {
 
       // Rule 3: Protect management access
       if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_MGMT_ACCESS"))) {
-        await this.execute("/ip/firewall/filter", "POST", {
+        await this.execute("/ip/firewall/filter/rule", "POST", {
           chain: "input",
           protocol: "tcp",
           "dst-port": "22,23,80,443,8291,8728,8729",
@@ -908,7 +900,7 @@ export class MikroTikAPI {
 
       // Rule 4: Prevent FastTrack on RADIUS traffic for accurate billing
       if (!existingComments.some((c: string) => c.includes("ISP_MANAGED_FASTTRACK_BYPASS"))) {
-        await this.execute("/ip/firewall/filter", "POST", {
+        await this.execute("/ip/firewall/filter/rule", "POST", {
           chain: "forward",
           protocol: "udp",
           "dst-port": "1812,1813,3799",

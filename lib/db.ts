@@ -80,23 +80,24 @@ export async function getDatabaseStatus() {
  */
 async function ensureCriticalColumns() {
   try {
-    // Rename days_count to days_requested if it exists
-    await sql`
-      ALTER TABLE leave_requests 
-      RENAME COLUMN days_count TO days_requested
-    `.catch(() => {})
-    
-    // Add missing days_requested column to leave_requests (if rename failed)
+    // Add missing days_requested column to leave_requests
     await sql`
       ALTER TABLE leave_requests 
       ADD COLUMN IF NOT EXISTS days_requested INTEGER NOT NULL DEFAULT 0
     `.catch(() => {})
+    
+    // Add missing days_count column to leave_requests (required by schema)
+    await sql`
+      ALTER TABLE leave_requests 
+      ADD COLUMN IF NOT EXISTS days_count INTEGER NOT NULL DEFAULT 0
+    `.catch(() => {})
 
-    // Update existing records to calculate days_requested
+    // Update existing records to calculate days from date range
     await sql`
       UPDATE leave_requests 
-      SET days_requested = (end_date - start_date + 1)
-      WHERE days_requested = 0
+      SET days_requested = GREATEST((end_date - start_date + 1), 0),
+          days_count = GREATEST((end_date - start_date + 1), 0)
+      WHERE days_requested = 0 OR days_count = 0
     `.catch(() => {})
 
     // Add missing columns to purchase_order_items
@@ -170,6 +171,32 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_customer_documents_customer_id ON customer_documents(customer_id)
     `.catch(() => {})
 
+    // Fix customer_documents id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customer_documents_id_seq') THEN
+          CREATE SEQUENCE customer_documents_id_seq;
+          RAISE NOTICE 'Created customer_documents_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='customer_documents') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('customer_documents_id_seq', COALESCE((SELECT MAX(id) FROM customer_documents), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE customer_documents ALTER COLUMN id SET DEFAULT nextval('customer_documents_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE customer_documents_id_seq OWNED BY customer_documents.id;
+          
+          RAISE NOTICE 'Fixed customer_documents id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
     // Ensure customer_equipment table exists with correct schema
     await sql`
       CREATE TABLE IF NOT EXISTS customer_equipment (
@@ -196,6 +223,32 @@ async function ensureCriticalColumns() {
 
     await sql`
       CREATE INDEX IF NOT EXISTS idx_customer_equipment_customer_id ON customer_equipment(customer_id)
+    `.catch(() => {})
+
+    // Fix customer_equipment id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customer_equipment_id_seq') THEN
+          CREATE SEQUENCE customer_equipment_id_seq;
+          RAISE NOTICE 'Created customer_equipment_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='customer_equipment') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('customer_equipment_id_seq', COALESCE((SELECT MAX(id) FROM customer_equipment), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE customer_equipment ALTER COLUMN id SET DEFAULT nextval('customer_equipment_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE customer_equipment_id_seq OWNED BY customer_equipment.id;
+          
+          RAISE NOTICE 'Fixed customer_equipment id sequence';
+        END IF;
+      END $$;
     `.catch(() => {})
 
     // Ensure system_config table exists with correct schema

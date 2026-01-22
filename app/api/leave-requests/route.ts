@@ -30,7 +30,8 @@ export async function POST(request: Request) {
         leave_type, 
         start_date, 
         end_date, 
-        days_requested, 
+        days_requested,
+        days_count,
         reason, 
         status,
         created_at
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
         ${leaveType},
         ${startDate},
         ${endDate},
+        ${days},
         ${days},
         ${reason},
         'pending',

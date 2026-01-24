@@ -535,6 +535,11 @@ async function ensureCriticalColumns() {
       )
     `.catch(() => {})
 
+    // Add missing last_fuel_date column to existing vehicles table
+    await sql`
+      ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_fuel_date DATE
+    `.catch(() => {})
+
     // Ensure fuel_logs table exists
     await sql`
       CREATE TABLE IF NOT EXISTS fuel_logs (

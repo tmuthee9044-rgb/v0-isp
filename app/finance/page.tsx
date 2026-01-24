@@ -288,6 +288,32 @@ export default function FinancePage() {
 
   // ADDED STATE FOR ACCOUNTS PAYABLE
   const [accountsPayableData, setAccountsPayableData] = useState<any>(null)
+  
+  // State for infrastructure costs
+  const [infrastructureCosts, setInfrastructureCosts] = useState<any[]>([])
+  const [isLoadingInfrastructure, setIsLoadingInfrastructure] = useState(false)
+
+  const fetchInfrastructureCosts = async () => {
+    setIsLoadingInfrastructure(true)
+    try {
+      const response = await fetch(
+        `/api/finance/infrastructure-costs?startDate=${dateRange.from.toISOString().split("T")[0]}&endDate=${dateRange.to.toISOString().split("T")[0]}`
+      )
+      const data = await response.json()
+      if (data.success) {
+        setInfrastructureCosts(data.data)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching infrastructure costs:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load infrastructure costs",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingInfrastructure(false)
+    }
+  }
 
   const fetchExpenseCategories = async () => {
     try {
@@ -658,58 +684,21 @@ export default function FinancePage() {
 
   // Update effect to fetch data based on activeTab
   useEffect(() => {
-    if (activeTab === "overview") {
-      fetchFinancialData()
-      fetchAccountsPayable() // FETCH ACCOUNTS PAYABLE
-    } else if (activeTab === "revenue") {
-      fetchRevenueData()
-    } else if (activeTab === "expenses") {
-      fetchExpenses()
-      fetchExpenseCategories()
-    } else if (activeTab === "invoicing") {
-      fetchInvoicingData()
-    } else if (activeTab === "taxes") {
-      fetchTaxRecords()
-    } else if (activeTab === "budget") {
-      fetchBudgetData()
-    } else if (activeTab === "ledger") {
-      fetchLedgerData()
-    } else if (activeTab === "cashflow") {
-      fetchCashFlowData()
-    } else if (activeTab === "balancesheet") {
-      fetchBalanceSheet()
-      fetchAccountsPayable() // FETCH ACCOUNTS PAYABLE
-      fetchInventoryTotal()
-    } else if (activeTab === "trialbalance") {
-      fetchTrialBalance()
-    } else if (activeTab === "profitloss") {
-      //
-      fetchProfitLoss()
-    } else if (activeTab === "audit") {
-      fetchAuditLogs()
-    }
-  }, [activeTab])
-
-  // Fetch data on date range change (if not already handled by activeTab logic)
-  useEffect(() => {
-    // Only refetch if the tab isn't explicitly handled above or if it requires date range
-    if (
-      activeTab === "overview" ||
-      activeTab === "revenue" ||
-      activeTab === "profitloss" ||
-      activeTab === "balancesheet" ||
-      activeTab === "cashflow" || // Added cashflow to refetch on date range change
-      activeTab === "trialbalance" // Added trialbalance to refetch on date range change
-    ) {
-      //
-      fetchFinancialData()
-      fetchRevenueData()
-      fetchProfitLoss() //
-      fetchBalanceSheet()
-      fetchAccountsPayable() // FETCH ACCOUNTS PAYABLE
-      fetchCashFlowData() // Fetch cash flow data with new date range
-      fetchTrialBalance() // Fetch trial balance data with new date range
-    }
+    fetchFinancialData()
+    fetchRevenueData()
+    fetchExpenseCategories()
+    fetchExpenses()
+    fetchBudgetData()
+    fetchTaxRecords()
+    fetchLedgerData()
+    fetchBalanceSheet()
+    fetchTrialBalance()
+    fetchCashFlowData()
+    fetchProfitLoss()
+    fetchAccountsPayable()
+    fetchInvoicingData()
+    fetchAuditLogs()
+    fetchInfrastructureCosts()
   }, [dateRange])
 
   const generateReport = async () => {
@@ -1837,96 +1826,85 @@ export default function FinancePage() {
 
                 {/* ISP-Specific Cost Breakdown */}
                 <Card>
-                  <CardHeader>
-                    <CardTitle>ISP Infrastructure Costs</CardTitle>
-                    <CardDescription>Detailed breakdown of ISP-specific expenses</CardDescription>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>ISP Infrastructure Costs</CardTitle>
+                      <CardDescription>Detailed breakdown of ISP-specific expenses from database</CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setIsExpenseModalOpen(true)
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Cost
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchInfrastructureCosts()}
+                        disabled={isLoadingInfrastructure}
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingInfrastructure ? "animate-spin" : ""}`} />
+                        Refresh
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div className="border rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Wifi className="h-4 w-4 text-blue-500" />
-                          <span className="font-medium">Bandwidth & Connectivity</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>Tier 1 Provider Costs</span>
-                            <span className="font-medium">{formatCurrency(89000)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Peering Agreements</span>
-                            <span className="font-medium">{formatCurrency(45000)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>CDN Services</span>
-                            <span className="font-medium">{formatCurrency(22000)}</span>
-                          </div>
-                        </div>
+                    {isLoadingInfrastructure ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-muted-foreground">Loading infrastructure costs...</span>
                       </div>
+                    ) : infrastructureCosts.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Server className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No infrastructure costs recorded for this period</p>
+                        <p className="text-sm mt-1">Add expenses in the Expenses tab to see them here</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {infrastructureCosts.map((costGroup, index) => {
+                          const IconComponent =
+                            costGroup.icon === "wifi"
+                              ? Wifi
+                              : costGroup.icon === "server"
+                                ? Server
+                                : costGroup.icon === "user"
+                                  ? UserCheck
+                                  : costGroup.icon === "shield"
+                                    ? Shield
+                                    : DollarSign
 
-                      <div className="border rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Server className="h-4 w-4 text-green-500" />
-                          <span className="font-medium">Infrastructure</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>Data Center Costs</span>
-                            <span className="font-medium">{formatCurrency(35000)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Network Equipment</span>
-                            <span className="font-medium">{formatCurrency(28500)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Fiber Maintenance</span>
-                            <span className="font-medium">{formatCurrency(26000)}</span>
-                          </div>
-                        </div>
+                          return (
+                            <div key={index} className="border rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <IconComponent className="h-4 w-4" style={{ color: costGroup.color }} />
+                                  <span className="font-medium">{costGroup.category}</span>
+                                </div>
+                                <span className="text-sm font-semibold">{formatCurrency(costGroup.total)}</span>
+                              </div>
+                              <div className="space-y-2 text-sm">
+                                {costGroup.items.slice(0, 5).map((item: any, itemIndex: number) => (
+                                  <div key={itemIndex} className="flex justify-between">
+                                    <span className="text-muted-foreground">{item.subcategory}</span>
+                                    <span className="font-medium">{formatCurrency(item.amount)}</span>
+                                  </div>
+                                ))}
+                                {costGroup.items.length > 5 && (
+                                  <div className="text-xs text-muted-foreground pt-1">
+                                    +{costGroup.items.length - 5} more items
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-
-                      <div className="border rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <UserCheck className="h-4 w-4 text-purple-500" />
-                          <span className="font-medium">Personnel</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>Network Engineers</span>
-                            <span className="font-medium">{formatCurrency(45000)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Support Staff</span>
-                            <span className="font-medium">{formatCurrency(23200)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Field Technicians</span>
-                            <span className="font-medium">{formatCurrency(10000)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="border rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Shield className="h-4 w-4 text-red-500" />
-                          <span className="font-medium">Regulatory & Compliance</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>ISP Licensing Fees</span>
-                            <span className="font-medium">{formatCurrency(18000)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Regulatory Compliance</span>
-                            <span className="font-medium">{formatCurrency(12600)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Insurance & Legal</span>
-                            <span className="font-medium">{formatCurrency(5000)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>

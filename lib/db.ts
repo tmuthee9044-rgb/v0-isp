@@ -142,6 +142,10 @@ async function ensureCriticalColumns() {
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS report_first_service_amount DECIMAL(10, 2) DEFAULT 0
     `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS report_first_service_cancel_date DATE
+    `.catch(() => {})
 
     // Ensure customer_documents table exists with correct schema
     await sql`
@@ -436,11 +440,12 @@ async function ensureCriticalColumns() {
       ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS portal_password VARCHAR(255)
     `.catch(() => {})
 
-    // Fix payroll_records table with wrong column types
+    // Add missing description column to activity_logs for logging activities
     await sql`
-      DROP TABLE IF EXISTS payroll_records CASCADE
+      ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS description TEXT
     `.catch(() => {})
-    
+
+    // Ensure payroll_records table exists with correct schema (do not drop existing data)
     await sql`
       CREATE TABLE IF NOT EXISTS payroll_records (
         id SERIAL PRIMARY KEY,
@@ -464,6 +469,120 @@ async function ensureCriticalColumns() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(employee_id, pay_period_start)
+      )
+    `.catch(() => {})
+    
+    // Add missing columns to existing payroll_records table
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255) NOT NULL DEFAULT 'Unknown'
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS basic_salary DECIMAL(15, 2) NOT NULL DEFAULT 0
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS allowances DECIMAL(15, 2) DEFAULT 0
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS tax DECIMAL(15, 2) DEFAULT 0
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_date DATE
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255)
+    `.catch(() => {})
+
+    // Ensure vehicles table exists for fleet management
+    await sql`
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        registration VARCHAR(100) NOT NULL UNIQUE,
+        model VARCHAR(255) NOT NULL,
+        year INTEGER NOT NULL,
+        fuel_type VARCHAR(50),
+        assigned_to VARCHAR(255),
+        location VARCHAR(255),
+        mileage INTEGER DEFAULT 0,
+        fuel_consumption DECIMAL(10, 2) DEFAULT 0,
+        insurance_expiry DATE,
+        license_expiry DATE,
+        inspection_expiry DATE,
+        warranty_expiry DATE,
+        purchase_date DATE,
+        purchase_cost DECIMAL(15, 2) DEFAULT 0,
+        depreciation_rate DECIMAL(5, 2) DEFAULT 0,
+        estimated_monthly_cost DECIMAL(15, 2) DEFAULT 0,
+        engine_capacity INTEGER,
+        specifications TEXT,
+        notes TEXT,
+        status VARCHAR(50) DEFAULT 'active',
+        last_service DATE,
+        next_service DATE,
+        last_fuel_date DATE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    // Ensure fuel_logs table exists
+    await sql`
+      CREATE TABLE IF NOT EXISTS fuel_logs (
+        id SERIAL PRIMARY KEY,
+        vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        log_date DATE NOT NULL,
+        fuel_type VARCHAR(50),
+        quantity DECIMAL(10, 2) NOT NULL,
+        cost DECIMAL(15, 2) NOT NULL,
+        odometer_reading INTEGER,
+        location VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    // Ensure maintenance_logs table exists
+    await sql`
+      CREATE TABLE IF NOT EXISTS maintenance_logs (
+        id SERIAL PRIMARY KEY,
+        vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        service_date DATE NOT NULL,
+        service_type VARCHAR(100) NOT NULL,
+        description TEXT,
+        cost DECIMAL(15, 2) NOT NULL,
+        odometer_reading INTEGER,
+        next_service_date DATE,
+        service_provider VARCHAR(255),
+        parts_replaced TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    // Ensure bus_fare_records table exists
+    await sql`
+      CREATE TABLE IF NOT EXISTS bus_fare_records (
+        id SERIAL PRIMARY KEY,
+        employee_name VARCHAR(255) NOT NULL,
+        employee_id VARCHAR(100),
+        travel_date DATE NOT NULL,
+        from_location VARCHAR(255) NOT NULL,
+        to_location VARCHAR(255) NOT NULL,
+        purpose TEXT,
+        amount DECIMAL(15, 2) NOT NULL,
+        receipt_number VARCHAR(100),
+        approved_by VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `.catch(() => {})
 

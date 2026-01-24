@@ -561,3 +561,110 @@ export async function getCompanySettings(): Promise<CompanySettings> {
     currency: "KES",
   }
 }
+
+export async function generateSupplierInvoicePDF(data: {
+  invoice: any
+  companyInfo: { name: string; address: string; phone: string; email: string }
+}): Promise<Uint8Array> {
+  const { invoice, companyInfo } = data
+
+  const doc = new jsPDF()
+
+  // Add letterhead
+  doc.setFillColor("#2563eb")
+  doc.rect(0, 0, 210, 40, "F")
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(24)
+  doc.setFont("helvetica", "bold")
+  doc.text(companyInfo.name, 20, 25)
+
+  doc.setFontSize(10)
+  doc.setFont("helvetica", "normal")
+  doc.text(`Tel: ${companyInfo.phone}`, 140, 15)
+  doc.text(`Email: ${companyInfo.email}`, 140, 20)
+  doc.text(`Address: ${companyInfo.address}`, 140, 25)
+
+  // Supplier Invoice title
+  doc.setFontSize(20)
+  doc.setFont("helvetica", "bold")
+  doc.setTextColor("#2563eb")
+  doc.text("SUPPLIER INVOICE", 20, 60)
+
+  // Invoice details
+  doc.setFontSize(12)
+  doc.setTextColor(0, 0, 0)
+  doc.setFont("helvetica", "normal")
+
+  doc.text(`Invoice #: ${invoice.invoice_number || "N/A"}`, 20, 75)
+  doc.text(`Invoice Date: ${invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : "N/A"}`, 20, 85)
+  doc.text(`Due Date: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "N/A"}`, 20, 95)
+
+  // Supplier details
+  doc.setFont("helvetica", "bold")
+  doc.text("Supplier:", 120, 75)
+  doc.setFont("helvetica", "normal")
+  doc.text(invoice.supplier_name || "N/A", 120, 85)
+
+  if (invoice.supplier_phone) {
+    doc.text(invoice.supplier_phone, 120, 95)
+  }
+
+  if (invoice.supplier_email) {
+    doc.text(invoice.supplier_email, 120, 105)
+  }
+
+  // Items table
+  console.log("[v0] Generating PDF table with items:", invoice.items?.length || 0)
+
+  const tableData = (invoice.items || []).map((item: any) => [
+    item.item_name || item.description || "Item",
+    item.quantity?.toString() || "1",
+    `KES ${Number(item.unit_price || 0).toFixed(2)}`,
+    `KES ${Number(item.total_amount || 0).toFixed(2)}`,
+  ])
+
+  if (tableData.length === 0) {
+    tableData.push(["No items", "-", "-", "-"])
+  }
+
+  ;(doc as any).autoTable({
+    startY: 120,
+    head: [["Description", "Qty", "Unit Price", "Total"]],
+    body: tableData,
+    theme: "grid",
+    headStyles: {
+      fillColor: "#2563eb",
+      textColor: 255,
+    },
+    styles: {
+      fontSize: 10,
+    },
+  })
+
+  // Totals
+  const finalY = (doc as any).lastAutoTable.finalY + 20
+  const currency = "KES"
+
+  const subtotal = Number(invoice.subtotal || invoice.total_amount || 0)
+  const tax = Number(invoice.tax_amount || 0)
+  const total = Number(invoice.total_amount || 0)
+
+  doc.text(`Subtotal: ${currency} ${subtotal.toFixed(2)}`, 140, finalY)
+  doc.text(`Tax: ${currency} ${tax.toFixed(2)}`, 140, finalY + 10)
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(14)
+  doc.text(`Total: ${currency} ${total.toFixed(2)}`, 140, finalY + 25)
+
+  // Notes
+  if (invoice.notes) {
+    doc.setFontSize(10)
+    doc.setFont("helvetica", "normal")
+    doc.text("Notes:", 20, finalY + 50)
+    const splitNotes = doc.splitTextToSize(invoice.notes, 170)
+    doc.text(splitNotes, 20, finalY + 58)
+  }
+
+  return doc.output("arraybuffer") as Uint8Array
+}

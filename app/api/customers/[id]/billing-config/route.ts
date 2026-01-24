@@ -5,22 +5,20 @@ async function ensureSequenceExists(sql: any) {
   try {
     await sql`
       DO $$
+      DECLARE
+        max_id INTEGER;
       BEGIN
         -- Check if sequence exists, if not create it
         IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customer_billing_configurations_id_seq') THEN
           -- Get current max id
-          DECLARE
-            max_id INTEGER;
-          BEGIN
-            SELECT COALESCE(MAX(id), 0) INTO max_id FROM customer_billing_configurations;
-            
-            -- Create sequence
-            EXECUTE 'CREATE SEQUENCE customer_billing_configurations_id_seq START WITH ' || (max_id + 1);
-            
-            -- Link sequence to id column
-            ALTER TABLE customer_billing_configurations ALTER COLUMN id SET DEFAULT nextval('customer_billing_configurations_id_seq');
-            ALTER SEQUENCE customer_billing_configurations_id_seq OWNED BY customer_billing_configurations.id;
-          END;
+          SELECT COALESCE(MAX(id), 0) INTO max_id FROM customer_billing_configurations;
+          
+          -- Create sequence
+          EXECUTE 'CREATE SEQUENCE customer_billing_configurations_id_seq START WITH ' || (max_id + 1);
+          
+          -- Link sequence to id column
+          ALTER TABLE customer_billing_configurations ALTER COLUMN id SET DEFAULT nextval('customer_billing_configurations_id_seq');
+          ALTER SEQUENCE customer_billing_configurations_id_seq OWNED BY customer_billing_configurations.id;
         END IF;
       END $$;
     `

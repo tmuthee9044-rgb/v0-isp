@@ -191,7 +191,9 @@ export async function addFuelLog(formData: FormData) {
       notes: formData.get("notes") as string,
     }
 
-    await sql`
+    console.log("[v0] Adding fuel log with data:", fuelData)
+
+    const result = await sql`
       INSERT INTO fuel_logs (
         vehicle_id, log_date, fuel_type, quantity, cost, 
         odometer_reading, location, notes
@@ -200,7 +202,10 @@ export async function addFuelLog(formData: FormData) {
         ${fuelData.quantity}, ${fuelData.cost}, ${fuelData.odometer_reading},
         ${fuelData.location}, ${fuelData.notes}
       )
+      RETURNING *
     `
+
+    console.log("[v0] Fuel log inserted:", result[0])
 
     // Update vehicle mileage
     await sql`
@@ -210,11 +215,13 @@ export async function addFuelLog(formData: FormData) {
       WHERE id = ${fuelData.vehicle_id}
     `
 
+    console.log("[v0] Vehicle mileage updated for vehicle:", fuelData.vehicle_id)
+
     revalidatePath("/vehicles")
     return { success: true, message: "Fuel log added successfully" }
   } catch (error) {
-    console.error("Error adding fuel log:", error)
-    return { success: false, message: "Failed to add fuel log" }
+    console.error("[v0] Error adding fuel log:", error)
+    return { success: false, message: `Failed to add fuel log: ${error instanceof Error ? error.message : String(error)}` }
   }
 }
 

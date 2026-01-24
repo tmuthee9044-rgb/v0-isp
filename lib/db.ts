@@ -551,6 +551,38 @@ async function ensureCriticalColumns() {
       )
     `.catch(() => {})
 
+    // Fix fuel_logs id sequence - ensure it exists and is properly configured
+    await sql`
+      DO $$
+      DECLARE
+        max_id INTEGER;
+      BEGIN
+        -- Get current max id
+        SELECT COALESCE(MAX(id), 0) INTO max_id FROM fuel_logs;
+        
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'fuel_logs_id_seq') THEN
+          EXECUTE 'CREATE SEQUENCE fuel_logs_id_seq START WITH ' || (max_id + 1);
+          RAISE NOTICE 'Created fuel_logs_id_seq starting at %', max_id + 1;
+        ELSE
+          -- Reset sequence to correct value if it exists
+          PERFORM setval('fuel_logs_id_seq', GREATEST(max_id, 1), true);
+          RAISE NOTICE 'Reset fuel_logs_id_seq to %', GREATEST(max_id, 1);
+        END IF;
+        
+        -- Ensure id column uses the sequence (remove old default first)
+        ALTER TABLE fuel_logs ALTER COLUMN id DROP DEFAULT;
+        ALTER TABLE fuel_logs ALTER COLUMN id SET DEFAULT nextval('fuel_logs_id_seq');
+        
+        -- Link sequence ownership to the column
+        ALTER SEQUENCE fuel_logs_id_seq OWNED BY fuel_logs.id;
+        
+        RAISE NOTICE 'fuel_logs sequence configured successfully';
+      END $$;
+    `.catch((err) => {
+      console.error("[v0] Error fixing fuel_logs sequence:", err)
+    })
+
     // Ensure maintenance_logs table exists
     await sql`
       CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -566,6 +598,32 @@ async function ensureCriticalColumns() {
         parts_replaced TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `.catch(() => {})
+
+    // Fix maintenance_logs id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'maintenance_logs_id_seq') THEN
+          CREATE SEQUENCE maintenance_logs_id_seq;
+          RAISE NOTICE 'Created maintenance_logs_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='maintenance_logs') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('maintenance_logs_id_seq', COALESCE((SELECT MAX(id) FROM maintenance_logs), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE maintenance_logs ALTER COLUMN id SET DEFAULT nextval('maintenance_logs_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE maintenance_logs_id_seq OWNED BY maintenance_logs.id;
+          
+          RAISE NOTICE 'Fixed maintenance_logs id sequence';
+        END IF;
+      END $$;
     `.catch(() => {})
 
     // Ensure bus_fare_records table exists
@@ -584,6 +642,32 @@ async function ensureCriticalColumns() {
         status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `.catch(() => {})
+
+    // Fix bus_fare_records id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'bus_fare_records_id_seq') THEN
+          CREATE SEQUENCE bus_fare_records_id_seq;
+          RAISE NOTICE 'Created bus_fare_records_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='bus_fare_records') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('bus_fare_records_id_seq', COALESCE((SELECT MAX(id) FROM bus_fare_records), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE bus_fare_records ALTER COLUMN id SET DEFAULT nextval('bus_fare_records_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE bus_fare_records_id_seq OWNED BY bus_fare_records.id;
+          
+          RAISE NOTICE 'Fixed bus_fare_records id sequence';
+        END IF;
+      END $$;
     `.catch(() => {})
 
     console.log("[DB] Critical column migrations applied")

@@ -146,6 +146,10 @@ async function ensureCriticalColumns() {
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS report_first_service_cancel_date DATE
     `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS splynx_addon_agents_agent VARCHAR(255)
+    `.catch(() => {})
 
     // Ensure customer_documents table exists with correct schema
     await sql`
@@ -671,6 +675,116 @@ async function ensureCriticalColumns() {
           ALTER SEQUENCE bus_fare_records_id_seq OWNED BY bus_fare_records.id;
           
           RAISE NOTICE 'Fixed bus_fare_records id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Ensure customer_statements table exists for billing statements
+    await sql`
+      CREATE TABLE IF NOT EXISTS customer_statements (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        statement_number VARCHAR(100) UNIQUE NOT NULL,
+        statement_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        opening_balance DECIMAL(15, 2) DEFAULT 0,
+        total_charges DECIMAL(15, 2) DEFAULT 0,
+        total_payments DECIMAL(15, 2) DEFAULT 0,
+        closing_balance DECIMAL(15, 2) DEFAULT 0,
+        due_date DATE,
+        status VARCHAR(50) DEFAULT 'draft',
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_statements_customer_id ON customer_statements(customer_id)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_statements_date ON customer_statements(statement_date)
+    `.catch(() => {})
+
+    // Fix customer_statements id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'customer_statements_id_seq') THEN
+          CREATE SEQUENCE customer_statements_id_seq;
+          RAISE NOTICE 'Created customer_statements_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='customer_statements') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('customer_statements_id_seq', COALESCE((SELECT MAX(id) FROM customer_statements), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE customer_statements ALTER COLUMN id SET DEFAULT nextval('customer_statements_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE customer_statements_id_seq OWNED BY customer_statements.id;
+          
+          RAISE NOTICE 'Fixed customer_statements id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Ensure credit_applications table exists for customer credit requests
+    await sql`
+      CREATE TABLE IF NOT EXISTS credit_applications (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        application_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        requested_amount DECIMAL(15, 2) NOT NULL,
+        approved_amount DECIMAL(15, 2) DEFAULT 0,
+        credit_limit DECIMAL(15, 2) DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'pending',
+        approval_date DATE,
+        approved_by INTEGER,
+        rejection_reason TEXT,
+        repayment_period INTEGER,
+        interest_rate DECIMAL(5, 2) DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_credit_applications_customer_id ON credit_applications(customer_id)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_credit_applications_status ON credit_applications(status)
+    `.catch(() => {})
+
+    // Fix credit_applications id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        -- Create sequence if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'credit_applications_id_seq') THEN
+          CREATE SEQUENCE credit_applications_id_seq;
+          RAISE NOTICE 'Created credit_applications_id_seq';
+        END IF;
+        
+        -- If table exists, ensure id column uses the sequence
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='credit_applications') THEN
+          -- Set sequence to max existing id + 1
+          PERFORM setval('credit_applications_id_seq', COALESCE((SELECT MAX(id) FROM credit_applications), 0) + 1, false);
+          
+          -- Set the default value for id column to use the sequence
+          ALTER TABLE credit_applications ALTER COLUMN id SET DEFAULT nextval('credit_applications_id_seq');
+          
+          -- Link sequence ownership to the column
+          ALTER SEQUENCE credit_applications_id_seq OWNED BY credit_applications.id;
+          
+          RAISE NOTICE 'Fixed credit_applications id sequence';
         END IF;
       END $$;
     `.catch(() => {})

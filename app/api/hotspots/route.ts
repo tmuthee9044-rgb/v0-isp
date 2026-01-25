@@ -30,6 +30,9 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
 
+    // Convert empty strings to null for INET fields
+    const ipAddress = data.ip_address && data.ip_address.trim() !== "" ? data.ip_address : null
+
     const result = await sql`
       INSERT INTO hotspots (
         name, location, address, latitude, longitude, ssid, password,
@@ -39,7 +42,7 @@ export async function POST(request: NextRequest) {
         ${data.name}, ${data.location}, ${data.address}, ${data.latitude},
         ${data.longitude}, ${data.ssid}, ${data.password}, ${data.security_type},
         ${data.bandwidth_limit}, ${data.user_limit}, ${data.device_mac},
-        ${data.device_model}, ${data.ip_address}, 'active'
+        ${data.device_model}, ${ipAddress}, 'active'
       )
       RETURNING *
     `

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import { updateFreeRADIUSConfig } from "@/lib/freeradius-config"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -321,7 +322,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       }
     })()
 
-    return NextResponse.json(result[0])
+    // Auto-update FreeRADIUS clients configuration
+    console.log("[v0] Auto-updating FreeRADIUS clients.conf configuration...")
+    const radiusConfigResult = await updateFreeRADIUSConfig()
+    console.log("[v0] FreeRADIUS config update result:", radiusConfigResult)
+
+    return NextResponse.json({
+      ...result[0],
+      radiusConfigUpdate: radiusConfigResult,
+    })
   } catch (error) {
     console.error("[v0] Error updating router:", error)
     return NextResponse.json({ message: "Failed to update router" }, { status: 500 })

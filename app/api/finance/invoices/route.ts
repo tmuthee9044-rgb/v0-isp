@@ -31,7 +31,9 @@ export async function POST(request: NextRequest) {
   try {
     await ensureInvoiceItemsTable()
 
-    const { customer_id, amount, description, due_date, items } = await request.json()
+    const { customer_id, amount, description, due_date, items, tax_amount, tax_rate, discount_amount, notes } = await request.json()
+
+    console.log("[v0] Creating invoice with data:", { customer_id, amount, description, due_date, tax_amount, tax_rate, discount_amount, notes, items_count: items?.length })
 
     if (!customer_id || !amount || !description) {
       return NextResponse.json({ error: "Customer, amount, and description are required" }, { status: 400 })
@@ -43,32 +45,43 @@ export async function POST(request: NextRequest) {
     const invoiceCount = await sql`SELECT COUNT(*) as count FROM invoices`
     const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Number(invoiceCount[0].count) + 1).padStart(3, "0")}`
 
+    console.log("[v0] Generating invoice number:", invoiceNumber)
+
     const [invoice] = await sql`
       INSERT INTO invoices (
         invoice_number,
         customer_id, 
         amount,
         total_amount,
+        tax_amount,
+        discount_amount,
         description, 
         due_date, 
         status,
-        paid_amount
+        paid_amount,
+        notes
       )
       VALUES (
         ${invoiceNumber},
         ${customer_id}, 
         ${amount},
         ${amount},
+        ${tax_amount || 0},
+        ${discount_amount || 0},
         ${description}, 
         ${due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}, 
         'pending',
-        0
+        0,
+        ${notes || null}
       )
       RETURNING *
     `
 
+    console.log("[v0] Invoice created with ID:", invoice.id)
+
     // Insert invoice items if provided
     if (items && items.length > 0) {
+      console.log("[v0] Inserting", items.length, "invoice items")
       for (const item of items) {
         await sql`
           INSERT INTO invoice_items (
@@ -87,6 +100,9 @@ export async function POST(request: NextRequest) {
           )
         `
       }
+      console.log("[v0] Invoice items inserted successfully")
+    } else {
+      console.log("[v0] No invoice items to insert")
     }
 
     try {

@@ -163,20 +163,26 @@ function SubnetViewContent() {
         url += `&search=${encodeURIComponent(searchTerm)}`
       }
 
+      console.log("[v0] Fetching IP addresses from:", url)
+
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] IP addresses API response:", data)
         const addresses = Array.isArray(data.addresses) ? data.addresses : Array.isArray(data) ? data : []
+        console.log("[v0] Setting IP addresses:", addresses.length, "addresses")
         setIpAddresses(addresses)
         setTotalIPs(data.total || 0)
         setTotalPages(Math.ceil((data.total || 0) / ITEMS_PER_PAGE))
       } else {
-        console.error("Failed to fetch IP addresses, status:", response.status)
+        console.error("[v0] Failed to fetch IP addresses, status:", response.status)
+        const errorData = await response.json().catch(() => ({}))
+        console.error("[v0] Error response:", errorData)
         toast.error("Failed to fetch IP addresses")
         setIpAddresses([])
       }
     } catch (error) {
-      console.error("Error fetching IPs:", error)
+      console.error("[v0] Error fetching IPs:", error)
       toast.error("Failed to fetch IP addresses")
       setIpAddresses([])
     } finally {

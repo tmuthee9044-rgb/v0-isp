@@ -81,6 +81,8 @@ export async function addVehicle(formData: FormData) {
   try {
     const sql = await getSql()
     const name = formData.get("name") as string
+    console.log("[v0] Adding vehicle with name:", name)
+    
     if (!name || name.trim() === "") {
       return { success: false, message: "Vehicle name is required" }
     }
@@ -103,11 +105,14 @@ export async function addVehicle(formData: FormData) {
       status: "active",
     }
 
+    console.log("[v0] Vehicle data prepared:", vehicleData)
+
     if (!vehicleData.type || !vehicleData.registration || !vehicleData.model) {
       return { success: false, message: "Type, registration, and model are required fields" }
     }
 
-    await sql`
+    console.log("[v0] Inserting vehicle into database...")
+    const result = await sql`
       INSERT INTO vehicles (
         name, type, registration, model, year, fuel_type, assigned_to, 
         location, mileage, fuel_consumption, insurance_expiry, license_expiry,
@@ -121,13 +126,21 @@ export async function addVehicle(formData: FormData) {
         ${vehicleData.purchase_cost}, ${vehicleData.status},
         CURRENT_DATE + INTERVAL '3 months'
       )
+      RETURNING id
     `
 
+    console.log("[v0] Vehicle added successfully with ID:", result[0]?.id)
     revalidatePath("/vehicles")
-    return { success: true, message: "Vehicle added successfully" }
-  } catch (error) {
-    console.error("Error adding vehicle:", error)
-    return { success: false, message: "Failed to add vehicle" }
+    return { success: true, message: `Vehicle added successfully with ID ${result[0]?.id}` }
+  } catch (error: any) {
+    console.error("[v0] Error adding vehicle:", error)
+    console.error("[v0] Error stack:", error.stack)
+    return { 
+      success: false, 
+      message: error.message?.includes("null value in column") 
+        ? "Database error: Please restart the application to apply schema updates" 
+        : `Failed to add vehicle: ${error.message || "Unknown error"}` 
+    }
   }
 }
 

@@ -539,6 +539,23 @@ async function ensureCriticalColumns() {
       )
     `.catch(() => {})
 
+    // Add unique constraint on pppoe_username for internet services (Rule 1 - no duplicate PPPoE usernames)
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_services_pppoe_username_unique 
+      ON customer_services(pppoe_username) 
+      WHERE pppoe_username IS NOT NULL AND status IN ('active', 'pending', 'suspended')
+    `.catch(() => {})
+
+    // Add vendor field to network_devices for multi-vendor RADIUS support
+    await sql`
+      ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS vendor VARCHAR(50) DEFAULT 'mikrotik'
+    `.catch(() => {})
+    
+    // Add radius_secret field for per-router RADIUS secrets
+    await sql`
+      ALTER TABLE network_devices ADD COLUMN IF NOT EXISTS radius_secret VARCHAR(255)
+    `.catch(() => {})
+
     // Add missing last_fuel_date column to existing vehicles table
     await sql`
       ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_fuel_date DATE
@@ -787,6 +804,45 @@ async function ensureCriticalColumns() {
           RAISE NOTICE 'Fixed credit_applications id sequence';
         END IF;
       END $$;
+    `.catch(() => {})
+
+    // Add missing columns to radpostauth for RADIUS logs
+    await sql`
+      ALTER TABLE radpostauth ADD COLUMN IF NOT EXISTS calledstationid VARCHAR(50)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE radpostauth ADD COLUMN IF NOT EXISTS callingstationid VARCHAR(50)
+    `.catch(() => {})
+
+    // Ensure system_logs table exists for application logging
+    await sql`
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        level VARCHAR(20) NOT NULL,
+        source VARCHAR(255) NOT NULL,
+        category VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        ip_address INET,
+        user_id VARCHAR(255),
+        customer_id VARCHAR(255),
+        details JSONB,
+        session_id VARCHAR(255),
+        user_agent TEXT
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp DESC)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level)
+    `.catch(() => {})
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category)
     `.catch(() => {})
 
     console.log("[DB] Critical column migrations applied")

@@ -149,11 +149,18 @@ export function CreateInvoiceModal({ isOpen, onClose, onInvoiceCreated, customer
 
     try {
       const invoiceData = {
-        ...formData,
+        customer_id: Number.parseInt(formData.customer_id), // Convert to number
+        description: formData.description,
+        due_date: formData.due_date,
         amount: calculateTotal(),
         tax_amount: calculateTax(),
+        tax_rate: formData.tax_rate,
+        discount_amount: formData.discount_amount,
+        notes: formData.notes,
         items: items.filter((item) => item.description && item.unit_price > 0),
       }
+
+      console.log("[v0] Submitting invoice data:", invoiceData)
 
       const response = await fetch("/api/finance/invoices", {
         method: "POST",
@@ -163,8 +170,11 @@ export function CreateInvoiceModal({ isOpen, onClose, onInvoiceCreated, customer
         body: JSON.stringify(invoiceData),
       })
 
+      const responseData = await response.json()
+      console.log("[v0] Invoice creation response:", responseData)
+
       if (!response.ok) {
-        throw new Error("Failed to create invoice")
+        throw new Error(responseData.error || "Failed to create invoice")
       }
 
       toast({
@@ -185,10 +195,11 @@ export function CreateInvoiceModal({ isOpen, onClose, onInvoiceCreated, customer
 
       onInvoiceCreated()
       onClose()
-    } catch (error) {
+    } catch (error: any) {
+      console.error("[v0] Error creating invoice:", error)
       toast({
         title: "Error",
-        description: "Failed to create invoice. Please try again.",
+        description: error.message || "Failed to create invoice. Please try again.",
         variant: "destructive",
       })
     } finally {

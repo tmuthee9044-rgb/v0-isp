@@ -80,6 +80,31 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       console.log(`[v0] Auto-allocated IP ${ipAddress} based on customer location`)
     }
 
+    // Check for duplicate PPPoE username (Rule: PPPoE username must be unique)
+    if (pppoeUsername) {
+      console.log("[v0] Checking PPPoE username uniqueness:", pppoeUsername)
+      const existingPppoeUser = await sql`
+        SELECT cs.id, c.first_name, c.last_name, sp.name as service_name
+        FROM customer_services cs
+        LEFT JOIN customers c ON cs.customer_id = c.id
+        LEFT JOIN service_plans sp ON cs.service_plan_id = sp.id
+        WHERE cs.pppoe_username = ${pppoeUsername}
+        AND cs.status IN ('active', 'pending', 'suspended')
+        LIMIT 1
+      `
+
+      if (existingPppoeUser.length > 0) {
+        const existingCustomer = existingPppoeUser[0]
+        return NextResponse.json(
+          {
+            success: false,
+            error: `PPPoE username "${pppoeUsername}" is already in use by ${existingCustomer.first_name} ${existingCustomer.last_name} (${existingCustomer.service_name || "Unknown Service"})`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+
     if (ipAddress && ipAddress !== "auto") {
       const existingIpAssignment = await sql`
         SELECT cs.id, sp.name as service_name

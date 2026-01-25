@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const offset = (page - 1) * limit
 
+    console.log("[v0] IP addresses API called with:", { subnetId, status, search, page, limit })
+
     const sql = await getSql()
 
     const whereConditions: string[] = ["1=1"]
@@ -105,6 +107,9 @@ export async function GET(request: NextRequest) {
     params.push(limit, offset)
     const addresses = await sql.unsafe(query, params)
 
+    console.log("[v0] IP addresses query returned:", addresses.length, "addresses out of", total, "total")
+    console.log("[v0] Sample address:", addresses[0])
+
     return NextResponse.json({
       success: true,
       addresses,
@@ -114,7 +119,7 @@ export async function GET(request: NextRequest) {
       totalPages: Math.ceil(total / limit),
     })
   } catch (error) {
-    console.error("Error fetching IP addresses:", error)
+    console.error("[v0] Error fetching IP addresses:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch IP addresses" }, { status: 500 })
   }
 }

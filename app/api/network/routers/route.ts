@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
+import { updateFreeRADIUSConfig } from "@/lib/freeradius-config"
 
 export async function GET() {
   const sql = await getSql()
@@ -345,9 +346,17 @@ export async function POST(request: NextRequest) {
       )
     `
 
+    // Auto-update FreeRADIUS clients configuration
+    console.log("[v0] Auto-updating FreeRADIUS clients.conf configuration...")
+    const radiusConfigResult = await updateFreeRADIUSConfig()
+    console.log("[v0] FreeRADIUS config update result:", radiusConfigResult)
+
     console.log("[v0] Router creation completed successfully")
 
-    return NextResponse.json(result[0], { status: 201 })
+    return NextResponse.json({
+      ...result[0],
+      radiusConfigUpdate: radiusConfigResult,
+    }, { status: 201 })
   } catch (error) {
     console.error("[v0] Error creating router:", error)
     console.error("[v0] Error stack:", error instanceof Error ? error.stack : "No stack trace")

@@ -7,9 +7,9 @@ This ISP system implements a **RADIUS-First, Database-Driven** architecture that
 ## Architecture Principles
 
 ### 1. Control Plane Separation
-```
+\`\`\`
 Customer Device → Router → FreeRADIUS → PostgreSQL → ISP Admin UI
-```
+\`\`\`
 
 - **Router**: Forwards packets, enforces policies from RADIUS
 - **FreeRADIUS**: Authenticates users, returns speed/IP attributes
@@ -81,7 +81,7 @@ Customer Device → Router → FreeRADIUS → PostgreSQL → ISP Admin UI
 
 ### 5. Connection Troubleshooting Flow
 
-```
+\`\`\`
 1. Test Network Connectivity (Ping/TCP)
 2. Test Authentication (API/SSH)
 3. Verify RADIUS Configuration
@@ -89,7 +89,7 @@ Customer Device → Router → FreeRADIUS → PostgreSQL → ISP Admin UI
 5. Validate User in RADIUS DB
 6. Test RADIUS Auth Packet
 7. Check Router Logs
-```
+\`\`\`
 
 ### 6. Health Check System
 

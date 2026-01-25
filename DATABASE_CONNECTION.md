@@ -6,7 +6,7 @@ The ISP system **MUST** use PostgreSQL offline database, not cloud-based service
 ## How to Configure Local PostgreSQL
 
 ### 1. Install PostgreSQL Locally
-```bash
+\`\`\`bash
 # Ubuntu/Debian
 sudo apt-get install postgresql postgresql-contrib
 
@@ -16,28 +16,28 @@ brew install postgresql
 # Start PostgreSQL service
 sudo systemctl start postgresql  # Linux
 brew services start postgresql   # macOS
-```
+\`\`\`
 
 ### 2. Create Database
-```bash
+\`\`\`bash
 sudo -u postgres psql
 CREATE DATABASE isp_database;
 CREATE USER isp_user WITH PASSWORD 'your_secure_password';
 GRANT ALL PRIVILEGES ON DATABASE isp_database TO isp_user;
 \q
-```
+\`\`\`
 
 ### 3. Set Environment Variable
 Add to your `.env.local` file:
 
-```env
+\`\`\`env
 # PRIORITY: Local PostgreSQL (Rule 4 - Offline Database)
 LOCAL_DATABASE_URL=postgresql://isp_user:your_secure_password@localhost:5432/isp_database
 
 # These cloud URLs will be IGNORED when LOCAL_DATABASE_URL is set
 DATABASE_URL=...
 POSTGRES_URL=...
-```
+\`\`\`
 
 ### 4. Verify Connection
 The system will log on startup:

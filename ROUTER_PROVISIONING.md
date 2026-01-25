@@ -35,28 +35,28 @@ The system will:
 The system needs two cron jobs running at 10-30 second intervals:
 
 #### 1. Provision Active Services
-```bash
+\`\`\`bash
 # Run every 10 seconds
 */10 * * * * * curl http://localhost:3000/api/cron/provision-active-services
 
 # OR run every 30 seconds
 */30 * * * * * curl http://localhost:3000/api/cron/provision-active-services
-```
+\`\`\`
 
 #### 2. Deprovision Inactive Services
-```bash
+\`\`\`bash
 # Run every 15 seconds
 */15 * * * * * curl http://localhost:3000/api/cron/deprovision-inactive-services
 
 # OR run every 30 seconds
 */30 * * * * * curl http://localhost:3000/api/cron/deprovision-inactive-services
-```
+\`\`\`
 
 ### Setup with Vercel Cron
 
 If deploying to Vercel, add to `vercel.json`:
 
-```json
+\`\`\`json
 {
   "crons": [
     {
@@ -69,7 +69,7 @@ If deploying to Vercel, add to `vercel.json`:
     }
   ]
 }
-```
+\`\`\`
 
 **Note**: Vercel cron has a minimum interval of 1 minute. For 10-30 second intervals, use an external cron service like:
 - **cron-job.org** (supports seconds)
@@ -80,7 +80,7 @@ If deploying to Vercel, add to `vercel.json`:
 
 Create a file `scripts/cron-scheduler.js`:
 
-```javascript
+\`\`\`javascript
 const https = require('https');
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -106,21 +106,21 @@ setInterval(() => {
 console.log('Cron scheduler started');
 console.log('Provisioning: every 15 seconds');
 console.log('Deprovisioning: every 20 seconds');
-```
+\`\`\`
 
 Run with:
-```bash
+\`\`\`bash
 node scripts/cron-scheduler.js
-```
+\`\`\`
 
 Or add to `package.json`:
-```json
+\`\`\`json
 {
   "scripts": {
     "cron": "node scripts/cron-scheduler.js"
   }
 }
-```
+\`\`\`
 
 ## Database Schema
 
@@ -128,7 +128,7 @@ Or add to `package.json`:
 
 Run the migration script: `scripts/add_router_provisioning_columns.sql`
 
-```sql
+\`\`\`sql
 ALTER TABLE customer_services 
 ADD COLUMN IF NOT EXISTS router_provisioned BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS router_provisioned_at TIMESTAMP,
@@ -136,23 +136,23 @@ ADD COLUMN IF NOT EXISTS router_deprovisioned_at TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_customer_services_router_provisioned 
   ON customer_services(router_provisioned, status, router_id);
-```
+\`\`\`
 
 ## MikroTik Router Requirements
 
 ### REST API Setup
 
 1. Enable REST API on MikroTik:
-```
+\`\`\`
 /ip service
 set api-ssl disabled=no port=8729
 set www-ssl disabled=no port=443
-```
+\`\`\`
 
 2. Create API user:
-```
+\`\`\`
 /user add name=api_user password=YourSecurePassword group=full
-```
+\`\`\`
 
 3. Configure router in ISP system with:
    - IP address
@@ -163,10 +163,10 @@ set www-ssl disabled=no port=443
 ### Firewall Configuration
 
 Ensure the ISP system can reach the router on port 443:
-```
+\`\`\`
 /ip firewall filter
 add chain=input protocol=tcp dst-port=443 action=accept comment="REST API Access"
-```
+\`\`\`
 
 ## Monitoring
 
@@ -181,7 +181,7 @@ add chain=input protocol=tcp dst-port=443 action=accept comment="REST API Access
    - Real-time connection status
 
 3. **Database Queries**:
-```sql
+\`\`\`sql
 -- Services currently provisioned to routers
 SELECT cs.id, c.name, cs.status, cs.router_provisioned_at
 FROM customer_services cs
@@ -193,7 +193,7 @@ SELECT * FROM activity_logs
 WHERE action IN ('provision', 'deprovision', 'provision_failed', 'deprovision_failed')
 ORDER BY created_at DESC
 LIMIT 50;
-```
+\`\`\`
 
 ## Troubleshooting
 
@@ -218,10 +218,10 @@ LIMIT 50;
 2. Check cron job URLs are correct
 3. Review server logs for errors
 4. Test endpoints manually:
-```bash
+\`\`\`bash
 curl http://localhost:3000/api/cron/provision-active-services
 curl http://localhost:3000/api/cron/deprovision-inactive-services
-```
+\`\`\`
 
 ## Performance Optimization
 
@@ -259,28 +259,28 @@ The system observes project rules:
 ### Manual Provisioning
 
 Provision a specific service:
-```bash
+\`\`\`bash
 POST /api/services/[id]/provision
-```
+\`\`\`
 
 ### Manual Deprovisioning
 
 Deprovision a specific service:
-```bash
+\`\`\`bash
 POST /api/services/[id]/deprovision
-```
+\`\`\`
 
 ### Cron Endpoints
 
 Check and provision active services:
-```bash
+\`\`\`bash
 GET /api/cron/provision-active-services
-```
+\`\`\`
 
 Check and deprovision inactive services:
-```bash
+\`\`\`bash
 GET /api/cron/deprovision-inactive-services
-```
+\`\`\`
 
 ## Future Enhancements
 

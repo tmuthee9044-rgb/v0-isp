@@ -17,9 +17,9 @@ The system has 146 tables across the following modules:
 ## Schema Validation
 
 ### Check Schema Status
-```bash
+\`\`\`bash
 curl http://localhost:3000/api/admin/validate-schemas
-```
+\`\`\`
 
 This will return:
 - Total table count
@@ -43,27 +43,27 @@ This will return:
 
 ### Option 1: Run SQL Scripts
 Execute the complete schema from Neon:
-```bash
+\`\`\`bash
 pg_dump $NEON_DATABASE_URL --schema-only > complete_schema.sql
 psql $LOCAL_DATABASE_URL < complete_schema.sql
-```
+\`\`\`
 
 ### Option 2: Use the Sync API
-```bash
+\`\`\`bash
 curl -X POST http://localhost:3000/api/admin/sync-local-db
-```
+\`\`\`
 
 ### Option 3: Manual Column Addition
 For missing columns like `city` in `locations`:
-```sql
+\`\`\`sql
 ALTER TABLE locations ADD COLUMN city VARCHAR(100);
 ALTER TABLE locations ADD COLUMN region VARCHAR(100);
-```
+\`\`\`
 
 ## Verification
 
 After sync, verify with:
-```sql
+\`\`\`sql
 -- Check table count
 SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';
 
@@ -72,7 +72,7 @@ SELECT column_name, data_type
 FROM information_schema.columns 
 WHERE table_name = 'locations' AND table_schema = 'public'
 ORDER BY ordinal_position;
-```
+\`\`\`
 
 ## Rule 4 Compliance Checklist
 - [✓] 146 tables exist in both databases

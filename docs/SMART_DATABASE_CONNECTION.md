@@ -16,36 +16,36 @@ The system checks the hostname in your `DATABASE_URL`:
 
 ### Local Development
 
-```env
+\`\`\`env
 # .env.local
 DATABASE_URL=postgresql://isp_admin:SecurePass123!@localhost:5432/isp_system
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NODE_ENV=development
-```
+\`\`\`
 
 ### Production (Neon)
 
-```env
+\`\`\`env
 # Vercel Environment Variables
 DATABASE_URL=postgresql://username:password@ep-xxx.neon.tech/dbname?sslmode=require
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 NODE_ENV=production
-```
+\`\`\`
 
 ## Usage Examples
 
 ### Basic Query
 
-```typescript
+\`\`\`typescript
 import sql from "@/lib/db";
 
 // Works with both Neon and local PostgreSQL
 const users = await sql("SELECT * FROM customers WHERE status = $1", ["active"]);
-```
+\`\`\`
 
 ### API Route Example
 
-```typescript
+\`\`\`typescript
 import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -61,11 +61,11 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-```
+\`\`\`
 
 ### Transaction Example
 
-```typescript
+\`\`\`typescript
 import sql from "@/lib/db";
 
 // Only works with local PostgreSQL (Neon doesn't support this pattern)
@@ -75,11 +75,11 @@ if (sql.transaction) {
     await tx("INSERT INTO activity_logs (action, details) VALUES ($1, $2)", ["customer_created", "John"]);
   });
 }
-```
+\`\`\`
 
 ### Server Action Example
 
-```typescript
+\`\`\`typescript
 "use server";
 
 import sql from "@/lib/db";
@@ -99,7 +99,7 @@ export async function createCustomer(formData: FormData) {
     return { success: false, error: error.message };
   }
 }
-```
+\`\`\`
 
 ## Benefits
 
@@ -114,9 +114,9 @@ export async function createCustomer(formData: FormData) {
 ### "Could not connect to database"
 
 **Check your DATABASE_URL:**
-```bash
+\`\`\`bash
 echo $DATABASE_URL
-```
+\`\`\`
 
 **For local PostgreSQL:**
 - Ensure PostgreSQL is running: `sudo systemctl status postgresql`
@@ -137,15 +137,15 @@ Your DATABASE_URL doesn't contain `neon.tech`, `localhost`, or `127.0.0.1`.
 If you have existing code using `@neondatabase/serverless` directly:
 
 **Before:**
-```typescript
+\`\`\`typescript
 import { neon } from "@neondatabase/serverless";
 const sql = neon(process.env.DATABASE_URL!);
-```
+\`\`\`
 
 **After:**
-```typescript
+\`\`\`typescript
 import sql from "@/lib/db";
 // That's it! The webpack alias handles the rest
-```
+\`\`\`
 
 All 200+ files with direct imports are automatically redirected to use the smart connector via webpack aliasing in `next.config.mjs`.

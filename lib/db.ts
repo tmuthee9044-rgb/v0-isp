@@ -150,6 +150,10 @@ async function ensureCriticalColumns() {
     await sql`
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS splynx_addon_agents_agent VARCHAR(255)
     `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS splynx_addon_resellers_reseller VARCHAR(255)
+    `.catch(() => {})
 
     // Ensure customer_documents table exists with correct schema
     await sql`

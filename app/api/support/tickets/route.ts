@@ -22,7 +22,7 @@ export async function GET() {
         e.id as assignee_id
       FROM support_tickets st
       LEFT JOIN customers c ON st.customer_id = c.id
-      LEFT JOIN employees e ON st.assigned_to = e.id
+      LEFT JOIN employees e ON st.assigned_to::text = e.id::text
       ORDER BY st.created_at DESC
     `
 

@@ -477,6 +477,10 @@ export class MikroTikAPI {
     console.log(`[v0] Disconnecting from MikroTik router`)
     this.connected = false
   }
+}
+
+// Export alias for backwards compatibility
+export { MikroTikAPI as MikrotikAPI }
 
   /**
    * Configure traffic monitoring/recording on the router

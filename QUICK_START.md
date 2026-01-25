@@ -4,9 +4,9 @@
 
 Run this single command to install and start the system automatically:
 
-```bash
+\`\`\`bash
 bash scripts/install-and-start.sh
-```
+\`\`\`
 
 This script will:
 1. Check Node.js and npm versions (requires Node.js 20+)
@@ -17,13 +17,13 @@ This script will:
 
 If you prefer to install and start separately:
 
-```bash
+\`\`\`bash
 # Install dependencies
 npm install
 
 # Start development server
 npm run dev
-```
+\`\`\`
 
 ## First Time Setup
 
@@ -38,20 +38,20 @@ After the system starts:
 
 Create a `.env.local` file with:
 
-```
+\`\`\`
 DATABASE_URL=postgresql://user:password@localhost:5432/isp_system
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
+\`\`\`
 
 ## Troubleshooting
 
 If auto-start doesn't work after `npm install`, manually start with:
 
-```bash
+\`\`\`bash
 npm run dev
-```
+\`\`\`
 
 To skip pre-flight checks:
 
-```bash
+\`\`\`bash
 npm run dev:skip-checks

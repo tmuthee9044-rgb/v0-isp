@@ -6,7 +6,7 @@ This ISP system implements a complete carrier-grade router auto-provisioning and
 
 ## Architecture
 
-```
+\`\`\`
 Payment → Service Activation → Invoice Generation
     ↓
 PPPoE Credentials Generated
@@ -20,7 +20,7 @@ Router enforces via RADIUS/CoA
 Accounting logs → Usage tracking → Billing system
     ↓
 Continuous Compliance Enforcement (every 15-30 min)
-```
+\`\`\`
 
 ## Features
 
@@ -74,48 +74,48 @@ Real-time validation of:
 ## API Endpoints
 
 ### Generate Provision Script
-```http
+\`\`\`http
 GET /api/network/routers/[id]/provision
-```
+\`\`\`
 Downloads the idempotent auto-provision script for a specific router.
 
 ### Execute Provision Script (Automated)
-```http
+\`\`\`http
 POST /api/network/routers/[id]/execute-provision
-```
+\`\`\`
 Connects to the physical router via SSH/API and executes the provision script automatically.
 
 ### Check Router Compliance
-```http
+\`\`\`http
 GET /api/network/routers/[id]/compliance
 POST /api/network/routers/[id]/compliance
-```
+\`\`\`
 Gets current compliance status or runs a new compliance check.
 
 ### Bulk Compliance Check
-```http
+\`\`\`http
 POST /api/network/routers/compliance/check-all
 GET /api/network/routers/compliance/check-all
-```
+\`\`\`
 Runs compliance checks on all routers (for cron jobs).
 
 ### Rotate Router Credentials
-```http
+\`\`\`http
 POST /api/network/routers/[id]/rotate-credentials
-```
+\`\`\`
 Generates new secure credentials and updates the router.
 
 ### Continuous Enforcement (Cron)
-```http
+\`\`\`http
 POST /api/cron/router-enforcement
-```
+\`\`\`
 Background worker that checks and repairs all routers.
 
 ## Database Schema
 
 ### `router_compliance_history`
 Tracks compliance checks over time with detailed component status:
-```sql
+\`\`\`sql
 - router_id: INTEGER (FK to routers)
 - overall_status: VARCHAR(20) ('green', 'yellow', 'red')
 - radius_auth: BOOLEAN
@@ -127,10 +127,10 @@ Tracks compliance checks over time with detailed component status:
 - security_hardened: BOOLEAN
 - issues: TEXT (JSON array of issues)
 - checked_at: TIMESTAMP
-```
+\`\`\`
 
 ### `routers` (extended columns)
-```sql
+\`\`\`sql
 - compliance_status: VARCHAR(20) DEFAULT 'unknown'
 - last_compliance_check: TIMESTAMP
 - compliance_notes: TEXT
@@ -141,12 +141,12 @@ Tracks compliance checks over time with detailed component status:
 - password_tag: TEXT -- Authentication tag
 - password_rotated_at: TIMESTAMP
 - password_expires_at: TIMESTAMP
-```
+\`\`\`
 
 ## Provisioning Scripts
 
 ### MikroTik RouterOS
-```mikrotik
+\`\`\`mikrotik
 # ================= ISP AUTO PROVISION =================
 
 # --- RADIUS (PRIMARY + FAILOVER) ---
@@ -199,10 +199,10 @@ Tracks compliance checks over time with detailed component status:
     src-address-list=blacklist action=drop comment="ISP_MANAGED:BRUTEFORCE"
 
 # ================= END =================
-```
+\`\`\`
 
 ### Ubiquiti EdgeOS
-```bash
+\`\`\`bash
 configure
 
 set system ntp server pool.ntp.org
@@ -226,10 +226,10 @@ set interfaces ethernet eth0 firewall in name ISP-IN
 commit
 save
 exit
-```
+\`\`\`
 
 ### Juniper JunOS
-```junos
+\`\`\`junos
 set system radius-server 192.168.100.10 secret SECRET123
 set system accounting destination radius server 192.168.100.10
 set system accounting events login logout
@@ -241,7 +241,7 @@ set security policies from-zone trust to-zone trust policy RADIUS \
 set security policies from-zone trust to-zone trust policy RADIUS then permit
 
 commit
-```
+\`\`\`
 
 ## Usage Guide
 
@@ -289,16 +289,16 @@ When adding a router to the system, provide:
 ### 4. Set Up Continuous Enforcement
 
 **Cron Job (Linux/Mac):**
-```bash
+\`\`\`bash
 # Add to crontab (runs every 15 minutes)
 */15 * * * * curl -X POST https://your-domain.com/api/cron/router-enforcement
 
 # Or every 30 minutes
 */30 * * * * curl -X POST https://your-domain.com/api/cron/router-enforcement
-```
+\`\`\`
 
 **Vercel Cron (vercel.json):**
-```json
+\`\`\`json
 {
   "crons": [
     {
@@ -307,17 +307,17 @@ When adding a router to the system, provide:
     }
   ]
 }
-```
+\`\`\`
 
 **Node.js Scheduler:**
-```javascript
+\`\`\`javascript
 // scripts/router-enforcement.js
 setInterval(async () => {
   await fetch('https://your-domain.com/api/cron/router-enforcement', {
     method: 'POST'
   });
 }, 15 * 60 * 1000); // Every 15 minutes
-```
+\`\`\`
 
 ## Compliance Checks
 

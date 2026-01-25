@@ -10,7 +10,7 @@
 
 ## Data Flow
 
-```
+\`\`\`
 Payment Received
     ↓
 Calculate Paid Days (daily_rate = plan.price / plan.billing_cycle_days)
@@ -22,7 +22,7 @@ Update is_active = true, is_suspended = false
 RADIUS checks: NOW() BETWEEN service_start AND service_end
     ↓
 Access Granted/Denied
-```
+\`\`\`
 
 ## Key Tables
 
@@ -45,19 +45,19 @@ Access Granted/Denied
 
 Every 5 minutes, call: `POST /api/billing/suspend-expired`
 
-```sql
+\`\`\`sql
 UPDATE customer_services
 SET is_suspended = true
 WHERE service_end < NOW()
 AND is_active = true
 AND is_suspended = false;
-```
+\`\`\`
 
 ## RADIUS Integration
 
 FreeRADIUS queries the database for authorization:
 
-```sql
+\`\`\`sql
 SELECT 1
 FROM customer_services
 WHERE pppoe_username = :username
@@ -65,7 +65,7 @@ AND is_active = true
 AND is_suspended = false
 AND is_deleted = false
 AND NOW() BETWEEN service_start AND service_end;
-```
+\`\`\`
 
 If this returns a row → Access-Accept
 If no row → Access-Reject

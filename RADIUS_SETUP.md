@@ -17,9 +17,9 @@ The system requires the following RADIUS tables:
 
 ### Method 1: Quick Check (TypeScript)
 
-```bash
+\`\`\`bash
 npm run radius:verify
-```
+\`\`\`
 
 This will:
 - Check which RADIUS tables exist
@@ -29,16 +29,16 @@ This will:
 
 ### Method 2: Complete Setup (Bash)
 
-```bash
+\`\`\`bash
 npm run radius:setup
-```
+\`\`\`
 
 Or directly:
 
-```bash
+\`\`\`bash
 chmod +x scripts/verify-and-create-radius-tables.sh
 ./scripts/verify-and-create-radius-tables.sh
-```
+\`\`\`
 
 This will:
 - Check for existing tables
@@ -50,7 +50,7 @@ This will:
 
 Connect to your database and run:
 
-```sql
+\`\`\`sql
 -- Check which RADIUS tables exist
 SELECT table_name 
 FROM information_schema.tables 
@@ -66,47 +66,47 @@ AND table_name IN (
 
 -- Check columns in a specific table
 \d radius_users
-```
+\`\`\`
 
 ## Manual Table Creation
 
 If the automated scripts don't work, you can manually create tables:
 
-```bash
+\`\`\`bash
 # Create RADIUS infrastructure
 psql $DATABASE_URL -f scripts/create_radius_infrastructure.sql
 
 # Create bandwidth usage table
 psql $DATABASE_URL -f scripts/create_bandwidth_usage_table.sql
-```
+\`\`\`
 
 ## Troubleshooting
 
 ### Tables Don't Exist
 
 Run the setup script:
-```bash
+\`\`\`bash
 npm run radius:setup
-```
+\`\`\`
 
 ### Permission Errors
 
 Ensure your PostgreSQL user has CREATE TABLE privileges:
-```sql
+\`\`\`sql
 GRANT CREATE ON DATABASE your_database TO your_user;
-```
+\`\`\`
 
 ### Connection Issues
 
 Verify your DATABASE_URL environment variable:
-```bash
+\`\`\`bash
 echo $DATABASE_URL
-```
+\`\`\`
 
 It should be in the format:
-```
+\`\`\`
 postgresql://user:password@host:port/database
-```
+\`\`\`
 
 ## Testing RADIUS Integration
 

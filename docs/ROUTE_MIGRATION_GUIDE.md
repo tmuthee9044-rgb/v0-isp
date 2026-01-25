@@ -7,7 +7,7 @@ This guide explains how to migrate API routes from direct Neon imports to the du
 ## Migration Pattern
 
 ### Before (Direct Neon Import)
-```typescript
+\`\`\`typescript
 import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -15,10 +15,10 @@ export async function GET() {
   const result = await sql`SELECT * FROM customers`
   return NextResponse.json(result)
 }
-```
+\`\`\`
 
 ### After (Dual Database System)
-```typescript
+\`\`\`typescript
 import { getSql } from "@/lib/db"
 
 export async function GET() {
@@ -26,7 +26,7 @@ export async function GET() {
   const result = await sql`SELECT * FROM customers`
   return NextResponse.json(result)
 }
-```
+\`\`\`
 
 ## Key Changes
 
@@ -54,9 +54,9 @@ export async function GET() {
 ### Remaining Routes (200+)
 All other API routes need to follow the same migration pattern. Use the migration script to identify routes that need updating:
 
-```bash
+\`\`\`bash
 npm run migrate:check-routes
-```
+\`\`\`
 
 ## Testing
 

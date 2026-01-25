@@ -147,3 +147,6 @@ commit
     }
   }
 }
+
+// Export alias for backwards compatibility
+export { RouterAutoProvision as RouterAutoProvisioner }

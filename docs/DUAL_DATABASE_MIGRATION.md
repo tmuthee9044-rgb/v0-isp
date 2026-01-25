@@ -18,9 +18,9 @@ The ISP Management System supports dual database connectivity:
 
 ### Step 1: Run the Migration Script
 
-```bash
+\`\`\`bash
 npm run migrate:dual-db
-```
+\`\`\`
 
 This will automatically:
 1. Find all API routes and actions using direct Neon imports
@@ -32,7 +32,7 @@ This will automatically:
 ### Step 2: Verify the Migration
 
 After running the script, check the summary output:
-```
+\`\`\`
 📊 Migration Summary
 ====================================
 Total files checked: 341
@@ -40,29 +40,29 @@ Total files checked: 341
 ⏭️  Skipped (already migrated): 52
 ❌ Errors: 0
 ====================================
-```
+\`\`\`
 
 ### Step 3: Test the System
 
 1. **Test with Local PostgreSQL:**
-   ```bash
+   \`\`\`bash
    # Set environment to development
    export NODE_ENV=development
    export USE_LOCAL_DB=true
    
    # Start the dev server
    npm run dev
-   ```
+   \`\`\`
 
 2. **Test with Neon Serverless:**
-   ```bash
+   \`\`\`bash
    # Set environment to production
    export NODE_ENV=production
    
    # Start the server
    npm run build
    npm start
-   ```
+   \`\`\`
 
 ## Database Configuration
 
@@ -76,9 +76,9 @@ The system connects to local PostgreSQL with these default credentials:
 - **Password:** SecurePass123!
 
 To use custom credentials, set:
-```bash
+\`\`\`bash
 export LOCAL_DATABASE_URL="postgresql://user:password@127.0.0.1:5432/database"
-```
+\`\`\`
 
 ### Neon Serverless Setup
 
@@ -93,7 +93,7 @@ Neon connection is configured via environment variables (already set in your pro
 
 The `lib/db.ts` module automatically detects which database to use:
 
-```typescript
+\`\`\`typescript
 // Development environment
 if (NODE_ENV === "development" || USE_LOCAL_DB === "true") {
   // Tries local PostgreSQL first
@@ -105,7 +105,7 @@ else {
   // Tries Neon first
   // Falls back to local PostgreSQL if unavailable
 }
-```
+\`\`\`
 
 ### Connection Caching
 
@@ -116,10 +116,10 @@ else {
 ### Activity Logging
 
 All database operations are logged with timestamps:
-```
+\`\`\`
 [DB 2025-01-05T10:30:00.000Z] INITIALIZING: {"type":"PostgreSQL (Local)","environment":"development"}
 [DB 2025-01-05T10:30:00.100Z] CONNECTED: {"type":"PostgreSQL (Local)","status":"success"}
-```
+\`\`\`
 
 ## Troubleshooting
 
@@ -128,16 +128,16 @@ All database operations are logged with timestamps:
 If the migration script reports errors:
 
 1. **Check file permissions:**
-   ```bash
+   \`\`\`bash
    chmod +x scripts/migrate-all-routes-to-dual-db.js
-   ```
+   \`\`\`
 
 2. **Review error messages:**
    The script will show which files failed and why
 
 3. **Manual migration:**
    For files that fail automatic migration, update manually:
-   ```typescript
+   \`\`\`typescript
    // Before
    import { neon } from "@neondatabase/serverless"
    const sql = neon(process.env.DATABASE_URL!)
@@ -145,24 +145,24 @@ If the migration script reports errors:
    // After
    import { getSql } from "@/lib/db"
    const sql = await getSql()
-   ```
+   \`\`\`
 
 ### Connection Issues
 
 **Local PostgreSQL not connecting:**
-```bash
+\`\`\`bash
 # Check if PostgreSQL is running
 sudo systemctl status postgresql
 
 # Check connection
 psql -h 127.0.0.1 -U isp_admin -d isp_system
-```
+\`\`\`
 
 **Neon not connecting:**
-```bash
+\`\`\`bash
 # Verify environment variables
 echo $DATABASE_URL
-```
+\`\`\`
 
 ## Benefits
 

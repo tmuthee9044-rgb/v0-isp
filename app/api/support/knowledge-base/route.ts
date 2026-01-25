@@ -17,7 +17,7 @@ export async function GET() {
         kb.updated_at,
         e.first_name || ' ' || e.last_name as author_name
       FROM knowledge_base kb
-      LEFT JOIN employees e ON kb.author_id = e.id
+      LEFT JOIN employees e ON kb.author_id::text = e.id::text
       ORDER BY kb.updated_at DESC
     `
 

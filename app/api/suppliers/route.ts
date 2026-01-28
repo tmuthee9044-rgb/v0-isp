@@ -87,30 +87,31 @@ export async function POST(request: NextRequest) {
     const sql = await getSql()
     const data = await request.json()
 
+    // Use the actual database column names: contact_name (not contact_person), is_active (not status)
     const result = await sql`
       INSERT INTO suppliers (
-        company_name, contact_person, email, phone, address,
-        city, state, country, supplier_type, notes, status
+        company_name, contact_name, email, phone, address, is_active
       ) VALUES (
         ${data.company_name}, 
-        ${data.contact_person || null},
+        ${data.contact_person || data.contact_name || null},
         ${data.email || null}, 
         ${data.phone || null}, 
         ${data.address || null},
-        ${data.city || null},
-        ${data.state || null},
-        ${data.country || null},
-        ${data.supplier_type || "vendor"},
-        ${data.notes || null},
-        ${data.status || "active"}
+        ${data.status === "active" || data.is_active !== false}
       )
       RETURNING *
     `
 
+    // Map the result back to the expected format
+    const supplier = result[0]
     return NextResponse.json({
       success: true,
       message: "Supplier created successfully",
-      supplier: result[0],
+      supplier: {
+        ...supplier,
+        contact_person: supplier.contact_name,
+        status: supplier.is_active ? "active" : "inactive",
+      },
     })
   } catch (error) {
     console.error("Error creating supplier:", error)

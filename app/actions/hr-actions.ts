@@ -172,9 +172,10 @@ export async function generatePayroll(
       const employeeName = `${employee.first_name} ${employee.last_name}`
 
       // Delete existing record first, then insert to avoid ON CONFLICT constraint issues
+      // Use employee.employee_id (VARCHAR) as the reference, not employee.id (INTEGER)
       await sql`
         DELETE FROM payroll_records 
-        WHERE employee_id = ${employee.id}::UUID 
+        WHERE employee_id = ${employee.employee_id}
         AND pay_period_start = ${periodStart}::DATE
       `.catch(() => {})
       
@@ -184,7 +185,7 @@ export async function generatePayroll(
           allowances, deductions, gross_pay, tax, nhif, nssf,
           net_pay, status, created_at
         ) VALUES (
-          ${employee.id}::UUID, ${employeeName}::VARCHAR, 
+          ${employee.employee_id}, ${employeeName}, 
           ${periodStart}::DATE, ${periodEnd}::DATE, ${basicSalary}::NUMERIC,
           ${allowances}::NUMERIC, ${totalEmployeeDeductions}::NUMERIC, ${grossPay}::NUMERIC, 
           ${paye}::NUMERIC, ${sha}::NUMERIC, ${nssf}::NUMERIC,
@@ -248,7 +249,7 @@ export async function processPayroll(
         status = 'processed',
         updated_at = NOW()
       WHERE TO_CHAR(pay_period_start, 'YYYY-MM') = ${period}
-      AND employee_id::TEXT = ANY(${employeeIds})
+      AND employee_id = ANY(${employeeIds})
     `
 
     revalidatePath("/hr")

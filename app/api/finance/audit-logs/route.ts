@@ -10,13 +10,14 @@ export async function GET(request: NextRequest) {
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
     // Fetch finance audit trail data with better null handling
+    // Note: The table may have either 'action' or 'action_type' column depending on migration
     let auditLogs: any[] = []
     try {
       auditLogs = await sql`
         SELECT 
           fat.id,
           fat.created_at,
-          fat.action,
+          COALESCE(fat.action_type, fat.action, 'UNKNOWN') as action,
           fat.table_name as resource,
           fat.record_id,
           fat.old_values,

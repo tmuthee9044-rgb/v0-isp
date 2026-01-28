@@ -62,23 +62,33 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Creating new role:", name)
 
-    // Create the role
+    // Get the next ID manually to handle tables without proper auto-increment
+    const maxIdResult = await sql`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM roles`
+    const nextId = maxIdResult[0]?.next_id || 1
+
+    // Create the role with explicit ID
     const [newRole] = await sql`
-      INSERT INTO roles (name, description, is_system_role)
-      VALUES (${name}, ${description}, FALSE)
+      INSERT INTO roles (id, name, description, is_system_role, created_at, updated_at)
+      VALUES (${nextId}, ${name}, ${description}, FALSE, NOW(), NOW())
       RETURNING id, name, description, is_system_role, created_at
     `
 
     // Assign permissions to the role
     if (permissions && permissions.length > 0) {
       for (const permissionKey of permissions) {
-        await sql`
-          INSERT INTO role_permissions (role_id, permission_id)
-          SELECT ${newRole.id}, id
-          FROM permissions
-          WHERE permission_key = ${permissionKey}
-          ON CONFLICT DO NOTHING
-        `
+        // Get the next role_permissions ID
+        const maxRpIdResult = await sql`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM role_permissions`
+        const nextRpId = maxRpIdResult[0]?.next_id || 1
+        
+        // Get the permission ID for this key
+        const permResult = await sql`SELECT id FROM permissions WHERE permission_key = ${permissionKey}`
+        if (permResult.length > 0) {
+          await sql`
+            INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+            VALUES (${nextRpId}, ${newRole.id}, ${permResult[0].id}, NOW())
+            ON CONFLICT DO NOTHING
+          `
+        }
       }
     }
 

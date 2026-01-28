@@ -586,26 +586,36 @@ async function ensureCriticalColumns() {
       DO $$
       DECLARE
         max_id INTEGER;
+        has_default BOOLEAN;
       BEGIN
+        -- Use advisory lock to prevent concurrent execution and deadlocks
+        PERFORM pg_advisory_xact_lock(hashtext('fuel_logs_sequence_fix'));
+        
         -- Get current max id
         SELECT COALESCE(MAX(id), 0) INTO max_id FROM fuel_logs;
+        
+        -- Check if default is already set
+        SELECT EXISTS (
+          SELECT 1 FROM pg_attrdef 
+          WHERE adrelid = 'fuel_logs'::regclass 
+          AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = 'fuel_logs'::regclass AND attname = 'id')
+        ) INTO has_default;
         
         -- Create sequence if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'fuel_logs_id_seq') THEN
           EXECUTE 'CREATE SEQUENCE fuel_logs_id_seq START WITH ' || (max_id + 1);
           RAISE NOTICE 'Created fuel_logs_id_seq starting at %', max_id + 1;
+          
+          -- Set default and ownership only if needed
+          IF NOT has_default THEN
+            ALTER TABLE fuel_logs ALTER COLUMN id SET DEFAULT nextval('fuel_logs_id_seq');
+            ALTER SEQUENCE fuel_logs_id_seq OWNED BY fuel_logs.id;
+          END IF;
         ELSE
           -- Reset sequence to correct value if it exists
-          PERFORM setval('fuel_logs_id_seq', GREATEST(max_id, 1), true);
-          RAISE NOTICE 'Reset fuel_logs_id_seq to %', GREATEST(max_id, 1);
+          PERFORM setval('fuel_logs_id_seq', GREATEST(max_id + 1, 1), false);
+          RAISE NOTICE 'Reset fuel_logs_id_seq to %', GREATEST(max_id + 1, 1);
         END IF;
-        
-        -- Ensure id column uses the sequence (remove old default first)
-        ALTER TABLE fuel_logs ALTER COLUMN id DROP DEFAULT;
-        ALTER TABLE fuel_logs ALTER COLUMN id SET DEFAULT nextval('fuel_logs_id_seq');
-        
-        -- Link sequence ownership to the column
-        ALTER SEQUENCE fuel_logs_id_seq OWNED BY fuel_logs.id;
         
         RAISE NOTICE 'fuel_logs sequence configured successfully';
       END $$;

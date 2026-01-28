@@ -8,7 +8,7 @@ const execAsync = promisify(exec)
 interface RouterConfig {
   id: number
   name: string
-  ip: string
+  ip_address: string
   vendor?: string
   radius_secret?: string
   status: string
@@ -27,13 +27,13 @@ export async function generateFreeRADIUSClientsConfig(): Promise<string> {
       SELECT 
         nr.id,
         nr.name,
-        nr.ip,
+        nr.ip_address,
         nr.vendor,
         nr.radius_secret,
         nr.status
       FROM network_devices nr
       WHERE nr.status = 'active'
-      AND nr.ip IS NOT NULL
+      AND nr.ip_address IS NOT NULL
       ORDER BY nr.id ASC
     `
 
@@ -60,7 +60,7 @@ export async function generateFreeRADIUSClientsConfig(): Promise<string> {
 
       config += `# Router: ${router.name} (ID: ${router.id})
 client ${sanitizeName(router.name)}_${router.id} {
-    ipaddr = ${router.ip}
+    ipaddr = ${router.ip_address}
     secret = ${secret}
     shortname = ${sanitizeName(router.name)}
     nastype = ${nasType}

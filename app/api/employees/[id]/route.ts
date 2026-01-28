@@ -57,17 +57,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       hire_date,
       startDate,
       status,
-      address,
-      emergency_contact_name,
-      emergencyContact,
-      emergency_contact_phone,
-      emergencyPhone,
     } = body
 
     const finalFirstName = first_name || firstName || ""
     const finalLastName = last_name || lastName || ""
-    const finalEmergencyName = emergency_contact_name || emergencyContact || ""
-    const finalEmergencyPhone = emergency_contact_phone || emergencyPhone || ""
     const finalHireDate = hire_date || startDate
     const finalSalary = salary || basicSalary
     const finalDepartment = department || ""
@@ -80,6 +73,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid salary value" }, { status: 400 })
     }
 
+    // Only update columns that exist in the database
     const result = await sql`
       UPDATE employees 
       SET 
@@ -91,11 +85,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         position = ${finalPosition},
         salary = ${parsedSalary},
         hire_date = ${finalHireDate},
-        status = ${status || "active"},
-        address = ${address || ""},
-        emergency_contact = ${finalEmergencyName},
-        emergency_phone = ${finalEmergencyPhone},
-        updated_at = NOW()
+        status = ${status || "active"}
       WHERE id = ${id}
       RETURNING id
     `

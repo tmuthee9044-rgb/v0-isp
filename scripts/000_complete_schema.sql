@@ -71,9 +71,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- DROP TABLE IF EXISTS invoice_items CASCADE;
 
 -- Create schema_migrations table first (for tracking)
+-- This matches the structure expected by install.sh
 CREATE TABLE IF NOT EXISTS schema_migrations (
     id SERIAL PRIMARY KEY,
-    migration_name VARCHAR(255) UNIQUE NOT NULL,
+    filename VARCHAR(255) UNIQUE NOT NULL,
+    success BOOLEAN DEFAULT true,
+    error_message TEXT,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

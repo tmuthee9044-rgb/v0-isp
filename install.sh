@@ -3,7 +3,8 @@
 # ISP Management System - Unified Installation Script
 # This script handles all installation scenarios in one place
 
-set -e
+# Note: We don't use 'set -e' globally as some commands may fail gracefully
+# Individual critical sections use explicit error handling
 
 # ============================================
 # CONFIGURATION
@@ -1717,7 +1718,7 @@ apply_database_schema() {
     
     SCRIPTS_PATH="$(cd "$(dirname "$0")/scripts" && pwd)"
     
-    cd /tmp || exit 1
+    cd /tmp || { print_error "Cannot change to /tmp directory"; return 1; }
     
     print_info "Creating schema_migrations table for tracking..."
     sudo -u postgres psql -d "$DB_NAME" <<'MIGRATIONS'
@@ -1813,7 +1814,11 @@ CRITICALTABLES
                 
                 break
             else
-                print_warning "Error applying $(basename $schema_file) (see /tmp/schema_error.log)"
+                print_warning "Error applying $(basename $schema_file)"
+                print_info "Error details:"
+                cat /tmp/schema_error.log 2>/dev/null || print_info "No error log available"
+                print_info ""
+                print_info "Continuing with individual migration files..."
             fi
         fi
     done
@@ -1850,7 +1855,10 @@ CRITICALTABLES
                 sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success) VALUES ('$FILENAME', true) ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             else
                 FILES_FAILED=$((FILES_FAILED + 1))
-                print_warning "Failed to apply $FILENAME (see /tmp/migration_error_${FILENAME}.log)"
+                print_warning "Failed to apply $FILENAME"
+                if [ -f "/tmp/migration_error_${FILENAME}.log" ]; then
+                    print_info "Error: $(cat /tmp/migration_error_${FILENAME}.log | head -5)"
+                fi
                 sudo -u postgres psql -d "$DB_NAME" -c "INSERT INTO schema_migrations (filename, success, error_message) VALUES ('$FILENAME', false, 'See log file') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             fi
         fi

@@ -99,9 +99,9 @@ export default function VehiclesPage() {
 
   const filteredVehicles = vehicles.filter((vehicle) => {
     const matchesSearch =
-      vehicle.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vehicle.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vehicle.assigned_to.toLowerCase().includes(searchTerm.toLowerCase())
+      vehicle.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      vehicle.registration?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      vehicle.assigned_to?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = filterType === "all" || vehicle.type === filterType
     const matchesStatus = filterStatus === "all" || vehicle.status === filterStatus
     return matchesSearch && matchesType && matchesStatus

@@ -9,6 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   UserCheck,
   Plus,
   Users,
@@ -25,6 +31,7 @@ import {
   Clock,
   TrendingUp,
   Shield,
+  MoreVertical,
 } from "lucide-react"
 import { AddEmployeeModal } from "@/components/add-employee-modal"
 import { EmployeeDetailsModal } from "@/components/employee-details-modal"
@@ -605,9 +612,56 @@ export default function HRPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  console.log("[v0] View payroll details for:", record)
+                                  // TODO: Navigate to payroll details page or open modal
+                                }}
+                              >
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  console.log("[v0] Download payroll report for:", record)
+                                  try {
+                                    const response = await fetch("/api/hr/download-payroll", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        month: record.period_month,
+                                        year: record.period_year,
+                                      }),
+                                    })
+                                    if (response.ok) {
+                                      const blob = await response.blob()
+                                      const url = window.URL.createObjectURL(blob)
+                                      const a = document.createElement("a")
+                                      a.href = url
+                                      a.download = `payroll-${record.period_year}-${String(record.period_month).padStart(2, "0")}.pdf`
+                                      document.body.appendChild(a)
+                                      a.click()
+                                      window.URL.revokeObjectURL(url)
+                                      document.body.removeChild(a)
+                                    }
+                                  } catch (error) {
+                                    console.error("Error downloading payroll:", error)
+                                  }
+                                }}
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                Download Report
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))

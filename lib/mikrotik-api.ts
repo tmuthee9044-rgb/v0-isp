@@ -477,13 +477,9 @@ export class MikroTikAPI {
     console.log(`[v0] Disconnecting from MikroTik router`)
     this.connected = false
   }
-}
-
-// Export alias for backwards compatibility
-export { MikroTikAPI as MikrotikAPI }
 
   /**
-   * Configure traffic monitoring/recording on the router
+   * Configure traffic monitoring/recording on router
    * Sets up Traffic Flow (IPFIX) or Torch for bandwidth monitoring
    */
   async configureTrafficMonitoring(method: string): Promise<MikroTikResponse> {
@@ -1068,7 +1064,10 @@ export { MikroTikAPI as MikrotikAPI }
   }
 }
 
-/**\
+// Export alias for backwards compatibility
+export { MikroTikAPI as MikrotikAPI }
+
+/**
  * Create MikroTik API client from router configuration
  */
 export async function createMikroTikClient(routerId: number): Promise<MikroTikAPI | null>

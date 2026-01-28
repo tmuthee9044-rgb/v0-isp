@@ -479,7 +479,7 @@ export class MikroTikAPI {
   }
 
   /**
-   * Configure traffic monitoring/recording on the router
+   * Configure traffic monitoring/recording on router
    * Sets up Traffic Flow (IPFIX) or Torch for bandwidth monitoring
    */
   async configureTrafficMonitoring(method: string): Promise<MikroTikResponse> {

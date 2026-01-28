@@ -87,17 +87,32 @@ export async function POST(request: NextRequest) {
     const sql = await getSql()
     const data = await request.json()
 
+    // First, get the next ID manually in case the table doesn't have auto-increment
+    const maxIdResult = await sql`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM suppliers`
+    const nextId = maxIdResult[0]?.next_id || 1
+
+    // Generate a unique supplier code
+    const supplierCode = `SUP-${String(nextId).padStart(6, '0')}`
+
     // Use the actual database column names: contact_name (not contact_person), is_active (not status)
     const result = await sql`
       INSERT INTO suppliers (
-        company_name, contact_name, email, phone, address, is_active
+        id, supplier_code, company_name, contact_name, email, phone, address, city, state, country, supplier_type, is_active, created_at, updated_at
       ) VALUES (
+        ${nextId},
+        ${supplierCode},
         ${data.company_name}, 
         ${data.contact_person || data.contact_name || null},
         ${data.email || null}, 
         ${data.phone || null}, 
         ${data.address || null},
-        ${data.status === "active" || data.is_active !== false}
+        ${data.city || null},
+        ${data.state || null},
+        ${data.country || 'Kenya'},
+        ${data.supplier_type || 'general'},
+        ${data.status === "active" || data.is_active !== false},
+        NOW(),
+        NOW()
       )
       RETURNING *
     `

@@ -173,25 +173,35 @@ export async function generatePayroll(
 
       // Delete existing record first, then insert to avoid ON CONFLICT constraint issues
       // Use employee.employee_id (VARCHAR) as the reference, not employee.id (INTEGER)
-      await sql`
-        DELETE FROM payroll_records 
-        WHERE employee_id = ${employee.employee_id}
-        AND pay_period_start = ${periodStart}::DATE
-      `.catch(() => {})
+      try {
+        await sql`
+          DELETE FROM payroll_records 
+          WHERE employee_id = ${employee.employee_id}
+          AND pay_period_start = ${periodStart}::DATE
+        `
+      } catch (deleteErr) {
+        console.log("[v0] Delete existing record error (may not exist):", deleteErr)
+      }
       
-      await sql`
-        INSERT INTO payroll_records (
-          employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
-          allowances, deductions, gross_pay, tax, nhif, nssf,
-          net_pay, status, created_at
-        ) VALUES (
-          ${employee.employee_id}, ${employeeName}, 
-          ${periodStart}::DATE, ${periodEnd}::DATE, ${basicSalary}::NUMERIC,
-          ${allowances}::NUMERIC, ${totalEmployeeDeductions}::NUMERIC, ${grossPay}::NUMERIC, 
-          ${paye}::NUMERIC, ${sha}::NUMERIC, ${nssf}::NUMERIC,
-          ${netPay}::NUMERIC, 'pending', NOW()
-        )
-      `
+      try {
+        await sql`
+          INSERT INTO payroll_records (
+            employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
+            allowances, deductions, gross_pay, tax, nhif, nssf,
+            net_pay, status, created_at
+          ) VALUES (
+            ${employee.employee_id}, ${employeeName}, 
+            ${periodStart}::DATE, ${periodEnd}::DATE, ${basicSalary},
+            ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, 
+            ${paye}, ${sha}, ${nssf},
+            ${netPay}, 'pending', NOW()
+          )
+        `
+        console.log("[v0] Inserted payroll record for:", employee.employee_id)
+      } catch (insertErr) {
+        console.error("[v0] Insert payroll record error for", employee.employee_id, ":", insertErr)
+        throw insertErr
+      }
 
       totalGrossPay += grossPay
       totalDeductions += totalEmployeeDeductions

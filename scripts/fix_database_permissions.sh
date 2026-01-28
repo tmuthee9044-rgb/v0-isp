@@ -23,39 +23,7 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-# ============================================================
-# Step 0: Fix file system permissions FIRST
-# ============================================================
-print_info "Fixing file system permissions..."
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Fix directory traversal permissions for postgres user
-chmod a+rx "$SCRIPT_DIR" 2>/dev/null || sudo chmod a+rx "$SCRIPT_DIR" 2>/dev/null || true
-chmod a+rx "$PROJECT_ROOT" 2>/dev/null || sudo chmod a+rx "$PROJECT_ROOT" 2>/dev/null || true
-
-# Fix home directory traversal if needed
-PARENT_DIR="$PROJECT_ROOT"
-while [[ "$PARENT_DIR" != "/" && "$PARENT_DIR" != "" ]]; do
-    chmod a+x "$PARENT_DIR" 2>/dev/null || sudo chmod a+x "$PARENT_DIR" 2>/dev/null || true
-    PARENT_DIR="$(dirname "$PARENT_DIR")"
-done
-
-# Make all SQL files readable
-for sql_file in "$SCRIPT_DIR"/*.sql 2>/dev/null; do
-    [ -f "$sql_file" ] && chmod a+r "$sql_file" 2>/dev/null || sudo chmod a+r "$sql_file" 2>/dev/null || true
-done
-
-# Make all shell scripts executable
-for sh_file in "$SCRIPT_DIR"/*.sh 2>/dev/null; do
-    [ -f "$sh_file" ] && chmod a+rx "$sh_file" 2>/dev/null || sudo chmod a+rx "$sh_file" 2>/dev/null || true
-done
-
-print_info "File system permissions fixed"
-
 # Load environment variables
-cd "$PROJECT_ROOT"
 if [ -f .env.local ]; then
     export $(grep -v '^#' .env.local | xargs)
 fi

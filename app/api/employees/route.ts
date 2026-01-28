@@ -135,52 +135,21 @@ export async function POST(request: NextRequest) {
 
     const finalEmployeeId = employeeId || `EMP${Date.now().toString().slice(-6)}`
 
+    // Only insert into columns that exist in the database
     const result = await sql`
       INSERT INTO employees (
-        employee_id, first_name, last_name, email, phone, national_id,
-        date_of_birth, gender, marital_status, address, emergency_contact,
-        emergency_phone, position, department, reporting_manager, employment_type,
-        contract_type, hire_date, probation_period, work_location, salary,
-        allowances, benefits, payroll_frequency, bank_name, bank_account,
-        kra_pin, nssf_number, sha_number, portal_username, portal_password,
-        qualifications, experience, skills, notes, photo_url, status, created_at
+        employee_id, first_name, last_name, email, phone, 
+        position, department, hire_date, salary, status, created_at
       ) VALUES (
         ${finalEmployeeId}, 
         ${firstName || null}, 
         ${lastName || null}, 
         ${email || null}, 
         ${phone || null}, 
-        ${nationalId || null},
-        ${dateOfBirth ? new Date(dateOfBirth).toISOString() : null}, 
-        ${gender || null}, 
-        ${maritalStatus || null}, 
-        ${address || null}, 
-        ${emergencyContact || null}, 
-        ${emergencyPhone || null},
         ${position || null}, 
         ${department || null}, 
-        ${reportingManager || null}, 
-        ${employmentType || null},
-        ${contractType || null}, 
         ${startDate ? new Date(startDate).toISOString() : new Date().toISOString()},
-        ${probationPeriod ? Number.parseInt(probationPeriod) : null}, 
-        ${workLocation || null},
         ${basicSalary ? Number.parseFloat(basicSalary) : 0}, 
-        ${allowances ? Number.parseFloat(allowances) : 0}, 
-        ${benefits || null},
-        ${payrollFrequency || "monthly"}, 
-        ${bankName || null}, 
-        ${bankAccount || null},
-        ${kraPin || null}, 
-        ${nssfNumber || null}, 
-        ${shaNumber || null}, 
-        ${portalUsername || null},
-        ${portalPassword || null}, 
-        ${qualifications || null}, 
-        ${experience || null}, 
-        ${skills || null},
-        ${notes || null}, 
-        ${photoUrl || null}, 
         'active', 
         NOW()
       )

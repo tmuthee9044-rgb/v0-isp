@@ -703,12 +703,12 @@ export default function InventoryPage() {
                     <SelectContent>
                       {categories.length > 0 ? (
                         categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
+                          <SelectItem key={cat.id || cat.name} value={cat.name || `category-${cat.id}`}>
                             {cat.name}
                           </SelectItem>
                         ))
                       ) : (
-                        <SelectItem value="" disabled>
+                        <SelectItem value="__no_categories__" disabled>
                           No categories available
                         </SelectItem>
                       )}
@@ -787,16 +787,22 @@ export default function InventoryPage() {
                   </div>
                   <div>
                     <Label htmlFor="edit-category">Category</Label>
-                    <Select name="category" defaultValue={editingItem.category}>
+                    <Select name="category" defaultValue={editingItem.category || ""}>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
-                            {cat.name}
+                        {categories.length > 0 ? (
+                          categories.map((cat) => (
+                            <SelectItem key={cat.id || cat.name} value={cat.name || `category-${cat.id}`}>
+                              {cat.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="__no_categories__" disabled>
+                            No categories available
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

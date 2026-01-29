@@ -87,22 +87,21 @@ export async function POST(request: NextRequest) {
     const sql = await getSql()
     const data = await request.json()
 
-    // First, get the next ID manually in case the table doesn't have auto-increment
-    const maxIdResult = await sql`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM suppliers`
-    const nextId = maxIdResult[0]?.next_id || 1
-
-    // Generate a unique supplier code
-    const supplierCode = `SUP-${String(nextId).padStart(6, '0')}`
+    // Generate a unique supplier code based on timestamp and count
+    const countResult = await sql`SELECT COUNT(*)::INTEGER as count FROM suppliers`
+    const count = (countResult[0]?.count || 0) + 1
+    const supplierCode = data.supplier_code || `SUP-${String(count).padStart(6, '0')}`
 
     // Use the actual database column names: contact_name (not contact_person), is_active (not status)
+    // Let the database generate the UUID for the id column
     const result = await sql`
       INSERT INTO suppliers (
-        id, supplier_code, company_name, contact_name, email, phone, address, city, state, country, supplier_type, is_active, created_at, updated_at
+        supplier_code, company_name, contact_name, name, email, phone, address, city, state, country, supplier_type, is_active, created_at, updated_at
       ) VALUES (
-        ${nextId},
         ${supplierCode},
         ${data.company_name}, 
         ${data.contact_person || data.contact_name || null},
+        ${data.company_name || data.name || null},
         ${data.email || null}, 
         ${data.phone || null}, 
         ${data.address || null},

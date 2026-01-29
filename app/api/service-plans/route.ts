@@ -33,7 +33,7 @@ export async function GET() {
         sp.created_at,
         COUNT(cs.id) as customer_count
       FROM service_plans sp
-      LEFT JOIN customer_services cs ON cs.service_plan_id = sp.id AND cs.status != 'cancelled'
+      LEFT JOIN customer_services cs ON cs.service_plan_id = sp.id AND cs.status NOT IN ('terminated', 'inactive')
       GROUP BY sp.id
       ORDER BY sp.price ASC
     `

@@ -45,26 +45,18 @@ export async function GET(request: Request, { params }: { params: { id: string }
       )
     }
 
+    // Optimized query - only select columns that are commonly needed for initial page load
+    // Additional details can be fetched lazily if needed
     const customerResult = await sql`
       SELECT 
         id, account_number, first_name, last_name, email, phone,
-        alternate_email, phone_primary, phone_secondary, phone_office,
-        date_of_birth, gender, national_id, id_number,
-        address, physical_address, physical_city, physical_county, physical_postal_code, physical_gps_coordinates,
-        city, state, postal_code, country, region, gps_coordinates,
+        phone_primary, phone_secondary, phone_office,
+        address, city, state, postal_code, country,
+        physical_address, physical_city, physical_county, physical_postal_code,
         billing_address, billing_city, billing_county, billing_postal_code,
-        installation_address, location_id,
-        business_name, business_type, business_reg_no, tax_number, vat_pin, tax_id,
-        contact_person, industry, company_size,
-        school_type, student_count, staff_count,
+        business_name, business_type, contact_person,
         customer_type, status, balance,
-        billing_cycle, auto_renewal, paperless_billing, sms_notifications,
-        referral_source, sales_rep, account_manager,
-        special_requirements, internal_notes,
-        connection_type, equipment_needed, installation_notes,
-        technical_contact, technical_contact_phone,
-        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        portal_login_id, portal_username, portal_password, portal_access,
+        portal_username,
         created_at, updated_at
       FROM customers 
       WHERE id = ${customerId}

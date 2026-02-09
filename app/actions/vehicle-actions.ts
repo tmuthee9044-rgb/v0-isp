@@ -81,6 +81,7 @@ export async function addVehicle(formData: FormData) {
   try {
     const sql = await getSql()
     const name = formData.get("name") as string
+    console.log("[v0] Adding vehicle with name:", name)
     
     if (!name || name.trim() === "") {
       return { success: false, message: "Vehicle name is required" }
@@ -104,10 +105,13 @@ export async function addVehicle(formData: FormData) {
       status: "active",
     }
 
+    console.log("[v0] Vehicle data prepared:", vehicleData)
+
     if (!vehicleData.type || !vehicleData.registration || !vehicleData.model) {
       return { success: false, message: "Type, registration, and model are required fields" }
     }
 
+    console.log("[v0] Inserting vehicle into database...")
     const result = await sql`
       INSERT INTO vehicles (
         name, type, registration, model, year, fuel_type, assigned_to, 
@@ -125,6 +129,7 @@ export async function addVehicle(formData: FormData) {
       RETURNING id
     `
 
+    console.log("[v0] Vehicle added successfully with ID:", result[0]?.id)
     revalidatePath("/vehicles")
     return { success: true, message: `Vehicle added successfully with ID ${result[0]?.id}` }
   } catch (error: any) {
@@ -198,6 +203,8 @@ export async function addFuelLog(formData: FormData) {
       location: formData.get("location") as string,
       notes: formData.get("notes") as string,
     }
+
+    console.log("[v0] Adding fuel log with data:", fuelData)
 
     const result = await sql`
       INSERT INTO fuel_logs (

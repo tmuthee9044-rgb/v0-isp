@@ -183,6 +183,32 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_customer_documents_customer_id ON customer_documents(customer_id)
     `.catch(() => {})
 
+    // Fix account_balances id sequence and ensure status column exists
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'account_balances_id_seq') THEN
+          CREATE SEQUENCE account_balances_id_seq;
+          RAISE NOTICE 'Created account_balances_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='account_balances') THEN
+          PERFORM setval('account_balances_id_seq', COALESCE((SELECT MAX(id) FROM account_balances), 0) + 1, false);
+          ALTER TABLE account_balances ALTER COLUMN id SET DEFAULT nextval('account_balances_id_seq');
+          ALTER SEQUENCE account_balances_id_seq OWNED BY account_balances.id;
+          RAISE NOTICE 'Fixed account_balances id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    await sql`
+      ALTER TABLE account_balances ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'
+    `.catch(() => {})
+
+    await sql`
+      ALTER TABLE account_balances ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ DEFAULT NOW()
+    `.catch(() => {})
+
     // Fix customer_documents id sequence if table exists but sequence is broken
     await sql`
       DO $$

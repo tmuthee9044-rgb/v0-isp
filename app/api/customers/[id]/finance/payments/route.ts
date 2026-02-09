@@ -13,9 +13,43 @@ async function ensureAccountBalance(customerId: number) {
     `
 
     if (!existingBalance) {
+      // First, ensure the sequence default is attached to the id column
+      // This fixes broken sequences from previous CASCADE drops
+      try {
+        await sql`
+          DO $$
+          DECLARE
+            max_id BIGINT;
+          BEGIN
+            -- Check if the default is missing
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'account_balances' AND column_name = 'id' 
+              AND column_default IS NOT NULL
+            ) THEN
+              SELECT COALESCE(MAX(id), 0) INTO max_id FROM account_balances;
+              CREATE SEQUENCE IF NOT EXISTS account_balances_id_seq;
+              PERFORM setval('account_balances_id_seq', GREATEST(max_id + 1, 1), false);
+              ALTER TABLE account_balances ALTER COLUMN id SET DEFAULT nextval('account_balances_id_seq');
+              ALTER SEQUENCE account_balances_id_seq OWNED BY account_balances.id;
+            END IF;
+          END $$
+        `
+      } catch (seqError) {
+        console.warn("Sequence fix attempt warning (non-fatal):", seqError)
+      }
+
+      // Also ensure the status column exists
+      try {
+        await sql`ALTER TABLE account_balances ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`
+      } catch (colError) {
+        // Column may already exist, ignore
+      }
+
       await sql`
         INSERT INTO account_balances (customer_id, balance, credit_limit, status, updated_at)
         VALUES (${customerId}, 0, 0, 'active', NOW())
+        ON CONFLICT (customer_id) DO NOTHING
       `
     }
   } catch (error) {

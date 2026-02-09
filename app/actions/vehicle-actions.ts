@@ -81,7 +81,6 @@ export async function addVehicle(formData: FormData) {
   try {
     const sql = await getSql()
     const name = formData.get("name") as string
-    console.log("[v0] Adding vehicle with name:", name)
     
     if (!name || name.trim() === "") {
       return { success: false, message: "Vehicle name is required" }
@@ -93,25 +92,22 @@ export async function addVehicle(formData: FormData) {
       registration: formData.get("registration") as string,
       model: formData.get("model") as string,
       year: Number.parseInt(formData.get("year") as string) || new Date().getFullYear(),
-      fuel_type: formData.get("fuel_type") as string,
-      assigned_to: formData.get("assigned_to") as string,
-      location: formData.get("location") as string,
+      fuel_type: (formData.get("fuel_type") as string) || "diesel",
+      assigned_to: (formData.get("assigned_to") as string) || "Unassigned",
+      location: (formData.get("location") as string) || "Main Office",
       mileage: Number.parseInt(formData.get("mileage") as string) || 0,
       fuel_consumption: Number.parseFloat(formData.get("fuel_consumption") as string) || 0,
-      insurance_expiry: formData.get("insurance_expiry") as string,
-      license_expiry: formData.get("license_expiry") as string,
-      purchase_date: formData.get("purchase_date") as string,
+      insurance_expiry: (formData.get("insurance_expiry") as string) || null,
+      license_expiry: (formData.get("license_expiry") as string) || null,
+      purchase_date: (formData.get("purchase_date") as string) || null,
       purchase_cost: Number.parseFloat(formData.get("purchase_cost") as string) || 0,
       status: "active",
     }
-
-    console.log("[v0] Vehicle data prepared:", vehicleData)
 
     if (!vehicleData.type || !vehicleData.registration || !vehicleData.model) {
       return { success: false, message: "Type, registration, and model are required fields" }
     }
 
-    console.log("[v0] Inserting vehicle into database...")
     const result = await sql`
       INSERT INTO vehicles (
         name, type, registration, model, year, fuel_type, assigned_to, 
@@ -129,7 +125,6 @@ export async function addVehicle(formData: FormData) {
       RETURNING id
     `
 
-    console.log("[v0] Vehicle added successfully with ID:", result[0]?.id)
     revalidatePath("/vehicles")
     return { success: true, message: `Vehicle added successfully with ID ${result[0]?.id}` }
   } catch (error: any) {
@@ -203,8 +198,6 @@ export async function addFuelLog(formData: FormData) {
       location: formData.get("location") as string,
       notes: formData.get("notes") as string,
     }
-
-    console.log("[v0] Adding fuel log with data:", fuelData)
 
     const result = await sql`
       INSERT INTO fuel_logs (

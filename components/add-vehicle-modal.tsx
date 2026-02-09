@@ -126,7 +126,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="fuel_type">Fuel Type</Label>
-                      <Select name="fuel_type" required>
+                      <Select name="fuel_type" defaultValue="diesel" required>
                         <SelectTrigger>
                           <SelectValue placeholder="Select fuel type" />
                         </SelectTrigger>

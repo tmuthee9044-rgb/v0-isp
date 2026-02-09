@@ -167,8 +167,6 @@ export async function generatePayroll(
 
       calculations.push(calculation)
 
-      const periodStart = `${period}-01`
-      const periodEnd = `${period}-31`
       const employeeName = `${employee.first_name} ${employee.last_name}`
 
       // Delete existing record first, then insert to avoid ON CONFLICT constraint issues
@@ -177,7 +175,7 @@ export async function generatePayroll(
         await sql`
           DELETE FROM payroll_records 
           WHERE employee_id = ${employee.employee_id}
-          AND pay_period_start = ${periodStart}::DATE
+          AND period = ${period}
         `
       } catch (deleteErr) {
         console.log("[v0] Delete existing record error (may not exist):", deleteErr)
@@ -186,15 +184,15 @@ export async function generatePayroll(
       try {
         await sql`
           INSERT INTO payroll_records (
-            employee_id, employee_name, pay_period_start, pay_period_end, basic_salary, 
-            allowances, deductions, gross_pay, tax, nhif, nssf,
-            net_pay, status, created_at
+            employee_id, employee_name, period, basic_salary, 
+            allowances, overtime, gross_pay, paye, nssf, sha,
+            other_deductions, total_deductions, net_pay, status, created_at
           ) VALUES (
             ${employee.employee_id}, ${employeeName}, 
-            ${periodStart}::DATE, ${periodEnd}::DATE, ${basicSalary},
-            ${allowances}, ${totalEmployeeDeductions}, ${grossPay}, 
-            ${paye}, ${sha}, ${nssf},
-            ${netPay}, 'pending', NOW()
+            ${period}, ${basicSalary},
+            ${allowances}, ${overtime}, ${grossPay}, 
+            ${paye}, ${nssf}, ${sha},
+            ${otherDeductions}, ${totalEmployeeDeductions}, ${netPay}, 'pending', NOW()
           )
         `
         console.log("[v0] Inserted payroll record for:", employee.employee_id)
@@ -257,8 +255,9 @@ export async function processPayroll(
       UPDATE payroll_records 
       SET 
         status = 'processed',
+        processed_at = NOW(),
         updated_at = NOW()
-      WHERE TO_CHAR(pay_period_start, 'YYYY-MM') = ${period}
+      WHERE period = ${period}
       AND employee_id = ANY(${employeeIds})
     `
 
@@ -289,16 +288,16 @@ export async function getPayrollHistory(): Promise<{
 
     const result = await sql`
       SELECT 
-        TO_CHAR(pay_period_start, 'YYYY-MM') as period,
+        period,
         COUNT(*) as employee_count,
         SUM(gross_pay) as total_gross_pay,
-        SUM(deductions) as total_deductions,
+        SUM(total_deductions) as total_deductions,
         SUM(net_pay) as total_net_pay,
         status,
-        MAX(created_at) as processed_at
+        MAX(processed_at) as processed_at
       FROM payroll_records 
-      GROUP BY TO_CHAR(pay_period_start, 'YYYY-MM'), status
-      ORDER BY TO_CHAR(pay_period_start, 'YYYY-MM') DESC
+      GROUP BY period, status
+      ORDER BY period DESC
       LIMIT 12
     `
 

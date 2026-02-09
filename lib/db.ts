@@ -543,6 +543,125 @@ async function ensureCriticalColumns() {
       )
     `.catch(() => {})
 
+    // ========== Add ALL missing columns to customer_services table ==========
+    // These columns are required by addCustomerService and service provisioning
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS router_id BIGINT
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auth_method VARCHAR(50) DEFAULT 'pppoe'
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS enforcement_mode VARCHAR(50) DEFAULT 'radius'
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS location_id BIGINT
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS lock_to_mac BOOLEAN DEFAULT false
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_username VARCHAR(100)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_password VARCHAR(100)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS installation_date DATE
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS device_id VARCHAR(100)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS config_id INTEGER
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS pppoe_enabled BOOLEAN DEFAULT false
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS monthly_fee DECIMAL(10,2)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS end_date DATE
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS activated_at TIMESTAMP
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMP
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS suspension_reason VARCHAR(255)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS suspended_by VARCHAR(100)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS router_sync_status VARCHAR(50)
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE customer_services ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `.catch(() => {})
+
+    // Create indexes for customer_services performance
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_services_router_id ON customer_services(router_id)
+    `.catch(() => {})
+    
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_services_location_id ON customer_services(location_id)
+    `.catch(() => {})
+    
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_services_ip_address ON customer_services(ip_address)
+    `.catch(() => {})
+    
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_customer_services_auth_method ON customer_services(auth_method)
+    `.catch(() => {})
+
     // Add unique constraint on pppoe_username for internet services (Rule 1 - no duplicate PPPoE usernames)
     await sql`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_services_pppoe_username_unique 

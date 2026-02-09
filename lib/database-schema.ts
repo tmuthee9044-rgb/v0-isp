@@ -36,10 +36,32 @@ export interface DatabaseSchema {
     id: number
     customer_id: number
     service_plan_id: number
-    status: string
+    router_id: number | null
+    auth_method: string
+    enforcement_mode: string
+    connection_type: string | null
+    location_id: number | null
+    ip_address: string | null
+    mac_address: string | null
+    lock_to_mac: boolean
+    pppoe_username: string | null
+    pppoe_password: string | null
+    auto_renew: boolean
+    device_id: string | null
+    config_id: number | null
+    pppoe_enabled: boolean
     monthly_fee: number
+    start_date: Date
+    end_date: Date | null
     installation_date: Date
+    activated_at: Date | null
+    suspended_at: Date | null
+    suspension_reason: string | null
+    suspended_by: string | null
+    router_sync_status: string | null
+    status: string
     created_at: Date
+    updated_at: Date
   }
 
   payments: {

@@ -9,6 +9,8 @@ export async function POST(req: Request) {
     const period = `${year}-${String(month).padStart(2, "0")}`
 
     // Fetch payroll records for the specified period
+    // payroll_records.employee_id is VARCHAR matching employees.employee_id (e.g. "EMP001")
+    // payroll_records uses a "period" VARCHAR(7) column in YYYY-MM format
     const payrollRecords = await sql`
       SELECT 
         pr.*,
@@ -17,8 +19,8 @@ export async function POST(req: Request) {
         e.position,
         e.employee_id as emp_no
       FROM payroll_records pr
-      JOIN employees e ON pr.employee_id = e.id
-      WHERE TO_CHAR(pr.pay_period_start, 'YYYY-MM') = ${period}
+      JOIN employees e ON pr.employee_id = e.employee_id
+      WHERE pr.period = ${period}
       AND pr.status IN ('processed', 'paid')
       ORDER BY e.employee_id
     `

@@ -453,60 +453,55 @@ async function ensureCriticalColumns() {
       ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS description TEXT
     `.catch(() => {})
 
-    // Ensure payroll_records table exists with correct schema (do not drop existing data)
+    // Ensure payroll_records table exists with correct schema matching 030_create_payroll_tables.sql
     await sql`
       CREATE TABLE IF NOT EXISTS payroll_records (
         id SERIAL PRIMARY KEY,
-        employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        employee_id VARCHAR(20) NOT NULL,
         employee_name VARCHAR(255) NOT NULL,
-        pay_period_start DATE NOT NULL,
-        pay_period_end DATE NOT NULL,
-        basic_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        allowances DECIMAL(15, 2) DEFAULT 0,
-        deductions DECIMAL(15, 2) DEFAULT 0,
-        gross_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        tax DECIMAL(15, 2) DEFAULT 0,
-        nhif DECIMAL(15, 2) DEFAULT 0,
-        nssf DECIMAL(15, 2) DEFAULT 0,
-        net_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        status VARCHAR(50) DEFAULT 'pending',
-        payment_date DATE,
-        payment_method VARCHAR(50),
-        payment_reference VARCHAR(255),
-        notes TEXT,
+        period VARCHAR(7) NOT NULL,
+        basic_salary DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        allowances DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        overtime DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        gross_pay DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        paye DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        nssf DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        sha DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        other_deductions DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        total_deductions DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        net_pay DECIMAL(12, 2) NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        processed_by VARCHAR(100),
+        processed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(employee_id, pay_period_start)
+        UNIQUE(employee_id, period)
       )
     `.catch(() => {})
     
-    // Add missing columns to existing payroll_records table
+    // Add missing columns to existing payroll_records table (in case it already exists)
     await sql`
       ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255) NOT NULL DEFAULT 'Unknown'
     `.catch(() => {})
     
     await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS basic_salary DECIMAL(15, 2) NOT NULL DEFAULT 0
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS overtime DECIMAL(12, 2) NOT NULL DEFAULT 0
     `.catch(() => {})
     
     await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS allowances DECIMAL(15, 2) DEFAULT 0
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS other_deductions DECIMAL(12, 2) NOT NULL DEFAULT 0
     `.catch(() => {})
     
     await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS tax DECIMAL(15, 2) DEFAULT 0
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS total_deductions DECIMAL(12, 2) NOT NULL DEFAULT 0
     `.catch(() => {})
     
     await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_date DATE
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS processed_by VARCHAR(100)
     `.catch(() => {})
     
     await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50)
-    `.catch(() => {})
-    
-    await sql`
-      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255)
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP
     `.catch(() => {})
 
     // Ensure vehicles table exists for fleet management

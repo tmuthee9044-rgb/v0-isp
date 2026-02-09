@@ -20,9 +20,9 @@ export async function GET() {
       warehouse_code: warehouse.code,
       code: warehouse.code,
       name: warehouse.name,
-      location: warehouse.address, // Map 'address' to 'location' for frontend
+      location: warehouse.location,
       contact_person: warehouse.contact_person,
-      phone: warehouse.phone_number, // Map 'phone_number' to 'phone' for frontend
+      phone: warehouse.phone,
       email: warehouse.email,
       status: warehouse.status || "active",
       total_items: 0,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sql`
       INSERT INTO warehouses (
-        code, name, address, contact_person, phone_number, email
+        code, name, location, contact_person, phone, email
       ) VALUES (
         ${warehouseCode}, ${data.name}, ${data.location || null},
         ${data.contact_person || null}, ${data.phone || null}, ${data.email || null}

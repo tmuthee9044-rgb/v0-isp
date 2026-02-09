@@ -80,6 +80,119 @@ export async function getDatabaseStatus() {
  */
 async function ensureCriticalColumns() {
   try {
+    // Ensure FreeRADIUS tables exist (radacct, radcheck, radreply, radpostauth, nas, etc.)
+    await sql`
+      CREATE TABLE IF NOT EXISTS radacct (
+        RadAcctId           BIGSERIAL PRIMARY KEY,
+        AcctSessionId       TEXT NOT NULL DEFAULT '',
+        AcctUniqueId        TEXT NOT NULL DEFAULT '',
+        UserName            TEXT,
+        GroupName           TEXT,
+        Realm               TEXT,
+        NASIPAddress        INET,
+        NASPortId           TEXT,
+        NASPortType         TEXT,
+        AcctStartTime       TIMESTAMP WITH TIME ZONE,
+        AcctUpdateTime      TIMESTAMP WITH TIME ZONE,
+        AcctStopTime        TIMESTAMP WITH TIME ZONE,
+        AcctInterval        BIGINT,
+        AcctSessionTime     BIGINT,
+        AcctAuthentic       TEXT,
+        ConnectInfo_start   TEXT,
+        ConnectInfo_stop    TEXT,
+        AcctInputOctets     BIGINT,
+        AcctOutputOctets    BIGINT,
+        CalledStationId     TEXT,
+        CallingStationId    TEXT,
+        AcctTerminateCause  TEXT,
+        ServiceType         TEXT,
+        FramedProtocol      TEXT,
+        FramedIPAddress     INET,
+        FramedIPv6Address   INET,
+        FramedIPv6Prefix    INET,
+        FramedInterfaceId   TEXT,
+        DelegatedIPv6Prefix INET
+      )
+    `.catch(() => {})
+
+    await sql`CREATE INDEX IF NOT EXISTS radacct_active_session_idx ON radacct (AcctUniqueId) WHERE AcctStopTime IS NULL`.catch(() => {})
+    await sql`CREATE INDEX IF NOT EXISTS radacct_start_user_idx ON radacct (AcctStartTime, UserName)`.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radcheck (
+        id          SERIAL PRIMARY KEY,
+        UserName    TEXT NOT NULL DEFAULT '',
+        Attribute   TEXT NOT NULL DEFAULT '',
+        op          VARCHAR(2) NOT NULL DEFAULT '==',
+        Value       TEXT NOT NULL DEFAULT ''
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radreply (
+        id          SERIAL PRIMARY KEY,
+        UserName    TEXT NOT NULL DEFAULT '',
+        Attribute   TEXT NOT NULL DEFAULT '',
+        op          VARCHAR(2) NOT NULL DEFAULT '=',
+        Value       TEXT NOT NULL DEFAULT ''
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radgroupcheck (
+        id          SERIAL PRIMARY KEY,
+        GroupName   TEXT NOT NULL DEFAULT '',
+        Attribute   TEXT NOT NULL DEFAULT '',
+        op          VARCHAR(2) NOT NULL DEFAULT '==',
+        Value       TEXT NOT NULL DEFAULT ''
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radgroupreply (
+        id          SERIAL PRIMARY KEY,
+        GroupName   TEXT NOT NULL DEFAULT '',
+        Attribute   TEXT NOT NULL DEFAULT '',
+        op          VARCHAR(2) NOT NULL DEFAULT '=',
+        Value       TEXT NOT NULL DEFAULT ''
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radusergroup (
+        id          SERIAL PRIMARY KEY,
+        UserName    TEXT NOT NULL DEFAULT '',
+        GroupName   TEXT NOT NULL DEFAULT '',
+        priority    INTEGER NOT NULL DEFAULT 0
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS radpostauth (
+        id                  BIGSERIAL PRIMARY KEY,
+        username            TEXT NOT NULL,
+        pass                TEXT,
+        reply               TEXT,
+        CalledStationId     TEXT,
+        CallingStationId    TEXT,
+        authdate            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      )
+    `.catch(() => {})
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS nas (
+        id          SERIAL PRIMARY KEY,
+        nasname     TEXT NOT NULL,
+        shortname   TEXT NOT NULL,
+        type        TEXT NOT NULL DEFAULT 'other',
+        ports       INTEGER,
+        secret      TEXT NOT NULL,
+        server      TEXT,
+        community   TEXT,
+        description TEXT
+      )
+    `.catch(() => {})
+
     // Add missing days_requested column to leave_requests
     await sql`
       ALTER TABLE leave_requests 
@@ -181,6 +294,32 @@ async function ensureCriticalColumns() {
 
     await sql`
       CREATE INDEX IF NOT EXISTS idx_customer_documents_customer_id ON customer_documents(customer_id)
+    `.catch(() => {})
+
+    // Fix account_balances id sequence and ensure status column exists
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'account_balances_id_seq') THEN
+          CREATE SEQUENCE account_balances_id_seq;
+          RAISE NOTICE 'Created account_balances_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='account_balances') THEN
+          PERFORM setval('account_balances_id_seq', COALESCE((SELECT MAX(id) FROM account_balances), 0) + 1, false);
+          ALTER TABLE account_balances ALTER COLUMN id SET DEFAULT nextval('account_balances_id_seq');
+          ALTER SEQUENCE account_balances_id_seq OWNED BY account_balances.id;
+          RAISE NOTICE 'Fixed account_balances id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    await sql`
+      ALTER TABLE account_balances ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'
+    `.catch(() => {})
+
+    await sql`
+      ALTER TABLE account_balances ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ DEFAULT NOW()
     `.catch(() => {})
 
     // Fix customer_documents id sequence if table exists but sequence is broken

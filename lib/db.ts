@@ -504,6 +504,94 @@ async function ensureCriticalColumns() {
       ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP
     `.catch(() => {})
 
+    // Fix finance_audit_trail: drop NOT NULL on action_type and set default
+    await sql`
+      ALTER TABLE finance_audit_trail ALTER COLUMN action_type SET DEFAULT 'unknown'
+    `.catch(() => {})
+    
+    await sql`
+      ALTER TABLE finance_audit_trail ALTER COLUMN action_type DROP NOT NULL
+    `.catch(() => {})
+
+    // Update any existing NULL action_type values
+    await sql`
+      UPDATE finance_audit_trail SET action_type = COALESCE(action, 'unknown') WHERE action_type IS NULL
+    `.catch(() => {})
+
+    // Recreate the trigger function to properly set both action and action_type
+    await sql`
+      CREATE OR REPLACE FUNCTION finance_audit_trigger_function()
+      RETURNS TRIGGER AS $fn$
+      DECLARE
+          v_user_id INTEGER;
+          v_ip_address INET;
+      BEGIN
+          BEGIN
+              v_user_id := current_setting('app.current_user_id', true)::INTEGER;
+          EXCEPTION WHEN OTHERS THEN
+              v_user_id := NULL;
+          END;
+          BEGIN
+              v_ip_address := current_setting('app.client_ip', true)::INET;
+          EXCEPTION WHEN OTHERS THEN
+              v_ip_address := NULL;
+          END;
+
+          IF TG_OP = 'DELETE' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, old_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, OLD.id, 'DELETE', 'DELETE', row_to_json(OLD), v_user_id, v_ip_address, NOW());
+              RETURN OLD;
+          ELSIF TG_OP = 'UPDATE' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, old_values, new_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, NEW.id, 'UPDATE', 'UPDATE', row_to_json(OLD), row_to_json(NEW), v_user_id, v_ip_address, NOW());
+              RETURN NEW;
+          ELSIF TG_OP = 'INSERT' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, new_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, NEW.id, 'INSERT', 'INSERT', row_to_json(NEW), v_user_id, v_ip_address, NOW());
+              RETURN NEW;
+          END IF;
+          RETURN NULL;
+      END;
+      $fn$ LANGUAGE plpgsql
+    `.catch(() => {})
+
+    // Also recreate the log_finance_audit function (some triggers may reference this name)
+    await sql`
+      CREATE OR REPLACE FUNCTION log_finance_audit()
+      RETURNS TRIGGER AS $fn$
+      DECLARE
+          v_user_id INTEGER;
+          v_ip_address INET;
+      BEGIN
+          BEGIN
+              v_user_id := current_setting('app.current_user_id', true)::INTEGER;
+          EXCEPTION WHEN OTHERS THEN
+              v_user_id := NULL;
+          END;
+          BEGIN
+              v_ip_address := current_setting('app.client_ip', true)::INET;
+          EXCEPTION WHEN OTHERS THEN
+              v_ip_address := NULL;
+          END;
+
+          IF TG_OP = 'DELETE' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, old_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, OLD.id, 'DELETE', 'DELETE', row_to_json(OLD), v_user_id, v_ip_address, NOW());
+              RETURN OLD;
+          ELSIF TG_OP = 'UPDATE' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, old_values, new_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, NEW.id, 'UPDATE', 'UPDATE', row_to_json(OLD), row_to_json(NEW), v_user_id, v_ip_address, NOW());
+              RETURN NEW;
+          ELSIF TG_OP = 'INSERT' THEN
+              INSERT INTO finance_audit_trail (table_name, record_id, action, action_type, new_values, user_id, ip_address, created_at)
+              VALUES (TG_TABLE_NAME, NEW.id, 'INSERT', 'INSERT', row_to_json(NEW), v_user_id, v_ip_address, NOW());
+              RETURN NEW;
+          END IF;
+          RETURN NULL;
+      END;
+      $fn$ LANGUAGE plpgsql
+    `.catch(() => {})
+
     // Ensure vehicles table exists for fleet management
     await sql`
       CREATE TABLE IF NOT EXISTS vehicles (

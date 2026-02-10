@@ -1212,6 +1212,20 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category)
     `.catch(() => {})
 
+    // Add missing columns to suppliers table
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya'`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_code VARCHAR(50)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'general'`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 5`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2) DEFAULT 0`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)`.catch(() => {})
+    await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255)`.catch(() => {})
+
     console.log("[DB] Critical column migrations applied")
   } catch (error) {
     console.error("[DB] Column migration error:", error)

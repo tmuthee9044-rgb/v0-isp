@@ -1226,7 +1226,24 @@ async function ensureCriticalColumns() {
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)`.catch(() => {})
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255)`.catch(() => {})
 
-    console.log("[DB] Critical column migrations applied")
+    // Fix all primary key sequences to prevent duplicate key errors
+    const tablesToFix = [
+      'customers', 'suppliers', 'invoices', 'payments', 'service_plans',
+      'customer_services', 'tickets', 'network_devices', 'activity_logs',
+      'inventory_items', 'expenses', 'mpesa_transactions', 'sms_messages',
+      'system_logs', 'locations', 'customer_phone_numbers', 'customer_emergency_contacts'
+    ]
+    for (const table of tablesToFix) {
+      await sql.unsafe(`
+        SELECT setval(
+          pg_get_serial_sequence('${table}', 'id'),
+          COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1,
+          false
+        )
+      `).catch(() => {})
+    }
+
+    console.log("[DB] Critical column migrations and sequence fixes applied")
   } catch (error) {
     console.error("[DB] Column migration error:", error)
   } finally {

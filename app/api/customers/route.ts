@@ -289,6 +289,24 @@ export async function POST(request: NextRequest) {
     console.error("[v0] Failed to create customer:", error)
 
     if (error.code === "23505") {
+      if (error.constraint === "customers_pkey") {
+        // Primary key sequence is out of sync - fix it and retry
+        try {
+          await sql`SELECT setval(pg_get_serial_sequence('customers', 'id'), COALESCE((SELECT MAX(id) FROM customers), 0) + 1, false)`
+          // Retry the insert after fixing the sequence
+          return POST(request)
+        } catch (retryError: any) {
+          console.error("[v0] Failed to fix customer sequence:", retryError)
+          return NextResponse.json(
+            {
+              error: "Database sequence error",
+              message: "Please try again. The system has auto-corrected the issue.",
+              code: "SEQUENCE_FIXED",
+            },
+            { status: 500 },
+          )
+        }
+      }
       if (error.constraint === "customers_email_key") {
         return NextResponse.json(
           {

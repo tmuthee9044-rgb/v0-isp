@@ -164,6 +164,38 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       )
     `
 
+    // Ensure the access logs table has a proper auto-increment id
+    await sql`
+      CREATE TABLE IF NOT EXISTS customer_document_access_logs (
+        id SERIAL PRIMARY KEY,
+        document_id INTEGER NOT NULL,
+        user_id INTEGER,
+        action VARCHAR(50) NOT NULL,
+        ip_address INET,
+        user_agent TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `.catch(() => {})
+
+    // Fix id column if it exists but isn't auto-increment (e.g. UUID without default)
+    await sql`
+      DO $$
+      BEGIN
+        -- If the id column doesn't have a default, add a sequence
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'customer_document_access_logs' 
+          AND column_name = 'id' 
+          AND column_default IS NOT NULL
+        ) THEN
+          CREATE SEQUENCE IF NOT EXISTS customer_document_access_logs_id_seq;
+          ALTER TABLE customer_document_access_logs 
+            ALTER COLUMN id SET DEFAULT nextval('customer_document_access_logs_id_seq');
+          PERFORM setval('customer_document_access_logs_id_seq', COALESCE((SELECT MAX(id) FROM customer_document_access_logs), 0) + 1, false);
+        END IF;
+      END $$;
+    `.catch((e: unknown) => console.error("[v0] Failed to fix access logs sequence:", e))
+
     // Log the upload action
     await sql`
       INSERT INTO customer_document_access_logs (
@@ -177,7 +209,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         'upload',
         ${request.ip || "127.0.0.1"}
       )
-    `
+    `.catch((e: unknown) => console.error("[v0] Failed to log document access:", e))
 
     return NextResponse.json({
       success: true,

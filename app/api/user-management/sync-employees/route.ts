@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
+
+// Helper to generate next id for tables that lack auto-increment
+async function nextId(sql: any, table: string): Promise<number> {
+  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
+  return result[0]?.next_id || 1
+}
 
 export async function POST(request: NextRequest) {
   const sql = await getSql()
@@ -43,9 +49,11 @@ export async function POST(request: NextRequest) {
 
         const tempPassword = `temp_${employee.employee_id}_${Date.now()}`
 
+        const userId = await nextId(sql, 'users')
         const newUser = await sql`
-          INSERT INTO users (username, email, password_hash, role, status, created_at)
+          INSERT INTO users (id, username, email, password_hash, role, status, created_at)
           VALUES (
+            ${userId},
             ${username},
             ${employee.email},
             ${tempPassword},

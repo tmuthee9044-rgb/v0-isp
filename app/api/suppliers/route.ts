@@ -3,10 +3,28 @@ import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
+// Ensure suppliers table has all required columns
+async function ensureSupplierColumns(sql: any) {
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_code VARCHAR(50)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS name VARCHAR(255)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'general'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 5`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2) DEFAULT 0`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)`.catch(() => {})
+}
+
 // Get all suppliers
 export async function GET(request: NextRequest) {
   try {
     const sql = await getSql()
+    await ensureSupplierColumns(sql)
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "all"
 
@@ -86,6 +104,9 @@ export async function POST(request: NextRequest) {
   try {
     const sql = await getSql()
     const data = await request.json()
+
+    // Ensure all required columns exist before inserting (in case startup migration hasn't run yet)
+    await ensureSupplierColumns(sql)
 
     // Generate a unique supplier code based on timestamp and count
     const countResult = await sql`SELECT COUNT(*)::INTEGER as count FROM suppliers`

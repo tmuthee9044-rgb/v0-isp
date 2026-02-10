@@ -1,33 +1,10 @@
 import { getSql } from "@/lib/db"
 import { NextResponse } from "next/server"
 
-async function ensureSequenceExists(sql: any) {
-  try {
-    await sql`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_phone_numbers_id_seq') THEN
-          CREATE SEQUENCE customer_phone_numbers_id_seq;
-          ALTER TABLE customer_phone_numbers ALTER COLUMN id SET DEFAULT nextval('customer_phone_numbers_id_seq');
-          SELECT setval('customer_phone_numbers_id_seq', COALESCE((SELECT MAX(id) FROM customer_phone_numbers), 0) + 1, false);
-        END IF;
-
-        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_emergency_contacts_id_seq') THEN
-          CREATE SEQUENCE customer_emergency_contacts_id_seq;
-          ALTER TABLE customer_emergency_contacts ALTER COLUMN id SET DEFAULT nextval('customer_emergency_contacts_id_seq');
-          SELECT setval('customer_emergency_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_emergency_contacts), 0) + 1, false);
-        END IF;
-
-        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'customer_contacts_id_seq') THEN
-          CREATE SEQUENCE customer_contacts_id_seq;
-          ALTER TABLE customer_contacts ALTER COLUMN id SET DEFAULT nextval('customer_contacts_id_seq');
-          SELECT setval('customer_contacts_id_seq', COALESCE((SELECT MAX(id) FROM customer_contacts), 0) + 1, false);
-        END IF;
-      END $$;
-    `
-  } catch (error) {
-    console.error("Error ensuring sequences exist:", error)
-  }
+// Helper to generate next id for tables that lack auto-increment
+async function nextId(sql: any, table: string): Promise<number> {
+  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
+  return result[0]?.next_id || 1
 }
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -154,7 +131,6 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
-    await ensureSequenceExists(sql)
 
     const customerId = Number.parseInt(params.id)
 
@@ -289,32 +265,36 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     await sql`DELETE FROM customer_phone_numbers WHERE customer_id = ${customerId}`
 
     if (updateData.phone_primary) {
+      const phoneId = await nextId(sql, 'customer_phone_numbers')
       await sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary)
-        VALUES (${customerId}, ${updateData.phone_primary}, 'mobile', true)
+        INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary)
+        VALUES (${phoneId}, ${customerId}, ${updateData.phone_primary}, 'mobile', true)
       `
     }
 
     if (updateData.phone_secondary) {
+      const phoneId = await nextId(sql, 'customer_phone_numbers')
       await sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary)
-        VALUES (${customerId}, ${updateData.phone_secondary}, 'mobile', false)
+        INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary)
+        VALUES (${phoneId}, ${customerId}, ${updateData.phone_secondary}, 'mobile', false)
       `
     }
 
     if (updateData.phone_office) {
+      const phoneId = await nextId(sql, 'customer_phone_numbers')
       await sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary)
-        VALUES (${customerId}, ${updateData.phone_office}, 'office', false)
+        INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary)
+        VALUES (${phoneId}, ${customerId}, ${updateData.phone_office}, 'office', false)
       `
     }
 
     if (updateData.phone_numbers && Array.isArray(updateData.phone_numbers)) {
       for (const phoneData of updateData.phone_numbers) {
         if (phoneData.number) {
+          const phoneId = await nextId(sql, 'customer_phone_numbers')
           await sql`
-            INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary)
-            VALUES (${customerId}, ${phoneData.number}, ${phoneData.type || "mobile"}, ${phoneData.isPrimary || false})
+            INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary)
+            VALUES (${phoneId}, ${customerId}, ${phoneData.number}, ${phoneData.type || "mobile"}, ${phoneData.isPrimary || false})
           `
         }
       }
@@ -323,9 +303,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     await sql`DELETE FROM customer_emergency_contacts WHERE customer_id = ${customerId}`
 
     if (updateData.emergency_contact_name && updateData.emergency_contact_phone) {
+      const ecId = await nextId(sql, 'customer_emergency_contacts')
       await sql`
-        INSERT INTO customer_emergency_contacts (customer_id, name, phone, relationship)
+        INSERT INTO customer_emergency_contacts (id, customer_id, name, phone, relationship)
         VALUES (
+          ${ecId},
           ${customerId}, 
           ${updateData.emergency_contact_name}, 
           ${updateData.emergency_contact_phone}, 
@@ -337,9 +319,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (updateData.emergency_contacts && Array.isArray(updateData.emergency_contacts)) {
       for (const contact of updateData.emergency_contacts) {
         if (contact.name && contact.phone) {
+          const ecId = await nextId(sql, 'customer_emergency_contacts')
           await sql`
-            INSERT INTO customer_emergency_contacts (customer_id, name, phone, email, relationship)
-            VALUES (${customerId}, ${contact.name}, ${contact.phone}, ${contact.email || ""}, ${contact.relationship || ""})
+            INSERT INTO customer_emergency_contacts (id, customer_id, name, phone, email, relationship)
+            VALUES (${ecId}, ${customerId}, ${contact.name}, ${contact.phone}, ${contact.email || ""}, ${contact.relationship || ""})
           `
         }
       }
@@ -350,9 +333,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       updateData.contact_person
     ) {
       await sql`DELETE FROM customer_contacts WHERE customer_id = ${customerId}`
+      const ccId = await nextId(sql, 'customer_contacts')
       await sql`
-        INSERT INTO customer_contacts (customer_id, name, contact_type, is_primary)
-        VALUES (${customerId}, ${updateData.contact_person}, 'primary', true)
+        INSERT INTO customer_contacts (id, customer_id, name, contact_type, is_primary)
+        VALUES (${ccId}, ${customerId}, ${updateData.contact_person}, 'primary', true)
       `
     }
 

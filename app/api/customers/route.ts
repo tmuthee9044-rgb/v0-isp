@@ -1,6 +1,12 @@
 import { getSql } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 
+// Helper to generate next id for tables that lack auto-increment
+async function nextId(sql: any, table: string): Promise<number> {
+  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
+  return result[0]?.next_id || 1
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sql = await getSql()
@@ -235,45 +241,47 @@ export async function POST(request: NextRequest) {
 
     const elapsedTime = Date.now() - startTime
 
-    Promise.all([
-      data.phone_primary
-        ? sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
-        VALUES (${customer.id}, ${data.phone_primary}, 'mobile', true, NOW())
-        ON CONFLICT DO NOTHING
-      `.catch(() => {})
-        : Promise.resolve(),
+    // Insert related records with explicit ids (tables lack auto-increment)
+    try {
+      if (data.phone_primary) {
+        const phoneId = await nextId(sql, 'customer_phone_numbers')
+        await sql`
+          INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary, created_at)
+          VALUES (${phoneId}, ${customer.id}, ${data.phone_primary}, 'mobile', true, NOW())
+        `.catch(() => {})
+      }
 
-      data.phone_secondary
-        ? sql`
-        INSERT INTO customer_phone_numbers (customer_id, phone_number, type, is_primary, created_at)
-        VALUES (${customer.id}, ${data.phone_secondary}, 'mobile', false, NOW())
-        ON CONFLICT DO NOTHING
-      `.catch(() => {})
-        : Promise.resolve(),
+      if (data.phone_secondary) {
+        const phoneId = await nextId(sql, 'customer_phone_numbers')
+        await sql`
+          INSERT INTO customer_phone_numbers (id, customer_id, phone_number, type, is_primary, created_at)
+          VALUES (${phoneId}, ${customer.id}, ${data.phone_secondary}, 'mobile', false, NOW())
+        `.catch(() => {})
+      }
 
-      data.emergency_contact_name && data.emergency_contact_phone
-        ? sql`
-        INSERT INTO customer_emergency_contacts (customer_id, name, phone, relationship, created_at)
-        VALUES (
-          ${customer.id}, 
-          ${data.emergency_contact_name}, 
-          ${data.emergency_contact_phone}, 
-          ${data.emergency_contact_relationship || null},
-          NOW()
-        )
-        ON CONFLICT DO NOTHING
-      `.catch(() => {})
-        : Promise.resolve(),
+      if (data.emergency_contact_name && data.emergency_contact_phone) {
+        const ecId = await nextId(sql, 'customer_emergency_contacts')
+        await sql`
+          INSERT INTO customer_emergency_contacts (id, customer_id, name, phone, relationship, created_at)
+          VALUES (
+            ${ecId},
+            ${customer.id}, 
+            ${data.emergency_contact_name}, 
+            ${data.emergency_contact_phone}, 
+            ${data.emergency_contact_relationship || null},
+            NOW()
+          )
+        `.catch(() => {})
+      }
 
-      data.service_plan_id
-        ? sql`
-        INSERT INTO customer_services (customer_id, service_plan_id, status, installation_date, created_at)
-        VALUES (${customer.id}, ${data.service_plan_id}, 'pending', CURRENT_DATE, NOW())
-      `.catch(() => {})
-        : Promise.resolve(),
+      if (data.service_plan_id) {
+        await sql`
+          INSERT INTO customer_services (customer_id, service_plan_id, status, installation_date, created_at)
+          VALUES (${customer.id}, ${data.service_plan_id}, 'pending', CURRENT_DATE, NOW())
+        `.catch(() => {})
+      }
 
-      sql`
+      await sql`
         INSERT INTO activity_logs (
           action, entity_type, entity_id, details, ip_address, created_at
         ) VALUES (
@@ -281,8 +289,10 @@ export async function POST(request: NextRequest) {
           ${JSON.stringify({ customer_type: customerType, location_id: data.location_id || null })},
           '127.0.0.1', NOW()
         )
-      `.catch(() => {}),
-    ]).catch(() => {})
+      `.catch(() => {})
+    } catch {
+      // Non-critical: don't fail customer creation if related inserts fail
+    }
 
     return NextResponse.json(customer, { status: 201 })
   } catch (error: any) {

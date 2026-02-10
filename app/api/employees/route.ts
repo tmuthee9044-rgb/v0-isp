@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
+
+// Helper to generate next id for tables that lack auto-increment
+async function nextId(sql: any, table: string): Promise<number> {
+  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
+  return result[0]?.next_id || 1
+}
 
 function getDatabaseConnection() {
   const dbUrl =
@@ -156,14 +162,15 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `
 
+    const logId = await nextId(sql, 'activity_logs')
     await sql`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, created_at)
+      INSERT INTO activity_logs (id, user_id, action, entity_type, entity_id, details, created_at)
       VALUES (
-        0, 'create', 'employee', ${result[0].id}, 
+        ${logId}, 0, 'create', 'employee', ${result[0].id}, 
         ${JSON.stringify({ employee_id: finalEmployeeId, name: `${firstName} ${lastName}`, position, department })},
         NOW()
       )
-    `
+    `.catch(() => {})`
 
     if (createUserAccount === "true" || createUserAccount === true) {
       try {
@@ -175,9 +182,10 @@ export async function POST(request: NextRequest) {
           const username = `${firstName?.toLowerCase()}.${lastName?.toLowerCase()}`
           const tempPassword = "temp_password_hash" // This should be properly hashed in production
 
+          const userId = await nextId(sql, 'users')
           await sql`
-            INSERT INTO users (username, email, password_hash, role, status, created_at)
-            VALUES (${username}, ${email}, ${tempPassword}, ${userRole || "employee"}, 'active', NOW())
+            INSERT INTO users (id, username, email, password_hash, role, status, created_at)
+            VALUES (${userId}, ${username}, ${email}, ${tempPassword}, ${userRole || "employee"}, 'active', NOW())
           `
           console.log(`[v0] User account created for ${email}`)
         } else {

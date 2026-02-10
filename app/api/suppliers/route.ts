@@ -3,8 +3,29 @@ import { getSql } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-// Ensure suppliers table has all required columns
+// Ensure suppliers table has all required columns and proper id default
 async function ensureSupplierColumns(sql: any) {
+  // Fix the id column: ensure it has a default value (gen_random_uuid for UUID or a sequence for SERIAL)
+  await sql`
+    DO $$
+    BEGIN
+      -- Check if the id column is UUID type
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'suppliers' AND column_name = 'id' AND data_type = 'uuid'
+      ) THEN
+        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT gen_random_uuid();
+      ELSIF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'suppliers' AND column_name = 'id' AND column_default IS NULL
+      ) THEN
+        CREATE SEQUENCE IF NOT EXISTS suppliers_id_seq;
+        ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT nextval('suppliers_id_seq');
+        PERFORM setval('suppliers_id_seq', COALESCE((SELECT MAX(id::bigint) FROM suppliers), 0) + 1, false);
+      END IF;
+    END $$;
+  `.catch((e: unknown) => console.error("Failed to fix suppliers id default:", e))
+
   await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_code VARCHAR(50)`.catch(() => {})
   await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS name VARCHAR(255)`.catch(() => {})
   await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})

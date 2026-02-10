@@ -1,6 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 
+// Helper to log document access with explicit id generation (table lacks auto-increment)
+async function logDocumentAccess(sql: any, documentId: number, action: string, ip: string) {
+  await sql`
+    INSERT INTO customer_document_access_logs (
+      id, document_id, user_id, action, ip_address, created_at
+    ) VALUES (
+      COALESCE((SELECT MAX(id) FROM customer_document_access_logs), 0) + 1,
+      ${documentId}, 1, ${action}, ${ip}, NOW()
+    )
+  `.catch((e: unknown) => console.error("[v0] Failed to log document " + action + ":", e))
+}
+
 export async function GET(request: NextRequest, { params }: { params: { id: string; documentId: string } }) {
   try {
     const sql = await getSql()
@@ -29,19 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Log the view action
-    await sql`
-      INSERT INTO customer_document_access_logs (
-        document_id,
-        user_id,
-        action,
-        ip_address
-      ) VALUES (
-        ${documentId},
-        1,
-        'view',
-        ${request.ip || "127.0.0.1"}
-      )
-    `
+    await logDocumentAccess(sql, documentId, 'view', request.ip || '127.0.0.1')
 
     return NextResponse.json({
       success: true,
@@ -73,19 +73,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     `
 
     // Log the delete action
-    await sql`
-      INSERT INTO customer_document_access_logs (
-        document_id,
-        user_id,
-        action,
-        ip_address
-      ) VALUES (
-        ${documentId},
-        1,
-        'delete',
-        ${request.ip || "127.0.0.1"}
-      )
-    `
+    await logDocumentAccess(sql, documentId, 'delete', request.ip || '127.0.0.1')
 
     return NextResponse.json({
       success: true,

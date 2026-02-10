@@ -164,20 +164,24 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       )
     `
 
-    // Log the upload action
+    // Log the upload action - generate id explicitly since table may lack auto-increment
     await sql`
       INSERT INTO customer_document_access_logs (
+        id,
         document_id,
         user_id,
         action,
-        ip_address
+        ip_address,
+        created_at
       ) VALUES (
+        COALESCE((SELECT MAX(id) FROM customer_document_access_logs), 0) + 1,
         ${document.id},
         1,
         'upload',
-        ${request.ip || "127.0.0.1"}
+        ${request.ip || '127.0.0.1'},
+        NOW()
       )
-    `
+    `.catch((e: unknown) => console.error("[v0] Failed to log document access:", e))
 
     return NextResponse.json({
       success: true,

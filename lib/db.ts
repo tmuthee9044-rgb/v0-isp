@@ -80,6 +80,13 @@ export async function getDatabaseStatus() {
  */
 async function ensureCriticalColumns() {
   try {
+    // Use an advisory lock to prevent concurrent startup migrations causing deadlocks
+    const lockResult = await sql`SELECT pg_try_advisory_lock(hashtext('ensure_critical_columns')) as acquired`
+    if (!lockResult[0]?.acquired) {
+      console.log("[DB] Another instance is running migrations, skipping")
+      return
+    }
+
     // Ensure FreeRADIUS tables exist (radacct, radcheck, radreply, radpostauth, nas, etc.)
     await sql`
       CREATE TABLE IF NOT EXISTS radacct (
@@ -923,32 +930,47 @@ async function ensureCriticalColumns() {
     `.catch(() => {})
 
     // Fix fuel_logs id sequence - ensure it exists and is properly configured
+    // Uses advisory lock to prevent deadlock from concurrent startup
     await sql`
       DO $$
       DECLARE
         max_id INTEGER;
+        current_default TEXT;
       BEGIN
-        -- Get current max id
-        SELECT COALESCE(MAX(id), 0) INTO max_id FROM fuel_logs;
+        -- Advisory lock to prevent concurrent sequence fixes (key: hashtext('fuel_logs_seq_fix'))
+        PERFORM pg_advisory_lock(hashtext('fuel_logs_seq_fix'));
         
-        -- Create sequence if it doesn't exist
-        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'fuel_logs_id_seq') THEN
-          EXECUTE 'CREATE SEQUENCE fuel_logs_id_seq START WITH ' || (max_id + 1);
-          RAISE NOTICE 'Created fuel_logs_id_seq starting at %', max_id + 1;
-        ELSE
-          -- Reset sequence to correct value if it exists
-          PERFORM setval('fuel_logs_id_seq', GREATEST(max_id, 1), true);
-          RAISE NOTICE 'Reset fuel_logs_id_seq to %', GREATEST(max_id, 1);
-        END IF;
+        BEGIN
+          -- Get current max id
+          SELECT COALESCE(MAX(id), 0) INTO max_id FROM fuel_logs;
+          
+          -- Create sequence if it doesn't exist
+          IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'fuel_logs_id_seq') THEN
+            EXECUTE 'CREATE SEQUENCE fuel_logs_id_seq START WITH ' || (max_id + 1);
+            RAISE NOTICE 'Created fuel_logs_id_seq starting at %', max_id + 1;
+          ELSE
+            -- Reset sequence to correct value if it exists
+            PERFORM setval('fuel_logs_id_seq', GREATEST(max_id, 1), true);
+          END IF;
+          
+          -- Only alter default if not already set to this sequence
+          SELECT pg_get_expr(adbin, adrelid) INTO current_default
+          FROM pg_attrdef
+          JOIN pg_attribute ON pg_attrdef.adrelid = pg_attribute.attrelid AND pg_attrdef.adnum = pg_attribute.attnum
+          WHERE pg_attribute.attrelid = 'fuel_logs'::regclass AND pg_attribute.attname = 'id';
+          
+          IF current_default IS NULL OR current_default NOT LIKE '%fuel_logs_id_seq%' THEN
+            ALTER TABLE fuel_logs ALTER COLUMN id SET DEFAULT nextval('fuel_logs_id_seq');
+            ALTER SEQUENCE fuel_logs_id_seq OWNED BY fuel_logs.id;
+            RAISE NOTICE 'fuel_logs sequence configured successfully';
+          END IF;
+          
+        EXCEPTION WHEN OTHERS THEN
+          RAISE NOTICE 'fuel_logs sequence fix skipped: %', SQLERRM;
+        END;
         
-        -- Ensure id column uses the sequence (remove old default first)
-        ALTER TABLE fuel_logs ALTER COLUMN id DROP DEFAULT;
-        ALTER TABLE fuel_logs ALTER COLUMN id SET DEFAULT nextval('fuel_logs_id_seq');
-        
-        -- Link sequence ownership to the column
-        ALTER SEQUENCE fuel_logs_id_seq OWNED BY fuel_logs.id;
-        
-        RAISE NOTICE 'fuel_logs sequence configured successfully';
+        -- Release advisory lock
+        PERFORM pg_advisory_unlock(hashtext('fuel_logs_seq_fix'));
       END $$;
     `.catch((err) => {
       console.error("[v0] Error fixing fuel_logs sequence:", err)
@@ -1193,6 +1215,9 @@ async function ensureCriticalColumns() {
     console.log("[DB] Critical column migrations applied")
   } catch (error) {
     console.error("[DB] Column migration error:", error)
+  } finally {
+    // Always release the advisory lock
+    await sql`SELECT pg_advisory_unlock(hashtext('ensure_critical_columns'))`.catch(() => {})
   }
 }
 

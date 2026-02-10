@@ -1,36 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 
-// Ensure the access logs table has proper auto-increment id
-async function ensureAccessLogsTable(sql: any) {
+// Helper to log document access with explicit id generation (table lacks auto-increment)
+async function logDocumentAccess(sql: any, documentId: number, action: string, ip: string) {
   await sql`
-    CREATE TABLE IF NOT EXISTS customer_document_access_logs (
-      id SERIAL PRIMARY KEY,
-      document_id INTEGER NOT NULL,
-      user_id INTEGER,
-      action VARCHAR(50) NOT NULL,
-      ip_address INET,
-      user_agent TEXT,
-      created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    INSERT INTO customer_document_access_logs (
+      id, document_id, user_id, action, ip_address, created_at
+    ) VALUES (
+      COALESCE((SELECT MAX(id) FROM customer_document_access_logs), 0) + 1,
+      ${documentId}, 1, ${action}, ${ip}, NOW()
     )
-  `.catch(() => {})
-
-  await sql`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'customer_document_access_logs' 
-        AND column_name = 'id' 
-        AND column_default IS NOT NULL
-      ) THEN
-        CREATE SEQUENCE IF NOT EXISTS customer_document_access_logs_id_seq;
-        ALTER TABLE customer_document_access_logs 
-          ALTER COLUMN id SET DEFAULT nextval('customer_document_access_logs_id_seq');
-        PERFORM setval('customer_document_access_logs_id_seq', COALESCE((SELECT MAX(id) FROM customer_document_access_logs), 0) + 1, false);
-      END IF;
-    END $$;
-  `.catch(() => {})
+  `.catch((e: unknown) => console.error("[v0] Failed to log document " + action + ":", e))
 }
 
 export async function GET(request: NextRequest, { params }: { params: { id: string; documentId: string } }) {
@@ -61,20 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Log the view action
-    await ensureAccessLogsTable(sql)
-    await sql`
-      INSERT INTO customer_document_access_logs (
-        document_id,
-        user_id,
-        action,
-        ip_address
-      ) VALUES (
-        ${documentId},
-        1,
-        'view',
-        ${request.ip || "127.0.0.1"}
-      )
-    `.catch((e: unknown) => console.error("[v0] Failed to log document view:", e))
+    await logDocumentAccess(sql, documentId, 'view', request.ip || '127.0.0.1')
 
     return NextResponse.json({
       success: true,
@@ -106,20 +73,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     `
 
     // Log the delete action
-    await ensureAccessLogsTable(sql)
-    await sql`
-      INSERT INTO customer_document_access_logs (
-        document_id,
-        user_id,
-        action,
-        ip_address
-      ) VALUES (
-        ${documentId},
-        1,
-        'delete',
-        ${request.ip || "127.0.0.1"}
-      )
-    `.catch((e: unknown) => console.error("[v0] Failed to log document delete:", e))
+    await logDocumentAccess(sql, documentId, 'delete', request.ip || '127.0.0.1')
 
     return NextResponse.json({
       success: true,

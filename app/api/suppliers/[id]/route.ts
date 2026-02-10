@@ -1,9 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSql } from "@/lib/database"
+import { getSql } from "@/lib/db"
+
+// Ensure suppliers table has all required columns
+async function ensureSupplierColumns(sql: any) {
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_code VARCHAR(50)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS name VARCHAR(255)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'Kenya'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supplier_type VARCHAR(50) DEFAULT 'general'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20)`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 5`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2) DEFAULT 0`.catch(() => {})
+  await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)`.catch(() => {})
+}
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
+    await ensureSupplierColumns(sql)
     const id = params.id
 
     const supplier = await sql`
@@ -38,21 +56,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const supplierData = {
       id: supplier[0].id,
-      supplier_code: supplier[0].id, // Using ID as code since no separate code field
+      supplier_code: supplier[0].supplier_code || `SUP-${supplier[0].id}`,
       company_name: supplier[0].company_name || supplier[0].name,
-      contact_person: supplier[0].contact_name,
+      contact_person: supplier[0].contact_person || supplier[0].contact_name,
       email: supplier[0].email,
       phone: supplier[0].phone,
       address: supplier[0].address,
-      city: "", // Not in schema
-      state: "", // Not in schema
-      country: "", // Not in schema
-      supplier_type: "vendor", // Default since not in schema
+      city: supplier[0].city || "",
+      state: supplier[0].state || "",
+      country: supplier[0].country || "Kenya",
+      postal_code: supplier[0].postal_code || "",
+      supplier_type: supplier[0].supplier_type || "general",
       status: supplier[0].is_active ? "active" : "inactive",
+      rating: supplier[0].rating || 5,
+      notes: supplier[0].notes || "",
       total_orders: Number(supplier[0].total_orders || 0),
       total_order_value: Number(supplier[0].total_order_value || 0),
       active_orders: Number(supplier[0].active_orders || 0),
       created_at: supplier[0].created_at,
+      updated_at: supplier[0].updated_at,
     }
 
     return NextResponse.json({
@@ -74,10 +96,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const sql = await getSql()
+    await ensureSupplierColumns(sql)
     const id = params.id
     const data = await request.json()
 
-    const { company_name, contact_person, email, phone, address, status } = data
+    const { company_name, contact_person, email, phone, address, city, state, country, supplier_type, status } = data
 
     const updatedSupplier = await sql`
       UPDATE suppliers 
@@ -88,6 +111,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         email = ${email || null},
         phone = ${phone || null},
         address = ${address || null},
+        city = ${city || null},
+        state = ${state || null},
+        country = ${country || 'Kenya'},
+        supplier_type = ${supplier_type || 'general'},
         is_active = ${status === "active"},
         updated_at = NOW()
       WHERE id = ${id}

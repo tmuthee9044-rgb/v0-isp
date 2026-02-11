@@ -3,6 +3,12 @@ import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
+// Helper to generate next id for tables that lack auto-increment
+async function nextId(sql: any, table: string): Promise<number> {
+  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
+  return result[0]?.next_id || 1
+}
+
 // Get all purchase orders
 export async function GET(request: NextRequest) {
   try {
@@ -168,11 +174,12 @@ export async function POST(request: NextRequest) {
 
     const orderNumber = `PO-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
 
+    const poNextId = await nextId(sql, 'purchase_orders')
     const purchaseOrder = await sql`
       INSERT INTO purchase_orders (
-        order_number, supplier_id, status, notes, created_by
+        id, order_number, supplier_id, status, notes, created_by
       ) VALUES (
-        ${orderNumber}, ${supplier_id}, ${status}, ${notes || null}, ${created_by || 1}
+        ${poNextId}, ${orderNumber}, ${supplier_id}, ${status}, ${notes || null}, ${created_by || 1}
       )
       RETURNING *
     `
@@ -188,11 +195,12 @@ export async function POST(request: NextRequest) {
       const itemTotalAmount = Number(item.quantity) * Number(item.unit_cost)
       totalAmount += itemTotalAmount
 
+      const itemId = await nextId(sql, 'purchase_order_items')
       await sql`
         INSERT INTO purchase_order_items (
-          purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
+          id, purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
         ) VALUES (
-          ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
+          ${itemId}, ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
         )
       `
     }
@@ -212,9 +220,11 @@ export async function POST(request: NextRequest) {
       WHERE po.id = ${poId}
     `
 
+    const logId = await nextId(sql, 'activity_logs')
     await sql`
-      INSERT INTO activity_logs (action, entity_type, entity_id, user_id, details)
+      INSERT INTO activity_logs (id, action, entity_type, entity_id, user_id, details)
       VALUES (
+        ${logId},
         'purchase_order_created', 
         'purchase_order', 
         ${poId}, 

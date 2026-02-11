@@ -1212,6 +1212,96 @@ async function ensureCriticalColumns() {
       CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category)
     `.catch(() => {})
 
+    // Fix users id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'users_id_seq') THEN
+          CREATE SEQUENCE users_id_seq;
+          RAISE NOTICE 'Created users_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='users') THEN
+          PERFORM setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);
+          ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+          ALTER SEQUENCE users_id_seq OWNED BY users.id;
+          RAISE NOTICE 'Fixed users id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Fix purchase_orders id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'purchase_orders_id_seq') THEN
+          CREATE SEQUENCE purchase_orders_id_seq;
+          RAISE NOTICE 'Created purchase_orders_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='purchase_orders') THEN
+          PERFORM setval('purchase_orders_id_seq', COALESCE((SELECT MAX(id) FROM purchase_orders), 0) + 1, false);
+          ALTER TABLE purchase_orders ALTER COLUMN id SET DEFAULT nextval('purchase_orders_id_seq');
+          ALTER SEQUENCE purchase_orders_id_seq OWNED BY purchase_orders.id;
+          RAISE NOTICE 'Fixed purchase_orders id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Fix purchase_order_items id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'purchase_order_items_id_seq') THEN
+          CREATE SEQUENCE purchase_order_items_id_seq;
+          RAISE NOTICE 'Created purchase_order_items_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='purchase_order_items') THEN
+          PERFORM setval('purchase_order_items_id_seq', COALESCE((SELECT MAX(id) FROM purchase_order_items), 0) + 1, false);
+          ALTER TABLE purchase_order_items ALTER COLUMN id SET DEFAULT nextval('purchase_order_items_id_seq');
+          ALTER SEQUENCE purchase_order_items_id_seq OWNED BY purchase_order_items.id;
+          RAISE NOTICE 'Fixed purchase_order_items id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Fix activity_logs id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'activity_logs_id_seq') THEN
+          CREATE SEQUENCE activity_logs_id_seq;
+          RAISE NOTICE 'Created activity_logs_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='activity_logs') THEN
+          PERFORM setval('activity_logs_id_seq', COALESCE((SELECT MAX(id) FROM activity_logs), 0) + 1, false);
+          ALTER TABLE activity_logs ALTER COLUMN id SET DEFAULT nextval('activity_logs_id_seq');
+          ALTER SEQUENCE activity_logs_id_seq OWNED BY activity_logs.id;
+          RAISE NOTICE 'Fixed activity_logs id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
+    // Fix employees id sequence if table exists but sequence is broken
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'employees_id_seq') THEN
+          CREATE SEQUENCE employees_id_seq;
+          RAISE NOTICE 'Created employees_id_seq';
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='employees') THEN
+          PERFORM setval('employees_id_seq', COALESCE((SELECT MAX(id) FROM employees), 0) + 1, false);
+          ALTER TABLE employees ALTER COLUMN id SET DEFAULT nextval('employees_id_seq');
+          ALTER SEQUENCE employees_id_seq OWNED BY employees.id;
+          RAISE NOTICE 'Fixed employees id sequence';
+        END IF;
+      END $$;
+    `.catch(() => {})
+
     // Add missing columns to suppliers table
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)`.catch(() => {})
     await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(100)`.catch(() => {})

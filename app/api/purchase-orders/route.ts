@@ -3,10 +3,36 @@ import { getSql } from "@/lib/database"
 
 export const dynamic = "force-dynamic"
 
-// Helper to generate next id for tables that lack auto-increment
-async function nextId(sql: any, table: string): Promise<number> {
-  const result = await sql.unsafe(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM ${table}`)
-  return result[0]?.next_id || 1
+// Helper to get next available id for a table
+async function getNextPurchaseOrderId(db: any): Promise<number> {
+  try {
+    const r = await db`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM purchase_orders`
+    console.log("[v0] Next PO id:", r[0]?.next_id)
+    return Number(r[0]?.next_id) || 1
+  } catch (e) {
+    console.error("[v0] getNextPurchaseOrderId error:", e)
+    return Date.now()
+  }
+}
+
+async function getNextPOItemId(db: any): Promise<number> {
+  try {
+    const r = await db`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM purchase_order_items`
+    return Number(r[0]?.next_id) || 1
+  } catch (e) {
+    console.error("[v0] getNextPOItemId error:", e)
+    return Date.now()
+  }
+}
+
+async function getNextActivityLogId(db: any): Promise<number> {
+  try {
+    const r = await db`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM activity_logs`
+    return Number(r[0]?.next_id) || 1
+  } catch (e) {
+    console.error("[v0] getNextActivityLogId error:", e)
+    return Date.now()
+  }
 }
 
 // Get all purchase orders
@@ -174,15 +200,46 @@ export async function POST(request: NextRequest) {
 
     const orderNumber = `PO-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
 
-    const poNextId = await nextId(sql, 'purchase_orders')
-    const purchaseOrder = await sql`
-      INSERT INTO purchase_orders (
-        id, order_number, supplier_id, status, notes, created_by
-      ) VALUES (
-        ${poNextId}, ${orderNumber}, ${supplier_id}, ${status}, ${notes || null}, ${created_by || 1}
-      )
-      RETURNING *
-    `
+    // First try to fix the sequence if it doesn't exist
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'purchase_orders_id_seq') THEN
+          CREATE SEQUENCE IF NOT EXISTS purchase_orders_id_seq;
+          PERFORM setval('purchase_orders_id_seq', COALESCE((SELECT MAX(id) FROM purchase_orders), 0) + 1, false);
+          ALTER TABLE purchase_orders ALTER COLUMN id SET DEFAULT nextval('purchase_orders_id_seq');
+        ELSE
+          -- Ensure column default is set even if sequence exists
+          ALTER TABLE purchase_orders ALTER COLUMN id SET DEFAULT nextval('purchase_orders_id_seq');
+        END IF;
+      END $$;
+    `.catch((e: any) => console.log("[v0] Sequence fix attempt:", e?.message))
+
+    // Try insert without explicit id first (using sequence), fall back to explicit id
+    let purchaseOrder
+    try {
+      purchaseOrder = await sql`
+        INSERT INTO purchase_orders (
+          order_number, supplier_id, status, notes, created_by
+        ) VALUES (
+          ${orderNumber}, ${supplier_id}, ${status}, ${notes || null}, ${created_by || 1}
+        )
+        RETURNING *
+      `
+      console.log("[v0] PO created via sequence, id:", purchaseOrder[0]?.id)
+    } catch (seqError: any) {
+      console.log("[v0] Sequence insert failed, using explicit id:", seqError?.message)
+      const poNextId = await getNextPurchaseOrderId(sql)
+      purchaseOrder = await sql`
+        INSERT INTO purchase_orders (
+          id, order_number, supplier_id, status, notes, created_by
+        ) VALUES (
+          ${poNextId}, ${orderNumber}, ${supplier_id}, ${status}, ${notes || null}, ${created_by || 1}
+        )
+        RETURNING *
+      `
+      console.log("[v0] PO created with explicit id:", purchaseOrder[0]?.id)
+    }
 
     const poId = purchaseOrder[0].id
 
@@ -195,14 +252,24 @@ export async function POST(request: NextRequest) {
       const itemTotalAmount = Number(item.quantity) * Number(item.unit_cost)
       totalAmount += itemTotalAmount
 
-      const itemId = await nextId(sql, 'purchase_order_items')
-      await sql`
-        INSERT INTO purchase_order_items (
-          id, purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
-        ) VALUES (
-          ${itemId}, ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
-        )
-      `
+      try {
+        await sql`
+          INSERT INTO purchase_order_items (
+            purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
+          ) VALUES (
+            ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
+          )
+        `
+      } catch {
+        const itemId = await getNextPOItemId(sql)
+        await sql`
+          INSERT INTO purchase_order_items (
+            id, purchase_order_id, inventory_item_id, quantity, unit_cost, total_amount, description
+          ) VALUES (
+            ${itemId}, ${poId}, ${item.inventory_item_id}, ${item.quantity}, ${item.unit_cost}, ${itemTotalAmount}, ${item.description || null}
+          )
+        `
+      }
     }
 
     // Update total amount
@@ -220,23 +287,41 @@ export async function POST(request: NextRequest) {
       WHERE po.id = ${poId}
     `
 
-    const logId = await nextId(sql, 'activity_logs')
-    await sql`
-      INSERT INTO activity_logs (id, action, entity_type, entity_id, user_id, details)
-      VALUES (
-        ${logId},
-        'purchase_order_created', 
-        'purchase_order', 
-        ${poId}, 
-        ${created_by || 1}, 
-        ${JSON.stringify({
-          order_number: orderNumber,
-          items_count: items.length,
-          total_amount: totalAmount,
-          supplier_id: supplier_id,
-        })}
-      )
-    `
+    try {
+      await sql`
+        INSERT INTO activity_logs (action, entity_type, entity_id, user_id, details)
+        VALUES (
+          'purchase_order_created', 
+          'purchase_order', 
+          ${poId}, 
+          ${created_by || 1}, 
+          ${JSON.stringify({
+            order_number: orderNumber,
+            items_count: items.length,
+            total_amount: totalAmount,
+            supplier_id: supplier_id,
+          })}
+        )
+      `
+    } catch {
+      const logId = await getNextActivityLogId(sql)
+      await sql`
+        INSERT INTO activity_logs (id, action, entity_type, entity_id, user_id, details)
+        VALUES (
+          ${logId},
+          'purchase_order_created', 
+          'purchase_order', 
+          ${poId}, 
+          ${created_by || 1}, 
+          ${JSON.stringify({
+            order_number: orderNumber,
+            items_count: items.length,
+            total_amount: totalAmount,
+            supplier_id: supplier_id,
+          })}
+        )
+      `
+    }
 
     return NextResponse.json({
       success: true,

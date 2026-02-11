@@ -81,7 +81,11 @@ export async function addVehicle(formData: FormData) {
   try {
     const sql = await getSql()
     const name = formData.get("name") as string
-    console.log("[v0] Adding vehicle with name:", name)
+    
+    console.log("[v0] addVehicle formData name:", JSON.stringify(name))
+    console.log("[v0] addVehicle formData type:", JSON.stringify(formData.get("type")))
+    console.log("[v0] addVehicle formData registration:", JSON.stringify(formData.get("registration")))
+    console.log("[v0] All form keys:", [...formData.keys()])
     
     if (!name || name.trim() === "") {
       return { success: false, message: "Vehicle name is required" }
@@ -104,8 +108,6 @@ export async function addVehicle(formData: FormData) {
       purchase_cost: Number.parseFloat(formData.get("purchase_cost") as string) || 0,
       status: "active",
     }
-
-    console.log("[v0] Vehicle data prepared:", vehicleData)
 
     if (!vehicleData.type || !vehicleData.registration || !vehicleData.model) {
       return { success: false, message: "Type, registration, and model are required fields" }

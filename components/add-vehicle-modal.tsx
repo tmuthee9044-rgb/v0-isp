@@ -21,9 +21,15 @@ interface AddVehicleModalProps {
 export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleModalProps) {
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (formData: FormData) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
     setLoading(true)
     try {
+      const formData = new FormData(e.currentTarget)
+      console.log("[v0] Form data entries:")
+      for (const [key, value] of formData.entries()) {
+        console.log(`[v0]   ${key}: ${value}`)
+      }
       const result = await addVehicle(formData)
       if (result.success) {
         toast.success(result.message)
@@ -47,7 +53,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
           <DialogDescription>Add a new vehicle, generator, or equipment to your fleet</DialogDescription>
         </DialogHeader>
 
-        <form action={handleSubmit}>
+        <form onSubmit={handleSubmit}>
           <Tabs defaultValue="basic" className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
@@ -56,7 +62,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
               <TabsTrigger value="documents">Documents</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="basic" className="space-y-4">
+            <TabsContent value="basic" className="space-y-4 data-[state=inactive]:hidden" forceMount>
               <Card>
                 <CardHeader>
                   <CardTitle>Basic Information</CardTitle>
@@ -116,7 +122,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
               </Card>
             </TabsContent>
 
-            <TabsContent value="technical" className="space-y-4">
+            <TabsContent value="technical" className="space-y-4 data-[state=inactive]:hidden" forceMount>
               <Card>
                 <CardHeader>
                   <CardTitle>Technical Specifications</CardTitle>
@@ -174,7 +180,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
               </Card>
             </TabsContent>
 
-            <TabsContent value="financial" className="space-y-4">
+            <TabsContent value="financial" className="space-y-4 data-[state=inactive]:hidden" forceMount>
               <Card>
                 <CardHeader>
                   <CardTitle>Financial Information</CardTitle>
@@ -218,7 +224,7 @@ export function AddVehicleModal({ open, onOpenChange, onSuccess }: AddVehicleMod
               </Card>
             </TabsContent>
 
-            <TabsContent value="documents" className="space-y-4">
+            <TabsContent value="documents" className="space-y-4 data-[state=inactive]:hidden" forceMount>
               <Card>
                 <CardHeader>
                   <CardTitle>Documentation & Compliance</CardTitle>

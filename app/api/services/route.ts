@@ -13,6 +13,17 @@ const parseFloatOrNull = (value: any): number | null => {
   return isNaN(parsed) ? null : parsed
 }
 
+// service_plans.priority_level is an integer in the deployed schema.
+const parsePriorityLevel = (value: unknown): number => {
+  if (typeof value === "number" && Number.isInteger(value)) return value
+  const text = String(value ?? "").toLowerCase()
+  if (text === "low") return 2
+  if (text === "high") return 8
+  if (text === "critical") return 10
+  const parsed = Number.parseInt(text, 10)
+  return Number.isInteger(parsed) ? parsed : 5
+}
+
 export async function POST(request: NextRequest) {
   try {
     const sql = await getSql()
@@ -102,7 +113,7 @@ export async function POST(request: NextRequest) {
         ${parseIntOrNull(speed.burstUpload?.[0]) || null},
         ${parseIntOrNull(speed.burstDuration?.[0]) || 300},
         ${parseIntOrNull(speed.aggregationRatio?.[0]) || 4},
-        ${speed.priorityLevel || "standard"},
+        ${parsePriorityLevel(speed.priorityLevel)},
         ${parseFloatOrNull(pricing.monthlyPrice) || 0},
         ${parseFloatOrNull(pricing.setupFee) || 0},
         ${pricing.billingCycle || "monthly"},

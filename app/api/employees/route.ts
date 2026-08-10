@@ -172,9 +172,7 @@ export async function POST(request: NextRequest) {
 
     if (createUserAccount === "true" || createUserAccount === true) {
       try {
-        const existingUser = await sql`
-          SELECT id FROM users WHERE email = ${email}
-        `
+        const existingUser = await sql`SELECT id FROM users WHERE email = ${email}`
 
         if (existingUser.length === 0) {
           const username = `${firstName?.toLowerCase()}.${lastName?.toLowerCase()}`

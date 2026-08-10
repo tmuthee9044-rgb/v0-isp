@@ -46,10 +46,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       const newStatus = connectionResult.success ? "active" : "inactive"
       await sql`
-        UPDATE network_devices SET 
+        UPDATE network_devices SET
           status = ${newStatus},
-          last_seen = ${connectionResult.success ? sql`NOW()` : null},
-          updated_at = NOW()
+          last_seen = ${connectionResult.success ? sql`NOW()` : null}
         WHERE id = ${routerId}
       `
 
@@ -98,9 +97,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       console.error("Connection test error:", testError)
 
       await sql`
-        UPDATE network_devices SET 
-          status = 'inactive',
-          updated_at = NOW()
+        UPDATE network_devices SET
+          status = 'inactive'
         WHERE id = ${routerId}
       `
 

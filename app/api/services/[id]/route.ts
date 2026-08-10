@@ -101,16 +101,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const data = await request.json()
 
-    const priorityLevelValue = (() => {
-      const value = data.priority_level
-      if (typeof value === "number" && Number.isInteger(value)) return value
-      const text = String(value ?? "").toLowerCase()
-      if (text === "low") return 2
-      if (text === "high") return 8
-      if (text === "critical") return 10
-      const parsed = Number.parseInt(text, 10)
-      return Number.isInteger(parsed) ? parsed : 5
-    })()
+    const priorityLevelValue = data.priority_level || "standard"
 
     const result = await sql`
       UPDATE service_plans 

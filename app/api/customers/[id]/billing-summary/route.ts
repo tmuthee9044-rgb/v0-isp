@@ -49,12 +49,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       WHERE customer_id = ${customerId} AND status IN ('pending', 'overdue')
     `
 
-    // Get last payment date
+    // Get last payment date. The deployed payments schema stores the
+    // timestamp in created_at, while older schema definitions used payment_date.
     const lastPaymentResult = await sql`
-      SELECT payment_date
-      FROM payments 
+      SELECT created_at AS payment_date
+      FROM payments
       WHERE customer_id = ${customerId} AND status = 'completed'
-      ORDER BY payment_date DESC
+      ORDER BY created_at DESC
       LIMIT 1
     `
 
